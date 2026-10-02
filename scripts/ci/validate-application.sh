@@ -111,6 +111,8 @@ run_node_runtime_gate() {
   run_step "Test SQLite persistence" npm test --workspace @laita/persistence
   run_step "Test API startup and runtime integration" \
     npm test --workspace @laita/api
+  run_step "Test reference HTTPS edge and independent browser clients" \
+    npm run test:reference-edge
   run_step "Run process/workspace smoke tests" npm run test:smoke
   run_step "Verify checkout runtime cleanliness" \
     bash scripts/ci/check-runtime-cleanliness.sh

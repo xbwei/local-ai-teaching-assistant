@@ -55,6 +55,8 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/uv-tools"
           "$RUNNER_TEMP/uv-tools/bin/pip" install uv==0.12.7
           echo "$RUNNER_TEMP/uv-tools/bin" >> "$GITHUB_PATH"
+      - name: Install checksum-pinned reference HTTPS test proxy
+        run: bash scripts/ci/install-reference-caddy.sh
       - name: Run application-aware deterministic gate
         run: bash scripts/ci/validate-application.sh application
 
@@ -68,6 +70,8 @@ jobs:
           node-version: 24.19.0
       - name: Match the current reference runtime npm inventory
         run: npm install --global --ignore-scripts npm@11.17.0
+      - name: Install checksum-pinned reference HTTPS test proxy
+        run: bash scripts/ci/install-reference-caddy.sh
       - name: Verify current reference runtime Node compatibility
         env:
           EXPECTED_NODE_VERSION: 24.19.0

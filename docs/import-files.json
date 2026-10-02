@@ -1062,6 +1062,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "scripts/ci/install-reference-caddy.sh",
+      "classification": "RECREATE"
+    },
+    {
       "path": "scripts/ci/public-boundary.test.mjs",
       "classification": "RECREATE"
     },
@@ -1107,6 +1111,10 @@
     },
     {
       "path": "scripts/test-public-course-sources.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "scripts/test-reference-edge.mjs",
       "classification": "RECREATE"
     },
     {

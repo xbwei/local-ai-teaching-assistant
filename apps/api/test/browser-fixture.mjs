@@ -114,6 +114,7 @@ export async function fixture(options = {}) {
   };
   let app;
   const handler = (req, res) => {
+    options.observeTransport?.(req.headers);
     if (options.tls) {
       req.headers["x-forwarded-proto"] = "https";
       req.headers["x-forwarded-host"] = new URL(config.publicOrigin).host;
@@ -126,7 +127,7 @@ export async function fixture(options = {}) {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const host = `127.0.0.1:${server.address().port}`;
-  config.publicOrigin = `https://${host}`;
+  config.publicOrigin = options.publicOrigin ?? `https://${host}`;
   const requests = [];
   let selectedModel = "gemma4:12b-mlx";
   let calls = 0,

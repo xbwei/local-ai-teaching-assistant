@@ -1,16 +1,21 @@
-# Loopback-only reference edge. All clients share one operator scope.
-# The identifier is a public scope label, not a password or authentication token.
+# Loopback-only operator entry; History is shared, transient clients are separate.
+# Preserve the browser's non-secret X-Owner-Client session reference.
 {
 	admin off
 	auto_https disable_redirects
+	servers {
+		strict_sni_host on
+	}
 }
 https://localhost:3443 {
 	bind 127.0.0.1
 	tls internal
+	@wrongHost expression `{http.request.hostport} != 'localhost:3443'`
+	respond @wrongHost 403
 	reverse_proxy 127.0.0.1:3100 {
 		header_up X-Forwarded-Proto https
 		header_up X-Forwarded-Host localhost:3443
-		header_up X-Owner-Client aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		header_up -Forwarded
 		header_up -Authorization
 	}
 }

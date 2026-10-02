@@ -8,7 +8,7 @@ The reference environment is a single operator on **Apple Silicon macOS** with O
 
 Reserve enough memory for your model plus the operating system; 24 GB unified memory is a practical reference choice, not a guaranteed minimum. See the [official Ollama Gemma MLX notes](https://ollama.com/blog/mlx-performance) and [model tags](https://ollama.com/library/gemma4/tags). `gemma4:12b-mlx` requires supported Apple Silicon/MLX; do not silently substitute another tag on unsupported hardware.
 
-You need Git, an operator-controlled HTTPS reverse proxy, and a modern browser. The Quick Start gives a **loopback-only Caddy reference configuration** for the existing HTTPS transport boundary. It is deployment infrastructure, not another application backend. Caddy must be installed separately and its local CA trusted on your operator browser. Do not expose this configuration to a network.
+You need Git, an operator-controlled HTTPS reverse proxy, and a modern browser. The Quick Start gives a **loopback-only Caddy reference configuration** for the existing HTTPS transport boundary. It is deployment infrastructure, not another application backend. Caddy 2.11.6 is the tested reference; it must be installed separately and its local CA trusted on your operator browser. Do not expose this configuration to a network.
 
 ## Quick Start — Local only
 
@@ -61,7 +61,7 @@ In another terminal, from the same checkout, start the loopback HTTPS edge:
 caddy run --config ops/reference/Caddyfile --adapter caddyfile
 ```
 
-Open **https://localhost:3443**. Trust only the local CA you installed yourself; do not bypass unexpected certificate errors. The backend port 3100 is loopback-only and is not the browser entry. The HTTPS edge overwrites transport headers and applies one operator identity; all browsers using this entry share the same operator scope.
+Open **https://localhost:3443**. Trust only the local CA you installed yourself; do not bypass unexpected certificate errors. The backend port 3100 is loopback-only and is not the browser entry. The HTTPS edge requires the exact Host and fixes security forwarding headers. It preserves each page’s random, non-secret transient client reference, so opening or resetting another browser/tab does not reset the first. All clients share the same single-operator History and global one-operation limit; overlapping generation returns BUSY without a queue. This reference is not a login or authority credential.
 
 Try a general question, then a follow-up. Open `/history` from the UI. Stop foreground processes with Ctrl-C. Unset `APP_CONFIG_JSON` selects a fail-closed developer scaffold rather than this full operator profile; `.env` is not loaded automatically.
 

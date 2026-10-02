@@ -15,4 +15,4 @@ The accepted product retains Local default, both explicit Local models, optional
 
 Inventory classification is an import decision, not a claim that external content is MIT-licensed. See [third-party boundaries](../THIRD_PARTY.md).
 
-Delivered-file classification before these two inventory documents: 102 COPY, 145 GENERICIZE, 32 RECREATE.
+Delivered-file classification before these two inventory documents: 102 COPY, 145 GENERICIZE, 34 RECREATE.
