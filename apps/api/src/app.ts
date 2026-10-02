@@ -565,7 +565,11 @@ export function createApp(options: AppOptions = {}) {
     const now = options.browserNow ?? Date.now;
     let staticWindow = now();
     let staticRequests = 0;
-    const webHeaders = (_req: Request, res: Response, next: () => void) => {
+    const webHeaders = (req: Request, res: Response, next: () => void) => {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        next();
+        return;
+      }
       if (now() - staticWindow >= 60_000) {
         staticWindow = now();
         staticRequests = 0;

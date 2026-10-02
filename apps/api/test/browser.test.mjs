@@ -22,6 +22,16 @@ test("static files share a bounded rate window before filesystem access", async 
     rmSync(webRoot, { recursive: true, force: true });
   });
   const routes = ["/", "/history", "/capture-worklet.js", "/assets/test.js"];
+  // express.static ignores these methods without touching files. They must
+  // neither consume the delivery budget nor turn a normal 404 into a 429.
+  const unsupportedMethods = ["POST", "PUT", "DELETE", "PATCH", "OPTIONS"];
+  for (let i = 0; i < 601; i++) {
+    const response = await f.request("/assets/test.js", {
+      method: unsupportedMethods[i % unsupportedMethods.length],
+    });
+    assert.equal(response.status, 404);
+    await response.text();
+  }
   // Static entry must work without the API-only Owner header. Alternate HEAD
   // and GET across every filesystem handler: they share one static budget.
   for (let i = 0; i < 600; i++) {
@@ -42,6 +52,10 @@ test("static files share a bounded rate window before filesystem access", async 
   const head = await f.request("/history", { method: "HEAD" });
   assert.equal(head.status, 429);
   assert.equal(await head.text(), "");
+  assert.equal(
+    (await f.request("/assets/test.js", { method: "POST" })).status,
+    404,
+  );
   // Static saturation does not consume the separate API transport budget.
   const device = await f.device();
   assert.equal(
