@@ -12,16 +12,13 @@ test("wall-clock jumps cannot reset the static request budget", async (t) => {
   const originalNow = Date.now;
   let wallClock = originalNow();
   let f;
-  try {
-    Date.now = () => wallClock;
-    f = await fixture({ webRoot });
-  } finally {
-    Date.now = originalNow;
-  }
   t.after(async () => {
-    await f.close();
+    Date.now = originalNow;
+    await f?.close();
     rmSync(webRoot, { recursive: true, force: true });
   });
+  Date.now = () => wallClock;
+  f = await fixture({ webRoot });
   for (let i = 0; i < 600; i++) {
     const response = await f.request("/");
     assert.equal(response.status, 200);
