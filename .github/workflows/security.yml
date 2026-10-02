@@ -1,0 +1,121 @@
+name: Security
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 8 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Lint GitHub Actions workflows
+        uses: raven-actions/actionlint@5ed673bc77a975c2402fdcd464706912c56b103b
+
+  repository-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+      - name: Install pinned uv in an isolated tooling environment
+        run: |
+          python3 -m venv "$RUNNER_TEMP/uv-tools"
+          "$RUNNER_TEMP/uv-tools/bin/pip" install uv==0.12.7
+          echo "$RUNNER_TEMP/uv-tools/bin" >> "$GITHUB_PATH"
+      - name: Run policy, architecture, and repository gates
+        env:
+          POLICY_BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          POLICY_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/ci/validate-application.sh policy
+
+  workspace-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+      - name: Install pinned uv in an isolated tooling environment
+        run: |
+          python3 -m venv "$RUNNER_TEMP/uv-tools"
+          "$RUNNER_TEMP/uv-tools/bin/pip" install uv==0.12.7
+          echo "$RUNNER_TEMP/uv-tools/bin" >> "$GITHUB_PATH"
+      - name: Run application-aware deterministic gate
+        run: bash scripts/ci/validate-application.sh application
+
+  node-runtime-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.19.0
+      - name: Match the current reference runtime npm inventory
+        run: npm install --global --ignore-scripts npm@11.17.0
+      - name: Verify current reference runtime Node compatibility
+        env:
+          EXPECTED_NODE_VERSION: 24.19.0
+          EXPECTED_NPM_VERSION: 11.17.0
+        run: bash scripts/ci/validate-application.sh runtime-compatibility
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Scan Git history for secrets
+        env:
+          SCAN_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          SCAN_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ "$SCAN_BASE" =~ ^0+$ ]]; then
+            SCAN_BASE=""
+          fi
+          if [[ -n "$SCAN_BASE" ]]; then
+            if git cat-file -e "${SCAN_BASE}^{commit}" 2>/dev/null && \
+              range_base="$(git merge-base "$SCAN_BASE" "$SCAN_HEAD" 2>/dev/null)"; then
+              SCAN_BASE="$range_base"
+            else
+              echo "::warning::Base commit unavailable; scanning all Git history."
+              SCAN_BASE=""
+            fi
+          fi
+
+          scan_args=(
+            git "file://${GITHUB_WORKSPACE}/"
+            --branch "$SCAN_HEAD"
+            --fail
+            --no-update
+            --github-actions
+            --no-verification
+            --results=unverified
+          )
+          if [[ -n "$SCAN_BASE" ]]; then
+            scan_args+=(--since-commit "$SCAN_BASE")
+          fi
+
+          # Dependabot cannot update digests embedded in run blocks. Verify this
+          # GHCR digest manually when updating the pinned TruffleHog release.
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" \
+            -w "$GITHUB_WORKSPACE" \
+            ghcr.io/trufflesecurity/trufflehog@sha256:deb2af10659a488a14d262a323addcde099d99827a1cf1dc4e93c17915c39f08 \
+            "${scan_args[@]}"

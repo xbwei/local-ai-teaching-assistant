@@ -1,0 +1,16 @@
+# Loopback-only reference edge. All clients share one operator scope.
+# The identifier is a public scope label, not a password or authentication token.
+{
+	admin off
+	auto_https disable_redirects
+}
+https://localhost:3443 {
+	bind 127.0.0.1
+	tls internal
+	reverse_proxy 127.0.0.1:3100 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host localhost:3443
+		header_up X-Owner-Client aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+		header_up -Authorization
+	}
+}

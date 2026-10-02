@@ -1,0 +1,6 @@
+{
+  "fixtureVersion": "interaction-record-fixtures.v1",
+  "valid": {"contractVersion": "interaction-record.v1", "sessionRef": "session-synthetic-a1", "dataClass": "IDENTITY_FREE_USER_TEXT", "retentionProfile": "SESSION_TEXT", "policyVersion": "teaching-policy.v1", "createdAt": "2026-01-01T00:00:00Z", "content": "Explain a public synthetic example."},
+  "invalidPersistentIdentity": {"contractVersion": "interaction-record.v1", "sessionRef": "session-synthetic-a2", "dataClass": "IDENTITY_FREE_USER_TEXT", "retentionProfile": "SESSION_TEXT", "policyVersion": "teaching-policy.v1", "createdAt": "2026-01-01T00:00:00Z", "studentId": "synthetic-identity"},
+  "invalidOfficialGrade": {"contractVersion": "interaction-record.v1", "sessionRef": "session-synthetic-a3", "dataClass": "IDENTITY_FREE_USER_TEXT", "retentionProfile": "SESSION_TEXT", "policyVersion": "teaching-policy.v1", "createdAt": "2026-01-01T00:00:00Z", "officialGrade": 95}
+}

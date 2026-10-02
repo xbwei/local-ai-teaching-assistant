@@ -1,0 +1,53 @@
+{
+  "name": "laita-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.16.0 <25",
+    "npm": ">=11 <12"
+  },
+  "packageManager": "npm@11.13.0",
+  "workspaces": [
+    "packages/contracts",
+    "packages/runtime",
+    "packages/policy",
+    "packages/persistence",
+    "packages/providers",
+    "packages/orchestration",
+    "packages/course-grounding",
+    "apps/api",
+    "packages/safety",
+    "packages/speech-client",
+    "apps/web"
+  ],
+  "scripts": {
+    "validate": "bash scripts/ci/validate-application.sh",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run build --workspace @laita/contracts && npm run build --workspace @laita/runtime && npm run build --workspace @laita/policy && npm run build --workspace @laita/persistence && npm run build --workspace @laita/providers && npm run build --workspace @laita/orchestration && npm run build --workspace @laita/course-grounding && npm run typecheck --workspaces",
+    "test": "npm run build && npm run test --workspaces && node --test scripts/ci/*.test.mjs ops/macos/*.test.mjs && bash ops/macos/test-operations.sh && node --test scripts/test-input-client.mjs scripts/test-history-client.mjs scripts/test-safety-history.mjs",
+    "test:smoke": "node scripts/smoke-workspace.mjs",
+    "lint": "node scripts/ci/check-workspace-boundaries.mjs",
+    "format": "prettier --check package.json tsconfig.base.json .prettierrc.json apps packages scripts/ci/*.test.mjs scripts/ci/*workspace*.mjs scripts/ci/check-runtime-engines.mjs scripts/ci/check-public-boundary.mjs scripts/smoke-workspace.mjs scripts/test-public-course-sources.mjs ops/macos/*.mjs",
+    "format:write": "prettier --write package.json tsconfig.base.json .prettierrc.json apps packages scripts/ci/*.test.mjs scripts/ci/*workspace*.mjs scripts/ci/check-runtime-engines.mjs scripts/ci/check-public-boundary.mjs scripts/smoke-workspace.mjs scripts/test-public-course-sources.mjs ops/macos/*.mjs",
+    "dev": "npm run dev:api",
+    "dev:api": "npm run build --workspace @laita/contracts && npm run build --workspace @laita/runtime && npm run build --workspace @laita/persistence && npm run build --workspace @laita/course-grounding && npm run dev --workspace @laita/api",
+    "dev:web": "npm run build --workspace @laita/contracts && npm run dev --workspace @laita/web",
+    "course-sources:refresh": "npm run build --workspace @laita/contracts && npm run build --workspace @laita/runtime && npm run build --workspace @laita/course-grounding && npm run refresh --workspace @laita/course-grounding --",
+    "live:ollama": "npm run build --workspace @laita/contracts && npm run build --workspace @laita/providers && npm run live:ollama --workspace @laita/providers --",
+    "live:openai": "npm run build --workspace @laita/contracts && npm run build --workspace @laita/runtime && npm run build --workspace @laita/providers && npm run live:openai --workspace @laita/providers --",
+    "start": "npm run start:api",
+    "start:api": "npm run start --workspace @laita/api",
+    "start:web": "npm run start --workspace @laita/web",
+    "python:sync": "uv sync --project python --locked",
+    "python:test": "uv run --project python --locked python -B scripts/ci/test-architecture-contracts.py",
+    "python:lint": "uv run --project python --locked ruff check --config python/pyproject.toml scripts/ci/*.py",
+    "python:format": "uv run --project python --locked ruff format --config python/pyproject.toml --check scripts/ci/*.py"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "prettier": "3.9.6",
+    "typescript": "5.9.2"
+  }
+}

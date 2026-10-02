@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v2/demo-profile.schema.json",
+  "title": "Active demo decisions v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profileVersion",
+    "status",
+    "basePolicyVersion",
+    "policyBundle",
+    "evaluationContext",
+    "defaultProvider",
+    "modes",
+    "fallback",
+    "capabilities",
+    "local",
+    "openai",
+    "limits",
+    "comparison",
+    "speech",
+    "retention",
+    "metadata"
+  ],
+  "properties": {
+    "profileVersion": {"const": "demo-profile.v2"},
+    "status": {"const": "DECISION_ONLY_PENDING_OWNER_APPROVAL"},
+    "basePolicyVersion": {"const": "teaching-policy.v1"},
+    "policyBundle": {"$ref": "https://example.org/laita/schemas/policy/v1/policy-bundle.schema.json"},
+    "evaluationContext": {"$ref": "https://example.org/laita/schemas/policy/v1/capability-evaluation.schema.json"},
+    "defaultProvider": {"const": "LOCAL"},
+    "modes": {"const": ["Local", "OpenAI", "Compare"]},
+    "fallback": {"const": "PROHIBITED"},
+    "capabilities": {
+      "const": {
+        "required": ["TEXT_QA", "CODE_EXPLANATION", "STREAMING_OR_VISIBLE_PROGRESS"],
+        "image": "DEFERRED",
+        "llmSpeech": "NOT_REQUIRED",
+        "tools": "DISABLED",
+        "retrieval": "DISABLED"
+      }
+    },
+    "local": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "comparisonModel", "runtime", "source", "comparisonSource", "acceptance", "contextTokens"],
+      "properties": {
+        "model": {"const": "gemma4:12b-mlx"},
+        "comparisonModel": {"const": "llama3.1:8b"},
+        "runtime": {"const": "OLLAMA"},
+        "source": {"const": "https://ollama.com/library/gemma4:12b-mlx"},
+        "comparisonSource": {"const": "https://ollama.com/library/llama3.1:8b"},
+        "acceptance": {"const": "BENCHMARK_AND_INSTITUTIONAL_APPROVAL_REQUIRED"},
+        "contextTokens": {"type": "integer", "minimum": 1024, "maximum": 4096}
+      }
+    },
+    "openai": {
+      "const": {
+        "model": "gpt-5.6-luna",
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+        "selection": "EXPLICIT_BACKEND_ONLY",
+        "accountAccess": "NOT_VERIFIED",
+        "store": false,
+        "pricing": {
+          "version": "demo-openai-pricing.v2",
+          "asOf": "2026-09-02",
+          "currency": "USD",
+          "unit": "PER_MILLION_TOKENS",
+          "input": 0.2,
+          "cachedInput": 0.02,
+          "output": 1.2,
+          "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "referenceUnifiedMemoryGB",
+        "maxResidentPrimaryModels",
+        "maxConcurrentGenerations",
+        "maxQueuedRequests",
+        "maxInputTokensPerProvider",
+        "maxOutputTokens",
+        "temperature",
+        "requestTimeoutSeconds",
+        "localIdleUnloadSeconds",
+        "maxEstimatedUsdPerRequest",
+        "maxEstimatedUsdPerComparisonRun",
+        "automaticRetries"
+      ],
+      "properties": {
+        "referenceUnifiedMemoryGB": {"const": 16},
+        "maxResidentPrimaryModels": {"const": 1},
+        "maxConcurrentGenerations": {"const": 1},
+        "maxQueuedRequests": {"const": 1},
+        "maxInputTokensPerProvider": {"type": "integer", "minimum": 1, "maximum": 2048},
+        "maxOutputTokens": {"type": "integer", "minimum": 1, "maximum": 512},
+        "temperature": {"type": "number", "minimum": 0, "maximum": 1},
+        "requestTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 90},
+        "localIdleUnloadSeconds": {"type": "integer", "minimum": 0, "maximum": 60},
+        "maxEstimatedUsdPerRequest": {"type": "number", "exclusiveMinimum": 0, "maximum": 0.01},
+        "maxEstimatedUsdPerComparisonRun": {"type": "number", "exclusiveMinimum": 0, "maximum": 0.1},
+        "automaticRetries": {"const": 0}
+      }
+    },
+    "comparison": {
+      "const": {
+        "seedVersion": "demo-comparison-seed.v2",
+        "execution": "SEQUENTIAL_LOCAL_THEN_OPENAI",
+        "inputPolicy": "IDENTICAL_MESSAGES_NO_HISTORY",
+        "overflow": "REJECT_WITHOUT_TRUNCATION",
+        "unknownEligibilityOrCost": "DENY",
+        "providerFailure": "RECORD_LEG_ERROR_NO_FALLBACK",
+        "budgetAuthority": "BACKEND_RECHECK_EACH_LEG",
+        "speechInFixedComparison": false
+      }
+    },
+    "speech": {
+      "const": {
+        "implementation": "DEFERRED_TO_81_84_AFTER_80",
+        "placement": "SEPARATE_LOCAL_COMPONENTS",
+        "stt": {
+          "trigger": "BUTTON_ONLY",
+          "continuousListening": false,
+          "maxCaptureSeconds": 15,
+          "maxProcessingSeconds": 30,
+          "maxConcurrentJobs": 1,
+          "retentionProfile": "RAW_MICROPHONE_AUDIO",
+          "transcript": "LOCAL_REVIEW_AND_RECLASSIFY_BEFORE_EXPLICIT_CLOUD"
+        },
+        "tts": {
+          "provider": "LOCAL_ONLY",
+          "maxCharacters": 1200,
+          "maxProcessingSeconds": 30,
+          "maxPlaybackSeconds": 60,
+          "maxConcurrentJobs": 1,
+          "retentionProfile": "GENERATED_TTS_AUDIO"
+        },
+        "fallback": ["CAPTIONS", "TEXT_ONLY"],
+        "audioDataClass": "TEMPORARY_SPEECH_AUDIO",
+        "cloudAudio": "PROHIBITED",
+        "cleanup": ["DELIVERY", "SESSION_RESET", "SESSION_END", "VALIDATION_FAILURE", "CANCELLATION", "STARTUP_RECOVERY", "EXPIRY"],
+        "maxAudioLifetimeSeconds": 900,
+        "deletionFailure": "BOUNDED_RETRY_METADATA_ONLY_DISABLE_AUDIO_UNTIL_CLEAN",
+        "schedule": "NO_SPEECH_MODEL_OVERLAP_WITH_PRIMARY_GENERATION"
+      }
+    },
+    "retention": {
+      "const": {
+        "sessionText": "SESSION_TEXT",
+        "feasibilityMetadata": "SAFETY_OPERATIONS_METADATA",
+        "syntheticResult": "EVALUATION_FIXTURE_RESULT",
+        "rawPromptsInMetadata": false,
+        "persistentIdentity": false,
+        "officialGrades": "PROHIBITED"
+      }
+    },
+    "metadata": {
+      "const": {
+        "required": [
+          "profileVersion",
+          "seedVersion",
+          "caseId",
+          "inputSha256",
+          "policyVersions",
+          "selectedMode",
+          "requestedProvider",
+          "requestedModel",
+          "resolvedModel",
+          "effectiveParameters",
+          "status",
+          "errorCode",
+          "queueLatencyMs",
+          "firstTokenLatencyMs",
+          "totalLatencyMs",
+          "loadState"
+        ],
+        "localWhenAvailable": [
+          "ollamaVersion",
+          "modelDigest",
+          "quantization",
+          "loadDurationMs",
+          "promptEvalTokens",
+          "generatedTokens",
+          "tokensPerSecond",
+          "processMemoryBytes",
+          "systemMemoryPressure",
+          "swapDeltaBytes"
+        ],
+        "openaiWhenAvailable": ["responseModel", "inputTokens", "cachedInputTokens", "outputTokens", "usageStatus", "pricingVersion", "estimatedCostUsd"],
+        "missingValues": "NULL_WITH_REASON_NEVER_ZERO",
+        "errorContent": "SANITIZED_CODE_ONLY",
+        "measurementScope": "OPERATIONAL_FEASIBILITY_NOT_RESEARCH"
+      }
+    }
+  }
+}

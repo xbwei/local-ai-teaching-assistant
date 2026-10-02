@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v1/data-classification.schema.json",
+  "title": "Data classification policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "classificationVersion", "classes"],
+  "properties": {
+    "schemaVersion": {"const": "data-classification-schema.v1"},
+    "classificationVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "providerProcessing", "storage", "retentionProfile"],
+        "properties": {
+          "id": {"$ref": "common.schema.json#/$defs/identifier"},
+          "description": {"$ref": "common.schema.json#/$defs/nonEmptyString"},
+          "providerProcessing": {
+            "enum": ["LOCAL_ONLY", "CLOUD_EXPLICIT_ALLOW", "PROHIBITED"]
+          },
+          "storage": {
+            "enum": ["APPROVED_KNOWLEDGE", "LOCAL_IDENTITY_MINIMIZED", "LOCAL_TEMPORARY", "NO_PERSISTENCE"]
+          },
+          "retentionProfile": {"$ref": "common.schema.json#/$defs/identifier"}
+        }
+      }
+    }
+  }
+}

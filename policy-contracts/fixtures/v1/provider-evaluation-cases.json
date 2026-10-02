@@ -1,0 +1,86 @@
+{
+  "fixtureVersion": "provider-evaluation-fixtures.v1",
+  "policyVersion": "teaching-policy.v1",
+  "cases": [
+    {
+      "name": "local-privacy-sensitive-request",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "COURSE_QA", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "PRIVACY_SENSITIVE_STUDENT_CONTENT", "artifactState": "NONE", "targetProvider": "LOCAL", "targetModel": "local-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": true, "reason": "EXPLICIT_ALLOW"}
+    },
+    {
+      "name": "cloud-identity-free-text-explicitly-eligible",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": true, "reason": "EXPLICIT_ALLOW"}
+    },
+    {
+      "name": "cloud-approved-public-knowledge",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "INSTRUCTOR", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "COURSE_QA", "learningMode": "DIRECT_EXPLANATION", "inputType": "KNOWLEDGE_REFERENCE", "dataClass": "APPROVED_PUBLIC_COURSE_KNOWLEDGE", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": true, "reason": "EXPLICIT_ALLOW"}
+    },
+    {
+      "name": "cloud-default-deny-without-explicit-rule",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "EXAM_PRACTICE", "learningMode": "PRACTICE", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "CLOUD_NOT_EXPLICITLY_ALLOWED"}
+    },
+    {
+      "name": "privacy-sensitive-artifact-denies-cloud",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-lab", "workflow": "ASSIGNMENT_VERIFICATION", "learningMode": "VERIFICATION", "inputType": "UPLOAD_REFERENCE", "dataClass": "ASSIGNMENT_ARTIFACT", "artifactState": "ASSIGNMENT_ARTIFACT", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "LOCAL_ONLY_DATA"}
+    },
+    {
+      "name": "restricted-assessment-denies-provider",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-assessment", "workflow": "EXAM_PRACTICE", "learningMode": "PRACTICE", "inputType": "KNOWLEDGE_REFERENCE", "dataClass": "RESTRICTED_ASSESSMENT_CONTENT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": true, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "PROVIDER_PROCESSING_PROHIBITED"}
+    },
+    {
+      "name": "client-requested-policy-override-denied",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": true},
+      "expected": {"allowed": false, "reason": "CLIENT_POLICY_OVERRIDE"}
+    },
+    {
+      "name": "unknown-data-class-denied",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "UNKNOWN_SYNTHETIC_CLASS", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "UNKNOWN_DATA_CLASS"}
+    },
+    {
+      "name": "over-budget-denies-cloud",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": false, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "OVER_BUDGET"}
+    },
+    {
+      "name": "quota-denies-cloud",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": false, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "QUOTA_UNAVAILABLE"}
+    },
+    {
+      "name": "active-assessment-denies-cloud",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": true, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "ACTIVE_ASSESSMENT"}
+    },
+    {
+      "name": "provider-disabled-denies-cloud",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": false, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "PROVIDER_DISABLED"}
+    },
+    {
+      "name": "closed-schedule-denies-cloud",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": false, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "SCHEDULE_CLOSED"}
+    },
+    {
+      "name": "upload-reclassification-denies-cloud",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "UPLOAD_REFERENCE", "dataClass": "TEMPORARY_UPLOAD", "artifactState": "TEMPORARY_UPLOAD", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "LOCAL_ONLY_DATA"}
+    },
+    {
+      "name": "client-requested-unapproved-model-denied",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "client-arbitrary-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "MODEL_NOT_ALLOWED"}
+    },
+    {
+      "name": "stale-policy-version-denied",
+      "context": {"contractVersion": "capability-evaluation.v1", "policyVersion": "teaching-policy.v2", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "accessClass": "STUDENT", "courseRef": "course-synthetic", "moduleRef": "module-intro", "workflow": "CONCEPT_REVIEW", "learningMode": "SOCRATIC", "inputType": "TEXT", "dataClass": "IDENTITY_FREE_USER_TEXT", "artifactState": "NONE", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "scheduleOpen": true, "providerFeatureEnabled": true, "withinBudget": true, "quotaAvailable": true, "activeAssessment": false, "clientPolicyOverrideRequested": false},
+      "expected": {"allowed": false, "reason": "POLICY_VERSION_MISMATCH"}
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "policy-bundle-schema.v1",
+  "policyVersion": "teaching-policy.v1",
+  "classificationVersion": "data-classification.v1",
+  "providerPolicyVersion": "provider-eligibility.v1",
+  "retentionPolicyVersion": "retention-policy.v1",
+  "gradingBoundaryVersion": "grading-boundary.v1",
+  "documents": {
+    "classification": "data-classification.policy.json",
+    "providerEligibility": "provider-eligibility.policy.json",
+    "retention": "retention.policy.json",
+    "gradingBoundary": "grade-boundary.policy.json"
+  }
+}

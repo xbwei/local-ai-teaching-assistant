@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__SERVICE_LABEL__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__DEPLOY_ROOT__/bin/run-service.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__DEPLOY_ROOT__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LAITA_DEPLOY_ROOT</key>
+    <string>__DEPLOY_ROOT__</string>
+    <key>LAITA_NODE_BIN</key>
+    <string>__NODE_BIN__</string>
+__OPENAI_KEYCHAIN_ENVIRONMENT__
+    <key>LAITA_MAX_CRASH_RESTARTS</key>
+    <string>3</string>
+    <key>LAITA_CRASH_WINDOW_SECONDS</key>
+    <string>300</string>
+    <key>PATH</key>
+    <string>__CONTROLLED_PATH__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>ProcessType</key>
+  <string>Standard</string>
+  <key>Umask</key>
+  <integer>63</integer>
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>1024</integer>
+  </dict>
+  <key>HardResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>2048</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+  <key>StandardErrorPath</key>
+  <string>/dev/null</string>
+</dict>
+</plist>

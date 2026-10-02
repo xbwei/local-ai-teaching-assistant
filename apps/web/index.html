@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; media-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>LAITA</title>
+  </head>
+  <body>
+    <dialog id="usage-dialog">
+      <h2>Privacy and use information</h2>
+      <p>
+        Use only non-sensitive operator-owned conversation. This is an
+        independent faculty-led project, not an official James Madison
+        University service, student service, research consent or IRB-approved
+        program.
+      </p>
+      <p>
+        Complete text questions, successfully recognized voice transcripts and
+        AI text answers are saved locally, together with source identities,
+        feedback, diagnostic events and Owner review. Owner may review records
+        for debugging, quality and suspected misuse. No fixed text-retention
+        deadline or automatic deletion schedule has been selected. New
+        conversation clears active model context; it does not delete saved
+        history. Opening history does not call a model.
+      </p>
+      <p>
+        Microphone recordings and generated spoken audio are temporary and are
+        not archived in history or backups. Local is the default. Explicit
+        eligible OpenAI / Compare sends the applicable active non-sensitive
+        conversation context to OpenAI and uses API credits. Saving or reviewing
+        history does not send it to Cloud. Course grounding remains Local-only.
+      </p>
+      <p>
+        Use only an operator-controlled entry. Do not submit credentials,
+        student or research records, or sensitive institutional data. Storage
+        encryption and an extra dashboard password have not been established by
+        this feature. Future participant policy requires a separate decision.
+      </p>
+      <button type="button" id="usage-close">Back to chat</button>
+    </dialog>
+    <main id="history-page" hidden></main>
+
+    <div class="app">
+      <header>
+        <h1>LAITA</h1>
+        <span class="prototype">Single-operator teaching assistant</span>
+      </header>
+      <aside id="development-notice" class="development-notice">
+        <span
+          ><strong>Single-operator use.</strong> Text, transcripts, answers,
+          feedback and diagnostics are retained locally for review/debugging.
+          Raw audio is temporary, never archived.</span
+        >
+        <nav aria-label="Operator information">
+          <button type="button" id="usage-open">
+            Privacy / Terms &amp; use information
+          </button>
+          <a id="history-open" href="/history" target="_blank" rel="noopener"
+            >History &amp; Review (new tab)</a
+          >
+        </nav>
+        <span id="recording-status" role="status"></span>
+      </aside>
+      <p id="connection-status" role="status" class="connection-status"></p>
+      <main id="learning" hidden>
+        <div class="dialogue">
+          <img
+            id="dog"
+            class="dog"
+            src="/src/laita.svg"
+            alt="LAITA wordmark"
+            width="64"
+            height="64"
+          />
+          <section
+            id="conversation"
+            tabindex="0"
+            aria-label="Conversation and complete answers"
+            class="conversation"
+          >
+            <div id="welcome" class="welcome">
+              <p class="hello">Hi, curious mind.</p>
+              <h2>What would you like<br />to explore?</h2>
+              <p>
+                Ask a question. Work through an idea.<br />We’ll take it one
+                step at a time.
+              </p>
+            </div>
+            <div id="messages"></div>
+          </section>
+        </div>
+        <div id="activity" class="activity" hidden>
+          <p id="status" role="status" aria-live="polite"></p>
+          <button id="cancel" type="button" class="quiet" hidden>Cancel</button>
+        </div>
+        <p id="transcript-status" role="status"></p>
+        <form id="composer">
+          <fieldset id="providers">
+            <legend class="sr-only">Answer mode</legend>
+            <label
+              ><input
+                type="radio"
+                name="provider"
+                value="Local"
+                checked
+              />Local</label
+            ><label
+              ><input
+                type="radio"
+                name="provider"
+                value="OpenAI"
+              />OpenAI</label
+            ><label
+              ><input
+                type="radio"
+                name="provider"
+                value="Compare"
+              />Compare</label
+            >
+          </fieldset>
+          <label for="local-model">Local model</label>
+          <select id="local-model">
+            <option value="gemma4:12b-mlx">Gemma 12B</option>
+            <option value="llama3.1:8b">Llama 8B</option>
+          </select>
+          <p id="model-status" role="status"></p>
+          <p class="disclosure">
+            OpenAI / Compare sends this non-sensitive conversation text to
+            OpenAI and uses API credits. Do not enter credentials, student
+            records or sensitive data. Compare shares your questions; each
+            provider receives only its own previous answers. IA340/IA342 course
+            grounding is Local only; OpenAI/Compare never receives course
+            excerpts.
+          </p>
+          <p class="disclosure">
+            Microphone: automatic English / Chinese recognition. Valid text is
+            shown and sent once.
+          </p>
+          <label class="sr-only" for="question">Your question</label>
+          <div class="input-row">
+            <button id="mic" type="button" aria-label="Mic">
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <rect x="9" y="3" width="6" height="12" rx="3" />
+                <path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" /></svg
+              ><span id="mic-label">Mic</span></button
+            ><textarea
+              id="question"
+              rows="1"
+              maxlength="2000"
+              placeholder="Ask a question…"
+            ></textarea
+            ><button id="send" class="primary" type="submit">
+              Send <span aria-hidden="true">↑</span>
+            </button>
+          </div>
+        </form>
+        <div class="session">
+          <button id="reset" class="quiet" type="button" hidden>
+            New conversation</button
+          ><label class="audio-mode"
+            ><input id="text-only" type="checkbox" /> Text only / mute</label
+          ><button id="stop-audio" class="quiet" type="button" hidden>
+            Stop audio
+          </button>
+        </div>
+        <p id="audio-status" role="status" aria-live="polite"></p>
+      </main>
+      <footer>
+        <p>Single-operator teaching assistant · AI can make mistakes.</p>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

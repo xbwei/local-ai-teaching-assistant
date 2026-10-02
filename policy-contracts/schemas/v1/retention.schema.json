@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v1/retention.schema.json",
+  "title": "Retention policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "retentionPolicyVersion", "institutionalStatus", "profiles"],
+  "properties": {
+    "schemaVersion": {"const": "retention-schema.v1"},
+    "retentionPolicyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "institutionalStatus": {"const": "GENERIC_REFERENCE_VALUES_NOT_INSTITUTIONAL_POLICY"},
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "purpose", "duration", "expiryBasis", "storageLocation", "contentPersistence", "deletionTriggers", "onSessionReset", "onSessionEnd", "deletionFailure"],
+        "properties": {
+          "id": {"$ref": "common.schema.json#/$defs/identifier"},
+          "purpose": {"$ref": "common.schema.json#/$defs/nonEmptyString"},
+          "duration": {"oneOf": [{"type": "string", "pattern": "^P(?=[0-9T])(?:([0-9]{1,6})D)?(?:T(?=[0-9])(?:([0-9]{1,6})H)?(?:([0-9]{1,6})M)?)?$"}, {"const": "PROHIBITED"}]},
+          "expiryBasis": {"enum": ["CREATED_AT", "LAST_ACTIVITY_AT", "SESSION_END", "DELIVERY_COMPLETED_AT", "RUN_COMPLETED_AT", "DELETION_FAILURE_AT", "NEVER_PERSIST"]},
+          "storageLocation": {"enum": ["LOCAL_ONLY", "APPROVED_KNOWLEDGE_STORE", "NO_STORAGE"]},
+          "contentPersistence": {"enum": ["CONTENT_ALLOWED", "METADATA_ONLY", "TRANSIENT_ONLY", "PROHIBITED"]},
+          "deletionTriggers": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["EXPIRY", "SESSION_RESET", "SESSION_END", "DELIVERY", "RUN_COMPLETION", "USER_REQUEST", "VALIDATION_FAILURE", "CANCELLATION", "STARTUP_RECOVERY"]}},
+          "onSessionReset": {"enum": ["DELETE", "KEEP_UNTIL_EXPIRY", "NOT_APPLICABLE"]},
+          "onSessionEnd": {"enum": ["DELETE", "KEEP_UNTIL_EXPIRY", "NOT_APPLICABLE"]},
+          "deletionFailure": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["retry", "recordMetadataOnly", "contentMayPersistOnlyUntilDeleted"],
+            "properties": {
+              "retry": {"enum": ["BOUNDED_BACKOFF", "NO_RETRY"]},
+              "recordMetadataOnly": {"type": "boolean"},
+              "contentMayPersistOnlyUntilDeleted": {"type": "boolean"}
+            }
+          }
+        },
+        "allOf": [
+          {"if": {"properties": {"duration": {"const": "PROHIBITED"}}, "required": ["duration"]}, "then": {"properties": {"expiryBasis": {"const": "NEVER_PERSIST"}, "storageLocation": {"const": "NO_STORAGE"}, "contentPersistence": {"const": "PROHIBITED"}}}, "else": {"properties": {"expiryBasis": {"not": {"const": "NEVER_PERSIST"}}}}}
+        ]
+      }
+    }
+  }
+}

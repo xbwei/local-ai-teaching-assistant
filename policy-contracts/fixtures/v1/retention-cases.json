@@ -1,0 +1,12 @@
+{
+  "fixtureVersion": "retention-fixtures.v1",
+  "policyVersion": "retention-policy.v1",
+  "cases": [
+    {"name": "expired-session-text", "profile": "SESSION_TEXT", "createdAt": "2026-01-01T00:00:00Z", "sessionEndedAt": "2026-01-01T01:00:00Z", "evaluatedAt": "2026-01-03T00:00:00Z", "expectedExpired": true},
+    {"name": "active-session-text", "profile": "SESSION_TEXT", "createdAt": "2026-01-01T00:00:00Z", "sessionEndedAt": "2026-01-01T01:00:00Z", "evaluatedAt": "2026-01-01T12:00:00Z", "expectedExpired": false},
+    {"name": "expired-created-at-metadata", "profile": "INTERACTION_METADATA", "createdAt": "2026-01-01T00:00:00Z", "evaluatedAt": "2026-01-16T00:00:00Z", "expectedExpired": true},
+    {"name": "expired-delivered-audio", "profile": "GENERATED_TTS_AUDIO", "deliveryCompletedAt": "2026-01-01T00:00:00Z", "evaluatedAt": "2026-01-01T00:16:00Z", "expectedExpired": true},
+    {"name": "active-verifier-run", "profile": "VERIFIER_WORKSPACE", "runCompletedAt": "2026-01-01T00:00:00Z", "evaluatedAt": "2026-01-01T00:30:00Z", "expectedExpired": false},
+    {"name": "expired-deletion-failure-metadata", "profile": "DELETION_FAILURE_METADATA", "deletionFailureAt": "2026-01-01T00:00:00Z", "evaluatedAt": "2026-02-01T00:00:00Z", "expectedExpired": true}
+  ]
+}

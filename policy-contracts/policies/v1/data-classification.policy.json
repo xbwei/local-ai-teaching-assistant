@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "data-classification-schema.v1",
+  "classificationVersion": "data-classification.v1",
+  "classes": [
+    {"id": "APPROVED_PUBLIC_COURSE_KNOWLEDGE", "description": "Instructor-approved redistributable course knowledge and source metadata.", "providerProcessing": "CLOUD_EXPLICIT_ALLOW", "storage": "APPROVED_KNOWLEDGE", "retentionProfile": "APPROVED_COURSE_KNOWLEDGE"},
+    {"id": "APPROVED_PRIVATE_COURSE_MATERIAL", "description": "Approved course material whose distribution remains access-controlled.", "providerProcessing": "LOCAL_ONLY", "storage": "APPROVED_KNOWLEDGE", "retentionProfile": "APPROVED_COURSE_KNOWLEDGE"},
+    {"id": "IDENTITY_FREE_USER_TEXT", "description": "Text validated to contain no durable identity or privacy-sensitive student content.", "providerProcessing": "CLOUD_EXPLICIT_ALLOW", "storage": "LOCAL_IDENTITY_MINIMIZED", "retentionProfile": "SESSION_TEXT"},
+    {"id": "IDENTITY_MINIMIZED_USER_TEXT", "description": "User text associated only with a short-lived random session reference.", "providerProcessing": "LOCAL_ONLY", "storage": "LOCAL_IDENTITY_MINIMIZED", "retentionProfile": "SESSION_TEXT"},
+    {"id": "PRIVACY_SENSITIVE_STUDENT_CONTENT", "description": "Student-derived content requiring the approved local processing boundary.", "providerProcessing": "LOCAL_ONLY", "storage": "LOCAL_IDENTITY_MINIMIZED", "retentionProfile": "SESSION_TEXT"},
+    {"id": "TEMPORARY_UPLOAD", "description": "A server-managed upload that has not been reduced to an independently classified derivation.", "providerProcessing": "LOCAL_ONLY", "storage": "LOCAL_TEMPORARY", "retentionProfile": "UPLOAD"},
+    {"id": "ASSIGNMENT_ARTIFACT", "description": "A student-provided artifact used for bounded instructional verification.", "providerProcessing": "LOCAL_ONLY", "storage": "LOCAL_TEMPORARY", "retentionProfile": "VERIFIER_WORKSPACE"},
+    {"id": "DERIVED_VERIFIER_EVIDENCE", "description": "Immutable deterministic evidence derived from a bounded verifier run.", "providerProcessing": "LOCAL_ONLY", "storage": "LOCAL_IDENTITY_MINIMIZED", "retentionProfile": "DETERMINISTIC_EVIDENCE"},
+    {"id": "RESTRICTED_ASSESSMENT_CONTENT", "description": "Assessment content whose disclosure or model processing is prohibited by the active policy.", "providerProcessing": "PROHIBITED", "storage": "NO_PERSISTENCE", "retentionProfile": "RETENTION_PROHIBITED"},
+    {"id": "INSTRUCTOR_ONLY_SOLUTION_MATERIAL", "description": "Access-controlled solution or answer material for instructor use.", "providerProcessing": "LOCAL_ONLY", "storage": "APPROVED_KNOWLEDGE", "retentionProfile": "APPROVED_COURSE_KNOWLEDGE"},
+    {"id": "OPERATIONAL_METADATA", "description": "Sanitized reliability, safety, quota, and deletion-operation metadata without raw content.", "providerProcessing": "PROHIBITED", "storage": "LOCAL_IDENTITY_MINIMIZED", "retentionProfile": "SAFETY_OPERATIONS_METADATA"},
+    {"id": "FEEDBACK_REPORT_CONTENT", "description": "Optional bounded report or feedback content retained only with explicit inclusion.", "providerProcessing": "LOCAL_ONLY", "storage": "LOCAL_IDENTITY_MINIMIZED", "retentionProfile": "OPTIONAL_RETAINED_REPORT_CONTENT"},
+    {"id": "TEMPORARY_SPEECH_AUDIO", "description": "Raw microphone or generated speech media used only for transient delivery.", "providerProcessing": "LOCAL_ONLY", "storage": "LOCAL_TEMPORARY", "retentionProfile": "RAW_MICROPHONE_AUDIO"},
+    {"id": "RESEARCH_DATA", "description": "Research-purpose data requiring a separate approved collection and processing design.", "providerProcessing": "PROHIBITED", "storage": "NO_PERSISTENCE", "retentionProfile": "RETENTION_PROHIBITED"}
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v4/demo-comparison-seed.schema.json",
+  "title": "Fixed synthetic comparison seed v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["seedVersion", "profileVersion", "policyVersion", "purpose", "cases"],
+  "properties": {
+    "seedVersion": {"const": "demo-comparison-seed.v4"},
+    "profileVersion": {"const": "demo-profile.v4"},
+    "policyVersion": {"const": "demo-policy.v4"},
+    "purpose": {"const": "OPERATIONAL_FEASIBILITY_NOT_RESEARCH"},
+    "cases": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "workflow", "difficulty", "provenance", "messages", "inputSha256", "observationChecks"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]+$"},
+          "workflow": {"enum": ["COURSE_QA", "CODING_COACH"]},
+          "difficulty": {"enum": ["STANDARD", "HARD"]},
+          "provenance": {"const": "SYNTHETIC_AUTHORED_FOR_THIS_REPOSITORY"},
+          "messages": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["role", "content"],
+              "properties": {"role": {"enum": ["system", "user"]}, "content": {"type": "string", "minLength": 1, "maxLength": 6000}}
+            }
+          },
+          "inputSha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+          "observationChecks": {"type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    }
+  }
+}

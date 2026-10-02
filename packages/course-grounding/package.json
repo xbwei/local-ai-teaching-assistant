@@ -1,0 +1,26 @@
+{
+  "name": "@laita/course-grounding",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "browser": null,
+      "node": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "refresh": "node dist/refresh-cli.js"
+  },
+  "dependencies": {
+    "@laita/runtime": "0.1.0",
+    "@laita/contracts": "0.1.0"
+  }
+}

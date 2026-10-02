@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v1/provider-eligibility.schema.json",
+  "title": "Provider eligibility policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "providerPolicyVersion", "defaultProvider", "cloudDefault", "fallback", "allowRules", "denyReasonPrecedence"],
+  "properties": {
+    "schemaVersion": {"const": "provider-eligibility-schema.v1"},
+    "providerPolicyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "defaultProvider": {"const": "LOCAL"},
+    "cloudDefault": {"const": "DENY"},
+    "fallback": {"const": "PROHIBITED"},
+    "allowRules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "provider", "models", "accessClasses", "workflows", "learningModes", "inputTypes", "dataClasses", "artifactStates", "requireFeatureEnabled", "requireScheduleOpen", "requireWithinBudget", "requireQuotaAvailable", "activeAssessment"],
+        "properties": {
+          "id": {"$ref": "common.schema.json#/$defs/identifier"},
+          "provider": {"enum": ["LOCAL", "OPENAI"]},
+          "models": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "accessClasses": {"type": "array", "minItems": 1, "items": {"enum": ["ANONYMOUS_SESSION", "STUDENT", "INSTRUCTOR", "OPERATOR", "RESEARCHER"]}},
+          "workflows": {"type": "array", "minItems": 1, "items": {"enum": ["COURSE_QA", "CONCEPT_REVIEW", "EXAM_PRACTICE", "CODING_COACH", "ASSIGNMENT_VERIFICATION", "FACULTY_AUTHORING", "FEEDBACK_REPORT", "RESEARCH_EVALUATION"]}},
+          "learningModes": {"type": "array", "minItems": 1, "items": {"enum": ["DIRECT_EXPLANATION", "SOCRATIC", "PRACTICE", "VERIFICATION", "AUTHORING", "EVALUATION"]}},
+          "inputTypes": {"type": "array", "minItems": 1, "items": {"enum": ["TEXT", "KNOWLEDGE_REFERENCE", "UPLOAD_REFERENCE", "DETERMINISTIC_EVIDENCE_REFERENCE", "AUDIO_REFERENCE"]}},
+          "dataClasses": {"type": "array", "minItems": 1, "items": {"$ref": "common.schema.json#/$defs/identifier"}},
+          "artifactStates": {"type": "array", "minItems": 1, "items": {"enum": ["NONE", "MINIMIZED_DERIVATION", "TEMPORARY_UPLOAD", "ASSIGNMENT_ARTIFACT"]}},
+          "requireFeatureEnabled": {"const": true},
+          "requireScheduleOpen": {"const": true},
+          "requireWithinBudget": {"const": true},
+          "requireQuotaAvailable": {"const": true},
+          "activeAssessment": {"enum": ["DENY", "ALLOW"]}
+        }
+      }
+    },
+    "denyReasonPrecedence": {
+      "type": "array",
+      "minItems": 13,
+      "maxItems": 13,
+      "uniqueItems": true,
+      "items": {"enum": ["POLICY_VERSION_MISMATCH", "CLIENT_POLICY_OVERRIDE", "UNKNOWN_DATA_CLASS", "PROVIDER_PROCESSING_PROHIBITED", "CLOUD_NOT_EXPLICITLY_ALLOWED", "LOCAL_ONLY_DATA", "PROVIDER_DISABLED", "SCHEDULE_CLOSED", "ACTIVE_ASSESSMENT", "OVER_BUDGET", "QUOTA_UNAVAILABLE", "MODEL_NOT_ALLOWED", "CONTEXT_NOT_ALLOWED"]}
+    }
+  }
+}
