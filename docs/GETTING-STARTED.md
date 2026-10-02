@@ -1,6 +1,6 @@
 # Getting started — Local first
 
-Use a reviewed candidate or an approved release of this repository. Run the commands from its checkout root. No private development checkout or OpenAI credential is required. [Product homepage](../README.md).
+Use a reviewed revision or an approved release of this repository. Run the commands from its checkout root. No private development checkout or OpenAI credential is required. [Product homepage](../README.md).
 
 ## Prerequisites
 

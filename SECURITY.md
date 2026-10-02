@@ -10,4 +10,4 @@ Text, transcripts, answers, provenance, feedback and diagnostic state persist lo
 
 Report vulnerabilities privately using GitHub's private vulnerability reporting when available on this repository. If unavailable, contact the maintainer using the contact route on the [public faculty profile](https://www.jmu.edu/cise/people/faculty/wei-xuebin.shtml), first sending only a high-level description and asking for a secure reporting channel. Do not post exploit secrets or private data in public Issues. No response-time guarantee is made.
 
-Only the current candidate is validated here. Public-repository CodeQL, secret scanning and push protection are evaluated after the separate publication decision; this candidate does not claim they are enabled. No paid security service is required.
+See [validation and limitations](docs/VALIDATION.md) for LAITA Public V1's validation scope. The public repository has CodeQL default setup, hosted secret scanning and push protection enabled. These checks are not a security certification or deployment acceptance. No paid security service is required.

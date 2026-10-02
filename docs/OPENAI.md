@@ -29,7 +29,7 @@ Edit only the non-secret operator JSON:
 }
 ```
 
-This is a **fragment**, not a complete config: retain the existing Local provider, provenance, access, runtime and server fields. The accepted OpenAI model is `gpt-5.6-luna`; account/model availability must be checked by you. No live Cloud validation or API spend is part of the candidate's automated tests.
+This is a **fragment**, not a complete config: retain the existing Local provider, provenance, access, runtime and server fields. The accepted OpenAI model is `gpt-5.6-luna`; account/model availability must be checked by you. No live Cloud validation or API spend is part of LAITA Public V1's automated tests.
 
 Restart the foreground API with non-secret mapping names:
 

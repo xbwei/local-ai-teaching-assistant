@@ -4,13 +4,13 @@
 
 A teaching assistant that runs locally, keeps a conversation going, answers questions using public course evidence, and lets one operator review saved work. LAITA is an independent faculty-led project, not an official James Madison University service or product.
 
-**Public V1 candidate · intended version 0.1.0.** See [validation status and limitations](docs/VALIDATION.md).
+**Public V1 · v0.1.0**. See [validation status and limitations](docs/VALIDATION.md).
 
 ## See it in action
 
 ![Real course Q&A demo from an earlier MVP recording](docs/assets/demo/laita-demo.gif)
 
-A silent, 12-second excerpt at normal playback speed from a real earlier MVP recording. The original already shortened a waiting period. Its interface and branding differ from this candidate; no product text or UI state was fabricated. [Watch/download the full 28-second MP4](docs/assets/demo/laita-pi-demo.mp4) · [Media provenance and privacy review](docs/SCREENSHOTS.md).
+A silent, 12-second excerpt at normal playback speed from a real earlier MVP recording. The original already shortened a waiting period. Its interface and branding differ from LAITA Public V1; no product text or UI state was fabricated. [Watch/download the full 28-second MP4](docs/assets/demo/laita-pi-demo.mp4) · [Media provenance and privacy review](docs/SCREENSHOTS.md).
 
 ## What you can do
 
@@ -46,8 +46,8 @@ V1 is **single-operator**: History has no separate password or multi-user isolat
 
 Created and maintained by **Xuebin Wei, Ph.D.**, Associate Professor in JMU's Intelligence Analysis program. [Verified professional profile and project background](docs/ABOUT.md).
 
-Thank you to JMU's School of Integrated Sciences and College of Integrated Science and Engineering, including CISE Faculty Development Grant and Educational Leave support. Acknowledgment does not imply institutional endorsement. [Official names and acknowledgments](docs/ABOUT.md#acknowledgments).
+Thank you to JMU's School of Integrated Sciences and College of Integrated Science and Engineering, including CISE Faculty Mini Grant and Educational Leave support. Acknowledgment does not imply institutional endorsement. [Official names and acknowledgments](docs/ABOUT.md#acknowledgments).
 
-Bug reports and focused feature requests are welcome through [GitHub Issues](https://github.com/xbwei/local-ai-teaching-assistant/issues). Use a minimal, non-sensitive reproduction. [Contributing](CONTRIBUTING.md) · [Engineering validation](docs/VALIDATION.md).
+Bug reports and focused feature requests are welcome through [GitHub Issues](https://github.com/xbwei/local-ai-teaching-assistant/issues). Use a minimal, non-sensitive reproduction. [Contributing](CONTRIBUTING.md) · [Validation & limitations](docs/VALIDATION.md).
 
 LAITA-authored software is under the [MIT License](LICENSE). Models, course content, dependencies and recorded media retain their own rights; see [third-party boundaries](THIRD_PARTY.md).

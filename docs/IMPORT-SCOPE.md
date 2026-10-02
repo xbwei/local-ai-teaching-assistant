@@ -1,6 +1,6 @@
 # Public import scope
 
-This candidate uses a bounded, one-way sanitized import. A file-level inventory was completed before importing; source Git objects, runtime and operational records were never imported. There is no automatic or bidirectional synchronization.
+LAITA Public V1 uses a bounded, one-way sanitized import. A file-level inventory was completed before importing; source Git objects, runtime and operational records were never imported. There is no automatic or bidirectional synchronization.
 
 [Public destination inventory](import-files.json) classifies each delivered application, test, configuration and documentation file. The two inventory documents themselves are RECREATE. Exact source provenance and excluded private filenames remain local review evidence, outside this public repository.
 

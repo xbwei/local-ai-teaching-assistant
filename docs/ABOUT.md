@@ -6,7 +6,7 @@
 
 ## Acknowledgments
 
-Thank you to James Madison University’s [School of Integrated Sciences (SIS)](https://www.jmu.edu/cise/depts/sis/) and [College of Integrated Science and Engineering (CISE)](https://www.jmu.edu/cise/) for support, including a CISE Faculty Development Grant and [CISE Educational Leave](https://www.jmu.edu/cise/committees/faculty-leave.shtml) support. LAITA is an independent faculty-led project; acknowledgment of JMU support does not imply institutional endorsement or that LAITA is an official JMU service or product. Thank you also to the open-source maintainers listed in [THIRD_PARTY.md](../THIRD_PARTY.md).
+Thank you to James Madison University’s [School of Integrated Sciences (SIS)](https://www.jmu.edu/cise/depts/sis/) and [College of Integrated Science and Engineering (CISE)](https://www.jmu.edu/cise/) for support, including a CISE Faculty Mini Grant and [CISE Educational Leave](https://www.jmu.edu/cise/committees/faculty-leave.shtml) support. LAITA is an independent faculty-led project; acknowledgment of JMU support does not imply institutional endorsement or that LAITA is an official JMU service or product. Thank you also to the open-source maintainers listed in [THIRD_PARTY.md](../THIRD_PARTY.md).
 
 ## License and community
 
