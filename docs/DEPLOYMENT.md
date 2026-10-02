@@ -42,7 +42,7 @@ bash ops/macos/service.sh status
 bash ops/macos/service.sh readiness
 ```
 
-Prerequisites: Node/npm compatibility, reviewed candidate, locked dependencies/network for build, valid protected operator JSON, writable owner-controlled roots, Ollama and the separately managed HTTPS edge. These commands are for the merged approved revision; a candidate branch is not yet an authorized deploy target. The LaunchAgent does not install/start Ollama, Caddy or model weights.
+Prerequisites: Node/npm compatibility, reviewed revision, locked dependencies/network for build, valid protected operator JSON, writable owner-controlled roots, Ollama and the separately managed HTTPS edge. These commands are for the merged approved revision; an unmerged branch is not yet an authorized deploy target. The LaunchAgent does not install/start Ollama, Caddy or model weights.
 
 For optional Cloud, keep the Keychain mapping file outside Git in a 0700 directory, mode 0600, and create it using only synthetic/non-secret identifiers corresponding to **your** Keychain item:
 
@@ -65,7 +65,7 @@ A restart-budget failure requires diagnosis and an explicit `restart`; do not au
 
 ## Reference hardware photos
 
-Owner-provided earlier hardware photos illustrate the host and browser thin client; they are not acceptance evidence for this candidate. [Source/privacy edits](SCREENSHOTS.md).
+Owner-provided earlier hardware photos illustrate the host and browser thin client; they are not acceptance evidence for LAITA Public V1. [Source/privacy edits](SCREENSHOTS.md).
 
 ![Owner-provided Raspberry Pi thin client](assets/screenshots/laita-pi-client.jpg)
 

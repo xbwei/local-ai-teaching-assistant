@@ -36,6 +36,6 @@ Adding new course identifiers is also a code/contract change. Do not advertise t
 
 ## Earlier demo-course answer
 
-This Owner-provided capture illustrates a Local demo-course answer from an earlier interface. It does not show an expanded citation panel or establish answer correctness for this candidate. [Media provenance](SCREENSHOTS.md).
+This Owner-provided capture illustrates a Local demo-course answer from an earlier interface. It does not show an expanded citation panel or establish answer correctness for LAITA Public V1. [Media provenance](SCREENSHOTS.md).
 
 ![Owner-provided earlier demo-course Local answer](assets/screenshots/laita-course-grounding.png)

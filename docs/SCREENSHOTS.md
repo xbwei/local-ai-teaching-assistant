@@ -2,7 +2,7 @@
 
 The Owner supplied seven real images through a synced folder, kept outside Git and read-only. All seven were inspected; five clear images were selected. Only reviewed public-safe derivatives are committed under `docs/assets/screenshots/`. No UI state, response, citation, product wording or behavior was fabricated. No generated replacement screenshot is included.
 
-These captures show an earlier working Local AI interface, including its original name, mascot, colors and status messages. They are not captures of the exact Public V1 build. The IA342 image shows a Local answer, not an expanded citation panel. They do not establish current answer correctness, speech accuracy or candidate hardware readiness. The Owner subsequently approved a History dashboard capture for the History guide; this specific public demo record is an exception to the default prohibition on real History captures. No database or other runtime record was read or imported.
+These captures show an earlier working Local AI interface, including its original name, mascot, colors and status messages. They are not captures of the exact Public V1 build. The IA342 image shows a Local answer, not an expanded citation panel. They do not establish current answer correctness, speech accuracy or Public V1 hardware readiness. The Owner subsequently approved a History dashboard capture for the History guide; this specific public demo record is an exception to the default prohibition on real History captures. No database or other runtime record was read or imported.
 
 | Owner source filename | Public derivative | Edits |
 |---|---|---|
