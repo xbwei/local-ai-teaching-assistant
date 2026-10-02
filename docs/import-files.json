@@ -1,5 +1,5 @@
 {
-  "scope": "Public candidate destinations only; excluded private paths are not published.",
+  "scope": "Public V1 destinations only; excluded private paths are not published.",
   "files": [
     {
       "path": ".env.example",

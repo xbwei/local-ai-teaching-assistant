@@ -46,7 +46,7 @@ V1 is **single-operator**: History has no separate password or multi-user isolat
 
 Created and maintained by **Xuebin Wei, Ph.D.**, Associate Professor in JMU's Intelligence Analysis program. [Verified professional profile and project background](docs/ABOUT.md).
 
-Thank you to JMU's School of Integrated Sciences and College of Integrated Science and Engineering, including CISE Faculty Mini Grant and Educational Leave support. Acknowledgment does not imply institutional endorsement. [Official names and acknowledgments](docs/ABOUT.md#acknowledgments).
+Thank you to JMU's School of Integrated Sciences and College of Integrated Science and Engineering, including CISE Faculty Mini-Grant and Educational Leave support. Acknowledgment does not imply institutional endorsement. [Official names and acknowledgments](docs/ABOUT.md#acknowledgments).
 
 Bug reports and focused feature requests are welcome through [GitHub Issues](https://github.com/xbwei/local-ai-teaching-assistant/issues). Use a minimal, non-sensitive reproduction. [Contributing](CONTRIBUTING.md) · [Validation & limitations](docs/VALIDATION.md).
 
