@@ -6,7 +6,7 @@ import type { AccessConfiguration } from "@laita/contracts/server";
  */
 export function createOwnerTransport(
   configuration: AccessConfiguration,
-  now = Date.now,
+  now = () => performance.now(),
 ) {
   const origin = new URL(configuration.publicOrigin);
   let closed = false,
@@ -34,9 +34,10 @@ export function createOwnerTransport(
         res.status(403).json({ code: "FORBIDDEN" });
         return false as const;
       }
-      if (now() - window >= 60_000) {
+      const currentTime = now();
+      if (currentTime - window >= 60_000) {
         count = 0;
-        window = now();
+        window = currentTime;
       }
       if (++count > 600) {
         res.status(429).json({ code: "RATE_LIMITED" });

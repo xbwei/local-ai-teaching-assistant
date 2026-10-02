@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 const root = "/api/v1/input";
-test("wall-clock jumps cannot reset the static request budget", async (t) => {
+test("wall-clock jumps cannot reset static or Owner transport budgets", async (t) => {
   const webRoot = mkdtempSync(path.join(tmpdir(), "laita-clock-test-"));
   writeFileSync(path.join(webRoot, "index.html"), "Synthetic page");
   const originalNow = Date.now;
@@ -25,10 +25,24 @@ test("wall-clock jumps cannot reset the static request budget", async (t) => {
     await response.text();
   }
   assert.equal((await f.request("/")).status, 429);
+  const device = await f.device();
+  const session = await device.send(root + "/sessions", { method: "POST" });
+  assert.equal(session.status, 200);
+  const headers = { "x-input-session": (await session.json()).sessionRef };
+  for (let i = 1; i < 600; i++) {
+    const response = await device.send(root + "/build", { headers });
+    assert.equal(response.status, 200);
+    await response.text();
+  }
+  const checkSaturated = async () => {
+    assert.equal((await f.request("/")).status, 429);
+    assert.equal((await device.send(root + "/build", { headers })).status, 429);
+  };
+  await checkSaturated();
   wallClock += 60_000;
-  assert.equal((await f.request("/")).status, 429);
+  await checkSaturated();
   wallClock -= 3_600_000;
-  assert.equal((await f.request("/")).status, 429);
+  await checkSaturated();
 });
 test("static files share a bounded rate window before filesystem access", async (t) => {
   const webRoot = mkdtempSync(path.join(tmpdir(), "laita-static-test-"));
@@ -82,12 +96,18 @@ test("static files share a bounded rate window before filesystem access", async 
   );
   // Static saturation does not consume the separate API transport budget.
   const device = await f.device();
-  assert.equal(
-    (await device.send(root + "/sessions", { method: "POST" })).status,
-    200,
-  );
+  const session = await device.send(root + "/sessions", { method: "POST" });
+  assert.equal(session.status, 200);
+  const headers = { "x-input-session": (await session.json()).sessionRef };
+  for (let i = 1; i < 600; i++) {
+    const response = await device.send(root + "/build", { headers });
+    assert.equal(response.status, 200);
+    await response.text();
+  }
+  assert.equal((await device.send(root + "/build", { headers })).status, 429);
   now = 59_999;
   assert.equal((await f.request("/")).status, 429);
+  assert.equal((await device.send(root + "/build", { headers })).status, 429);
   populate();
   now = 60_000;
   for (const route of routes) {
@@ -95,6 +115,7 @@ test("static files share a bounded rate window before filesystem access", async 
     assert.equal(response.status, 200);
     await response.text();
   }
+  assert.equal((await device.send(root + "/build", { headers })).status, 200);
   assert.ok(f.logs.some((entry) => entry.code === "RATE_LIMITED"));
 });
 test("Owner opens directly; retired pairing routes and settings are rejected", async (t) => {
