@@ -11,7 +11,11 @@ export function publicBoundaryViolations(file, bytes) {
     )
   )
     violations.push("private/local path");
-  if (/\.(?:sqlite(?:3)?|db|wav|mp3|mp4|pem|key)$/iu.test(file))
+  const reviewedVideo = "docs/assets/demo/laita-pi-demo.mp4";
+  if (
+    /\.(?:sqlite(?:3)?|db|wav|mp3|mp4|pem|key)$/iu.test(file) &&
+    file !== reviewedVideo
+  )
     violations.push("runtime/secret/media artifact");
   const isImage = /\.(?:png|jpe?g|webp|gif)$/iu.test(file);
   const reviewedImages = new Set(
@@ -20,11 +24,13 @@ export function publicBoundaryViolations(file, bytes) {
       "laita-course-grounding.png",
       "laita-pi-client.jpg",
       "laita-mac-mini.jpg",
+      "laita-history-review.png",
     ].map((name) => `docs/assets/screenshots/${name}`),
   );
+  reviewedImages.add("docs/assets/demo/laita-demo.gif");
   if (isImage && !reviewedImages.has(file))
     violations.push("unreviewed image location");
-  if (!isImage) {
+  if (!isImage && file !== reviewedVideo) {
     const text = bytes.toString("utf8");
     // Assemble forbidden values so this guard does not itself contain private identifiers.
     const markers = [

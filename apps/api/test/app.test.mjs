@@ -1151,3 +1151,69 @@ test("successor policy crosses real preview, activation, SQLite reopen, history 
     ],
   );
 });
+
+test("control results reject inherited fields and accessors without executing getters", async (t) => {
+  let getterCalls = 0;
+  const hostile = () => {
+    getterCalls++;
+    throw new Error("Synthetic getter must not run");
+  };
+  const cases = [
+    Object.create({ ok: true, value: { private: "synthetic" } }),
+    Object.defineProperty({}, "ok", { get: hostile }),
+    Object.create({ code: "CONFLICT" }),
+    Object.defineProperty({}, "code", { get: hostile }),
+  ];
+  const access = {
+    authorize: () => ({ ok: true, actorRole: "ADMIN" }),
+    isReady: () => true,
+  };
+  for (const result of cases) {
+    const app = createApp({
+      access,
+      logger: capture().logger,
+      policyControls: { readState: () => result },
+      usageControls: { summary: () => result },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      for (const route of ["provider-policy", "provider-usage/summary"]) {
+        const response = await fetch(
+          `http://127.0.0.1:${server.address().port}/api/admin/${route}`,
+        );
+        assert.equal(response.status, 503);
+        assert.equal((await response.json()).code, "SERVICE_UNAVAILABLE");
+      }
+    } finally {
+      const closed = once(server, "close");
+      server.close();
+      await closed;
+    }
+  }
+  const app = createApp({
+    access,
+    logger: capture().logger,
+    usageControls: {
+      summary: () =>
+        Object.defineProperty({ ok: true }, "value", { get: hostile }),
+    },
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    assert.equal(
+      (
+        await fetch(
+          `http://127.0.0.1:${server.address().port}/api/admin/provider-usage/summary`,
+        )
+      ).status,
+      503,
+    );
+  } finally {
+    const closed = once(server, "close");
+    server.close();
+    await closed;
+  }
+  assert.equal(getterCalls, 0);
+});

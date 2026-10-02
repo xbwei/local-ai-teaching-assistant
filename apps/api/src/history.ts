@@ -238,7 +238,8 @@ export function installHistoryRoutes(
         v[key] !== undefined &&
         (typeof v[key] !== "string" ||
           !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(v[key] as string) ||
-          !Number.isFinite(Date.parse(v[key] as string)))
+          !Number.isFinite(Date.parse(v[key] as string)) ||
+          new Date(v[key] as string).toISOString() !== v[key])
       )
         throw new HistoryValidationError();
     if (v.suspected !== undefined && typeof v.suspected !== "boolean")

@@ -168,3 +168,43 @@ test("audio UI keeps text-first controls, minimal blob-only CSP and reduced moti
   for (const state of ["listening", "thinking", "speaking", "error"])
     assert.match(css, new RegExp(`data-state=["']${state}["']`));
 });
+
+for (const BufferType of [ArrayBuffer, SharedArrayBuffer])
+  test(`default audio Blob snapshots only its ${BufferType.name} view before zeroing`, async () => {
+    const backing = new Uint8Array(new BufferType(32)).fill(99);
+    const bytes = backing.subarray(4, 12);
+    bytes.set([1, 2, 3, 4, 5, 6, 7, 8]);
+    let url;
+    const api = {
+      async synthesize() {
+        return { contractVersion: "tts-media.v1", mediaRef: "a".repeat(64) };
+      },
+      async media() {
+        return bytes;
+      },
+      async releaseMedia() {},
+    };
+    const playback = new AnswerAudioPlayback(api, () => {}, {
+      createPlayer(value) {
+        url = value;
+        return {
+          currentTime: 0,
+          onended: null,
+          onerror: null,
+          async play() {},
+          pause() {},
+        };
+      },
+    });
+    await playback.play(answer());
+    assert.equal(playback.state, "speaking");
+    assert.deepEqual([...bytes], Array(8).fill(0));
+    assert.deepEqual(
+      [...new Uint8Array(await (await fetch(url)).arrayBuffer())],
+      [1, 2, 3, 4, 5, 6, 7, 8],
+    );
+    assert.equal(backing[0], 99);
+    assert.equal(backing[31], 99);
+    playback.reset();
+    await assert.rejects(fetch(url));
+  });

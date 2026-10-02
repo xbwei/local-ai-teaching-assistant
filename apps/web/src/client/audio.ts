@@ -78,6 +78,8 @@ export class AnswerAudioPlayback {
       options.createUrl ??
       ((bytes) =>
         URL.createObjectURL(
+          // Uint8Array may use SharedArrayBuffer; BlobPart requires ArrayBuffer.
+          // Copy only this view's bytes into an ordinary buffer before zeroing.
           new Blob([bytes.slice().buffer], { type: "audio/wav" }),
         ));
     this.revokeUrl = options.revokeUrl ?? URL.revokeObjectURL;

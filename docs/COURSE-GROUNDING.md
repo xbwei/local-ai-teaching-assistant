@@ -16,3 +16,9 @@ There is no arbitrary-source config/upload feature in V1. To adapt a public GitH
 4. Add synthetic positive, unsupported, hash-mismatch and Cloud-isolation fixtures. Run the full deterministic/security gates, then bounded read-only live public-source retrieval checks.
 
 Adding new course identifiers is also a code/contract change. Do not advertise the unchanged build as supporting a new source, private upload, LMS or unrestricted repository import. Tests contain synthetic snippets rather than redistributed upstream course text.
+
+## Earlier demo-course answer
+
+This Owner-provided capture illustrates a Local demo-course answer from an earlier interface. It does not show an expanded citation panel or establish answer correctness for this candidate. [Media provenance](SCREENSHOTS.md).
+
+![Owner-provided earlier demo-course Local answer](assets/screenshots/laita-course-grounding.png)

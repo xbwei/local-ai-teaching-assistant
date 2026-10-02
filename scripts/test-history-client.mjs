@@ -927,3 +927,42 @@ test("follow-up verified transcript source and context reduction reach retained 
     /EXCERPT_NOT_ARCHIVED_184|COURSE EVIDENCE/,
   );
 });
+
+test("History date ranges require canonical UTC millisecond timestamps before storage", async (t) => {
+  const { api, c, f } = await setup(t);
+  await c.send("Synthetic date filter example.");
+  const calls = f.calls();
+  for (const value of [
+    "2026-09-05T12:00:00Z",
+    "2026-09-05T12:00:00.1Z",
+    "2026-09-05T12:00:00.0000Z",
+    "2026-09-05T12:00:00.000+00:00",
+    "2026-02-31T12:00:00.000Z",
+    "2026-09-05T24:00:00.000Z",
+  ])
+    for (const key of ["since", "until"])
+      await assert.rejects(
+        api.historyRequest("query", { [key]: value }),
+        (e) => e.status === 400,
+        `${key}: ${value}`,
+      );
+  assert.equal(
+    (
+      await api.historyRequest("query", {
+        since: "2020-01-01T00:00:00.000Z",
+        until: "2099-12-31T23:59:59.999Z",
+      })
+    ).items.length,
+    1,
+  );
+  assert.equal(
+    (await api.historyRequest("query", { until: "2020-01-01T00:00:00.000Z" }))
+      .items.length,
+    0,
+  );
+  assert.equal(
+    f.calls(),
+    calls,
+    "archival date filtering must not call a provider",
+  );
+});

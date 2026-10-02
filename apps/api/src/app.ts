@@ -356,6 +356,8 @@ export function createApp(options: AppOptions = {}) {
   }
   function sendPolicyResult(response: Response, result: unknown) {
     const context = contexts.get(response)!;
+    // Service results are own data properties. Do not invoke accessors or trust
+    // inherited success/error fields at this control boundary.
     if (
       result !== null &&
       typeof result === "object" &&
@@ -538,6 +540,7 @@ export function createApp(options: AppOptions = {}) {
       return;
     }
     const result = options.usageControls?.summary();
+    // Keep the same own-data-property boundary before validating usage output.
     if (
       result !== null &&
       typeof result === "object" &&

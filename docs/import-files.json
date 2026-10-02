@@ -146,6 +146,10 @@
       "classification": "RECREATE"
     },
     {
+      "path": "apps/api/test/startup-failure.test.mjs",
+      "classification": "RECREATE"
+    },
+    {
       "path": "apps/api/tsconfig.json",
       "classification": "COPY"
     },
@@ -215,7 +219,7 @@
     },
     {
       "path": "apps/web/test/audio.test.mjs",
-      "classification": "COPY"
+      "classification": "GENERICIZE"
     },
     {
       "path": "apps/web/test/markdown.test.mjs",
@@ -242,6 +246,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "docs/ABOUT.md",
+      "classification": "RECREATE"
+    },
+    {
       "path": "docs/ARCHITECTURE.md",
       "classification": "RECREATE"
     },
@@ -254,11 +262,19 @@
       "classification": "RECREATE"
     },
     {
+      "path": "docs/GETTING-STARTED.md",
+      "classification": "RECREATE"
+    },
+    {
       "path": "docs/HISTORY.md",
       "classification": "RECREATE"
     },
     {
       "path": "docs/MODULES.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/OPENAI.md",
       "classification": "RECREATE"
     },
     {
@@ -278,7 +294,19 @@
       "classification": "RECREATE"
     },
     {
+      "path": "docs/assets/demo/laita-demo.gif",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/demo/laita-pi-demo.mp4",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "docs/assets/screenshots/laita-course-grounding.png",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/screenshots/laita-history-review.png",
       "classification": "GENERICIZE"
     },
     {

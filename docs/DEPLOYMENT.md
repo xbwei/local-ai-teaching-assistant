@@ -1,6 +1,6 @@
 # Operator-owned macOS deployment
 
-Use the [Quick Start](../README.md) first. LAITA runs one application API serving the built UI on loopback. It relies on an operator-controlled HTTPS edge; the supplied Caddyfile binds only `127.0.0.1`. Install/manage Caddy separately, trust its local CA on your operator browser, and validate the file with `caddy validate --config ops/reference/Caddyfile --adapter caddyfile`. The file disables the admin listener and redirects and contains no passwords.
+Use the [Local Quick Start](GETTING-STARTED.md) first. LAITA runs one application API serving the built UI on loopback. It relies on an operator-controlled HTTPS edge; the supplied Caddyfile binds only `127.0.0.1`. Install/manage Caddy separately, trust its local CA on your operator browser, and validate the file with `caddy validate --config ops/reference/Caddyfile --adapter caddyfile`. The file disables the admin listener and redirects and contains no passwords.
 
 The edge must overwrite `X-Forwarded-Proto`, `X-Forwarded-Host` and `X-Owner-Client`; never pass browser-supplied versions through. The latter is a 64-hex **operator scope identifier**, not a secret/login token. The API enforces the configured HTTPS origin and same-origin mutation contract. A shared network entry must have an independent operator-only protection mechanism before it is usable; V1 does not implement authentication or per-user isolation for History.
 
@@ -10,11 +10,11 @@ Do not point the reference edge at another host or bind it to all interfaces. Th
 
 `ops/macos/application-config.json.template` is the complete Local-only v4 profile. Replace the runtime placeholder with a canonical absolute directory outside every Git tree, including sibling worktrees. Keep operator config in a 0700 directory, with the JSON file mode 0600. The runtime creates the existing SQLite text store plus bounded public-source snapshots and temporary audio directories; no private checkout/database is required.
 
-The template intentionally has access disabled and no live control verifier. Use the README provisioning step to generate your own independent server-control token/verifier and enable the operator entry. Protect the token file and rotate/revoke its 30-day record for continued use of server-control APIs. This credential does not protect the browser History dashboard; the operator HTTPS boundary does.
+The template intentionally has access disabled and no live control verifier. Use the Getting started provisioning step to generate your own independent server-control token/verifier and enable the operator entry. Protect the token file and rotate/revoke its 30-day record for continued use of server-control APIs. This credential does not protect the browser History dashboard; the operator HTTPS boundary does.
 
 `APP_CONFIG_JSON` supplies the complete non-secret JSON. `.env` is not loaded. Absent input selects a fail-closed developer scaffold, and invalid/empty input is an error. `packages/runtime/examples` includes synthetic lower-level access/configuration test profiles; use the operator template for full Public V1 chat/history.
 
-Models are fixed explicit choices: Gemma 12B MLX default and Llama 3.1 8B alternate. Cloud flags and an opaque reference are optional. Reference names `LAITA_OPENAI_KEYCHAIN_SERVICE` / `LAITA_OPENAI_KEYCHAIN_ACCOUNT` map the operator's own Keychain item; they are not secret values. Never inject an API key through environment/JSON. See the README for interactive provisioning, missing credential behavior, disabling, rotation and removal.
+Models are fixed explicit choices: Gemma 12B MLX default and Llama 3.1 8B alternate. Cloud flags and an opaque reference are optional. Reference names `LAITA_OPENAI_KEYCHAIN_SERVICE` / `LAITA_OPENAI_KEYCHAIN_ACCOUNT` map the operator's own Keychain item; they are not secret values. Never inject an API key through environment/JSON. See [OpenAI setup](OPENAI.md) for interactive provisioning, missing credential behavior, disabling, rotation and removal.
 
 ## Optional LaunchAgent lifecycle
 
@@ -58,3 +58,11 @@ Stop/cancel active work before a planned update. Fetch and verify the exact revi
 The script snapshots the existing SQLite database before a migration and preserves it when the prior release is compatible. To roll back, set `LAITA_ROLLBACK_BACKUP` to the appropriate owner-controlled backup and invoke `rollback`, then separately `start`. Do not guess the backup, erase history or blindly retry an uncertain operation. The `remove` command removes the launcher/config/current pointer but preserves releases, backups and runtime text; it is an explicit operator action, not cleanup performed here.
 
 A restart-budget failure requires diagnosis and an explicit `restart`; do not auto-loop retries. Preserve incomplete history/storage evidence. Do not copy raw databases, logs or backups into Issues, Git or public screenshots.
+
+## Reference hardware photos
+
+Owner-provided earlier hardware photos illustrate the host and browser thin client; they are not acceptance evidence for this candidate. [Source/privacy edits](SCREENSHOTS.md).
+
+![Owner-provided Raspberry Pi thin client](assets/screenshots/laita-pi-client.jpg)
+
+![Owner-provided Mac mini with asset label redacted](assets/screenshots/laita-mac-mini.jpg)

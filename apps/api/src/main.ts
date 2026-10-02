@@ -49,6 +49,11 @@ if (!configuration.ok) {
   process.exit(1);
 }
 let persistence: Persistence | undefined;
+let disableWork: (() => void) | undefined;
+let closeInput: (() => void) | undefined;
+let closeSpeech: (() => void) | undefined;
+let closeServer: (() => void) | undefined;
+let startupFailed = false;
 function closePersistence() {
   if (persistence && !persistence.close().ok) {
     logger.write({
@@ -58,6 +63,32 @@ function closePersistence() {
     });
     process.exitCode = 1;
   }
+}
+function failStartup() {
+  if (startupFailed) return;
+  startupFailed = true;
+  process.exitCode = 1;
+  // Normally drain diagnostics and exit naturally. A remaining referenced
+  // handle must not hide a fatal failure from the process manager indefinitely.
+  setTimeout(() => process.exit(1), 2_000).unref();
+  for (const cleanup of [
+    disableWork,
+    closeInput,
+    closeSpeech,
+    closeServer,
+    closePersistence,
+  ]) {
+    try {
+      cleanup?.();
+    } catch {
+      // Still attempt every cleanup; the fatal result stays unavailable/nonzero.
+    }
+  }
+  logger.write({
+    operation: "API_STARTUP",
+    code: "SERVICE_UNAVAILABLE",
+    correlationId,
+  });
 }
 try {
   const successor =
@@ -268,6 +299,7 @@ try {
   // port becomes browser reachable.
   const workGate = createWorkGate(configuration.value.runtime);
   workGate.setAvailable(false);
+  disableWork = () => workGate.setAvailable(false);
   async function switchLocal(model: string, signal: AbortSignal) {
     const policy = policyControls.readState();
     if (
@@ -417,6 +449,7 @@ try {
     ...(adapter ? { adapter } : {}),
     ...(ttsAdapter ? { ttsAdapter } : {}),
   });
+  closeSpeech = () => speech.close();
   const app = createApp({
     history,
     browserAccess: configuration.value.access,
@@ -480,7 +513,12 @@ try {
     },
     usageControls: { summary: usageControls.summary },
   });
+  closeInput = () => app.locals.closeInput?.();
   const server = app.listen(configuration.value.server.port, "127.0.0.1");
+  closeServer = () => {
+    server.close();
+    server.closeAllConnections();
+  };
   // Express 5's listen callback also runs on bind errors; only the actual
   // listening event is evidence of successful startup.
   server.once("listening", () => {
@@ -488,16 +526,7 @@ try {
     logger.write({ operation: "API_STARTUP", code: "OK", correlationId });
   });
   server.once("close", closePersistence);
-  server.on("error", () => {
-    closePersistence();
-    workGate.setAvailable(false);
-    logger.write({
-      operation: "API_STARTUP",
-      code: "SERVICE_UNAVAILABLE",
-      correlationId,
-    });
-    process.exitCode = 1;
-  });
+  server.on("error", failStartup);
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => {
       workGate.setAvailable(false);
@@ -508,11 +537,5 @@ try {
     });
   }
 } catch {
-  closePersistence();
-  logger.write({
-    operation: "API_STARTUP",
-    code: "SERVICE_UNAVAILABLE",
-    correlationId,
-  });
-  process.exitCode = 1;
+  failStartup();
 }
