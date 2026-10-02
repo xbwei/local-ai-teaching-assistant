@@ -562,7 +562,22 @@ export function createApp(options: AppOptions = {}) {
     response.json(access.status());
   });
   if (options.webRoot) {
+    const now = options.browserNow ?? Date.now;
+    let staticWindow = now();
+    let staticRequests = 0;
     const webHeaders = (_req: Request, res: Response, next: () => void) => {
+      if (now() - staticWindow >= 60_000) {
+        staticWindow = now();
+        staticRequests = 0;
+      }
+      if (++staticRequests > 600) {
+        sendError(
+          res,
+          createPublicError("RATE_LIMITED", contexts.get(res)!.correlationId),
+          429,
+        );
+        return;
+      }
       contexts.get(res)!.code = "OK";
       res.setHeader(
         "Content-Security-Policy",
