@@ -4,6 +4,23 @@ V1 recognizes IA340 and IA342 and their explicit public `JMU-Data` repositories.
 
 The bounded snapshot is local. A query-triggered freshness check runs after 24 hours. A manifest/source/hash validation or network failure is visible and does not grant permission to answer from remembered course facts. Each displayed citation has the actual repository, commit, path, section and supporting excerpt. Prepared request evidence is bounded and supplied only to Local. OpenAI/Compare course requests are refused before sending excerpts.
 
+Query-triggered Local course preparation has one server-side 30-second deadline
+starting before grounding, covering freshness checks, refresh and retrieval.
+It is separate from the later provider timeout and never resets between GitHub
+reads. Deadline or input cancellation propagates to GET requests and actively
+cancels response body readers. The server awaits preparation settlement,
+including reader cancellation and staging cleanup, before releasing the shared
+admission slot. No provider is called after timeout/cancellation; History and
+trace report `TIMEOUT` or `CANCELLED`, with `PROVIDER/NOT_EXECUTED`. Existing
+snapshot files/pointers remain intact, cancelled work cannot promote a snapshot
+or mark freshness successful, and the request fails closed. Closing a browser
+or stopping client observation does not reset the server job or disable this
+deadline. Other generation requests receive `BUSY` while cleanup is pending;
+independent requests can run after cleanup settles. The deadline starts
+cancellation at 30 seconds; terminal publication/admission release waits for
+cleanup rather than abandoning work. Ordinary chat and explicit source
+maintenance retain their existing behavior.
+
 Retrieval is lexical and intent-aware, not an embedding/vector database. Whole-course overview intent prefers overview evidence; Lab/Week identifiers remain exact. Narrow transcript aliases may recover supported course identifiers without changing retained transcript text. Requests spanning both courses, unsupported specific claims, missing snapshots and insufficient evidence fail closed before provider invocation. A grounded answer can still be wrong: inspect the evidence and answer rather than assuming citations prove correctness.
 
 ## Substituting public sources

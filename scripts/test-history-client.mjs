@@ -65,6 +65,140 @@ const complete = (request) => ({
     },
   ],
 });
+test(
+  "course preparation deadline survives client disappearance and holds BUSY through cleanup",
+  { timeout: 5000 },
+  async (t) => {
+    const golden = await createGoldenGrounder(t);
+    const entered = Promise.withResolvers();
+    const observed = Promise.withResolvers();
+    const aborted = Promise.withResolvers();
+    const cleanup = Promise.withResolvers();
+    t.after(() => cleanup.resolve());
+    let stall = true,
+      cleaned = false,
+      providerCalls = 0;
+    const execute = createCourseAwareExecution({
+      preparationMs: 200,
+      grounder: createCourseGrounder(golden.root, {
+        now: () => new Date("2026-09-29T12:00:00.000Z"),
+        async fetcher(url, init) {
+          assert.equal(init.signal.aborted, false);
+          if (!stall) return golden.fetcher(url, init);
+          entered.resolve();
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('{"partial":'));
+              },
+              async cancel(reason) {
+                assert.equal(reason.outcome, "TIMEOUT");
+                aborted.resolve();
+                await cleanup.promise;
+                cleaned = true;
+              },
+            }),
+          );
+        },
+      }),
+      async executeProvider(request) {
+        providerCalls++;
+        return complete(request);
+      },
+    });
+    const { c, api, store, f } = await setup(t, { execute });
+    const request = f.request;
+    const traffic = [];
+    let jobRef, observationSignal;
+    f.request = async (route, init) => {
+      const entry = { route, method: init.method ?? "GET" };
+      traffic.push(entry);
+      if (route.includes("/jobs/") && !jobRef) {
+        jobRef = route.split("/").at(-1);
+        observationSignal = init.signal;
+        observed.resolve();
+      }
+      const response = await request(route, init);
+      entry.status = response.status;
+      return response;
+    };
+    const pending = c.send("What must I submit for IA340 Lab 4?");
+    await entered.promise;
+    await observed.promise;
+    const captured = c.messages[0].history;
+    c.close(); // Aborts observation only; no reset/DELETE reaches the server job.
+    await pending;
+    assert.equal(observationSignal.aborted, true);
+    assert.equal(c.connected, false);
+    await aborted.promise;
+    assert.equal(cleaned, false);
+    assert.equal(providerCalls, 0);
+    assert.equal(
+      traffic.some((r) => r.method === "DELETE"),
+      false,
+    );
+
+    const next = new LearningClient(
+      () => {},
+      new InputApi((r, i) => f.request(r, i)),
+      2,
+    );
+    t.after(() => next.close());
+    await next.boot();
+    await next.send("Independent ordinary question.");
+    assert.equal(next.phase, "error");
+    assert.ok(
+      traffic.some(
+        (r) => r.route.endsWith("/interactions") && r.status === 503,
+      ),
+    );
+    const busyRef = next.messages[0].history;
+    const busyTurn = store
+      .conversation(busyRef.conversation)
+      .turns.find((v) => v.id === busyRef.turn);
+    assert.ok(
+      busyTurn.events.some(
+        (e) => e.stage === "ADMISSION" && e.outcome === "BUSY",
+      ),
+    );
+    assert.equal(providerCalls, 0);
+    assert.equal((await api.job(jobRef)).state, "PROCESSING");
+    cleanup.resolve();
+    let terminal;
+    for (let i = 0; i < 100; i++) {
+      terminal = await api.job(jobRef);
+      if (terminal.state === "TIMEOUT") break;
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    assert.equal(cleaned, true);
+    assert.equal(terminal.state, "TIMEOUT");
+    assert.equal(terminal.result, undefined);
+    const turn = store
+      .conversation(captured.conversation)
+      .turns.find((v) => v.id === captured.turn);
+    assert.equal(turn.outcome, "TIMEOUT");
+    assert.equal(turn.answers.length, 0);
+    assert.ok(
+      turn.events.some(
+        (e) => e.stage === "RETRIEVAL" && e.outcome === "TIMEOUT",
+      ),
+    );
+    assert.ok(
+      turn.events.some(
+        (e) => e.stage === "PROVIDER" && e.outcome === "NOT_EXECUTED",
+      ),
+    );
+    stall = false;
+    await next.send("What must I submit for IA340 Lab 4?");
+    assert.equal(next.phase, "success");
+    assert.equal(providerCalls, 1);
+    assert.ok(next.messages.at(-1).sources.length > 0);
+    assert.equal(
+      traffic.some((r) => r.method === "DELETE"),
+      false,
+    );
+  },
+);
 test("typed, voice, complete long answer, reset isolation and restart history through protected API", async (t) => {
   const text = "完整回答 ".repeat(600);
   const { c, api, store, p, paths, f } = await setup(t, { answerText: text });

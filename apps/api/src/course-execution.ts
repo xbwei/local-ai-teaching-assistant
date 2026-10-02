@@ -30,6 +30,16 @@ type ExecuteProvider = (
   trace?: Trace,
 ) => Promise<ProviderRunResult>;
 
+export const coursePreparationDeadlineMs = 30_000;
+
+export class CoursePreparationError extends Error {
+  readonly outcome: "TIMEOUT" | "CANCELLED";
+  constructor(outcome: "TIMEOUT" | "CANCELLED") {
+    super(`Course preparation ${outcome}`);
+    this.outcome = outcome;
+  }
+}
+
 const interactionRef = (): `interaction-${string}` =>
   `interaction-${randomUUID()}`;
 
@@ -56,7 +66,15 @@ export function createCourseAwareExecution(options: {
     ): Promise<CourseGroundingResult>;
   };
   readonly executeProvider: ExecuteProvider;
+  readonly preparationMs?: number;
 }) {
+  const preparationMs = options.preparationMs ?? coursePreparationDeadlineMs;
+  if (
+    !Number.isSafeInteger(preparationMs) ||
+    preparationMs < 1 ||
+    preparationMs > coursePreparationDeadlineMs
+  )
+    throw new Error("Invalid course preparation deadline");
   return async function execute(
     request: ProviderRunRequest,
     signal: AbortSignal,
@@ -112,12 +130,40 @@ export function createCourseAwareExecution(options: {
       return notice(request, { status: "LOCAL_ONLY", course: identified });
     }
 
-    const grounding = await options.grounder.ground(
-      request.input.text,
-      signal,
-      trace,
-      source,
-    );
+    const controller = new AbortController();
+    const started = performance.now();
+    const cancel = () =>
+      controller.abort(new CoursePreparationError("CANCELLED"));
+    const timeout = () =>
+      controller.abort(new CoursePreparationError("TIMEOUT"));
+    signal.addEventListener("abort", cancel, { once: true });
+    const timer = setTimeout(timeout, preparationMs);
+    let grounding: CourseGroundingResult;
+    try {
+      if (signal.aborted) cancel();
+      controller.signal.throwIfAborted();
+      // Await settlement, including refresh/body cleanup. A detached race would
+      // release admission while the cancelled preparation still owns resources.
+      grounding = await options.grounder.ground(
+        request.input.text,
+        controller.signal,
+        trace,
+        source,
+      );
+      if (performance.now() - started >= preparationMs) timeout();
+      controller.signal.throwIfAborted();
+    } catch (error) {
+      if (controller.signal.aborted) {
+        const failure = controller.signal.reason as CoursePreparationError;
+        trace?.("RETRIEVAL", failure.outcome, performance.now() - started);
+        trace?.("PROVIDER", "NOT_EXECUTED");
+        throw failure;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", cancel);
+    }
     trace?.("RETRIEVAL", grounding.status, undefined, {
       course: identified,
       lab: null,

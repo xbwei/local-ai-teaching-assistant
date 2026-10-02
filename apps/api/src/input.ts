@@ -1,4 +1,5 @@
 import { createHistoryCapture, type HistoryCapture } from "./history.ts";
+import { CoursePreparationError } from "./course-execution.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import {
@@ -866,15 +867,19 @@ export function installInputRoutes(
               ? { state: "COMPLETED", result: value }
               : { state: "FAILED" },
           );
-        } catch {
+        } catch (error) {
           if (!j.controller.signal.aborted && s.valid) {
+            const outcome =
+              error instanceof CoursePreparationError
+                ? error.outcome
+                : "FAILED";
             j.capture!.event(
               "CAPTURE",
-              "EXECUTION_FAILED",
+              outcome === "FAILED" ? "EXECUTION_FAILED" : outcome,
               Date.now() - started,
             );
-            j.capture!.outcome("FAILED");
-            publish(s, j, { state: "FAILED" });
+            j.capture!.outcome(outcome);
+            publish(s, j, { state: outcome });
           }
         } finally {
           release();

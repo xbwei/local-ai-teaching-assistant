@@ -286,22 +286,44 @@ function writeAllState(
   } satisfies RefreshState);
 }
 
-async function responseBytes(response: Response, maxBytes: number) {
-  if (!response.ok || !response.body) throw new Error();
+async function responseBytes(
+  response: Response,
+  maxBytes: number,
+  signal: AbortSignal,
+) {
+  if (!response.body) throw new Error();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let length = 0;
+  let cancellation: Promise<void> | undefined;
+  const cancel = () => {
+    cancellation ??= reader.cancel(signal.reason);
+    // Observe rejection immediately; the finally block still awaits cleanup.
+    void cancellation.catch(() => {});
+  };
+  signal.addEventListener("abort", cancel, { once: true });
   try {
+    if (signal.aborted) cancel();
+    signal.throwIfAborted();
+    if (!response.ok) throw new Error();
     for (;;) {
+      signal.throwIfAborted();
       const next = await reader.read();
+      signal.throwIfAborted();
       if (next.done) break;
       length += next.value.length;
       if (length > maxBytes) throw new Error();
       chunks.push(next.value);
     }
   } finally {
-    await reader.cancel();
+    signal.removeEventListener("abort", cancel);
+    try {
+      await (cancellation ?? reader.cancel());
+    } finally {
+      reader.releaseLock();
+    }
   }
+  signal.throwIfAborted();
   const bytes = new Uint8Array(length);
   let offset = 0;
   for (const chunk of chunks) {
@@ -318,6 +340,7 @@ async function githubJson(
 ) {
   if (!endpoint.startsWith("https://api.github.com/repos/JMU-Data/"))
     throw new Error();
+  signal.throwIfAborted();
   const response = await fetcher(endpoint, {
     method: "GET",
     redirect: "error",
@@ -329,7 +352,7 @@ async function githubJson(
     },
   });
   return JSON.parse(
-    decoder.decode(await responseBytes(response, maxBytes)),
+    decoder.decode(await responseBytes(response, maxBytes, signal)),
   ) as unknown;
 }
 
@@ -439,6 +462,7 @@ async function refreshOne(
         bytes: bytes.length,
       });
     }
+    signal.throwIfAborted();
     const manifest: SnapshotManifest = {
       schema: "course-source-snapshot/v1",
       course,
@@ -845,6 +869,7 @@ export async function ensureCourseSources(
     const heads = {} as Record<CourseId, string>;
     for (const course of courseIds)
       heads[course] = (await repositoryHead(course, fetcher, signal)).commit;
+    signal.throwIfAborted();
     if (
       courseIds.every(
         (course) => heads[course] === state.courses[course].commit,

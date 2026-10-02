@@ -4,13 +4,19 @@ import { chmodSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import http from "node:http";
+import { once } from "node:events";
 import { isProviderRunResult } from "@laita/contracts";
 import {
   courseEvidencePrompt,
   createCourseGrounder,
   refreshCourseSources,
 } from "@laita/course-grounding";
-import { createCourseAwareExecution } from "../dist/course-execution.js";
+import {
+  createCourseAwareExecution,
+  CoursePreparationError,
+  coursePreparationDeadlineMs,
+} from "../dist/course-execution.js";
 
 const identity = {
   policy: {
@@ -326,37 +332,141 @@ test("missing, ambiguous, conflicting and unavailable evidence do not call a mod
 
 test("cancellation signal is passed into retrieval without cross-request state", async () => {
   const signals = [];
+  let providerCalls = 0;
+  const entered = Promise.withResolvers();
   const execute = createCourseAwareExecution({
     grounder: {
       async ground(_question, signal) {
         signals.push(signal);
+        if (signals.length === 1) {
+          entered.resolve();
+          await new Promise((resolve) =>
+            signal.addEventListener("abort", resolve, { once: true }),
+          );
+        }
         return signal.aborted
           ? { status: "UNAVAILABLE" }
           : { status: "UNAVAILABLE", course: "IA340" };
       },
     },
     async executeProvider() {
+      providerCalls++;
       return providerResult();
     },
   });
   const first = new AbortController();
+  const cancelled = execute(request("IA340 Lab 5"), first.signal, session);
+  await entered.promise;
   first.abort();
-  const cancelled = await execute(
-    request("IA340 Lab 5"),
-    first.signal,
-    session,
+  await assert.rejects(
+    cancelled,
+    (error) =>
+      error instanceof CoursePreparationError && error.outcome === "CANCELLED",
   );
+  await assert.rejects(execute(request("IA340 Lab 5"), first.signal, session), {
+    outcome: "CANCELLED",
+  });
   const second = new AbortController();
   await execute(request("IA340 Lab 5"), second.signal, session);
-  assert.deepEqual(cancelled.grounding, {
-    status: "SOURCES_UNAVAILABLE",
-    course: "IA340",
-  });
-  assert.equal(isProviderRunResult(cancelled), true);
+  assert.equal(signals.length, 2, "pre-aborted input skips grounding");
+  assert.equal(providerCalls, 0);
   assert.equal(signals[0].aborted, true);
   assert.equal(signals[1].aborted, false);
   assert.notEqual(signals[0], signals[1]);
+  // The successful preparation removed its parent abort listener.
+  second.abort();
+  assert.equal(signals[1].aborted, false);
 });
+
+test("preparation deadline is bounded and cannot leak into ordinary/provider work", async () => {
+  assert.equal(coursePreparationDeadlineMs, 30000);
+  const options = {
+    grounder: {
+      async ground() {
+        assert.fail("ordinary chat cannot prepare courses");
+      },
+    },
+    async executeProvider(_request, signal) {
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      assert.equal(signal.aborted, false);
+      return providerResult();
+    },
+  };
+  for (const preparationMs of [0, -1, 1.5, NaN, Infinity, 30001])
+    assert.throws(() =>
+      createCourseAwareExecution({ ...options, preparationMs }),
+    );
+  const execute = createCourseAwareExecution({ ...options, preparationMs: 1 });
+  const result = await execute(
+    request("Explain a tree."),
+    new AbortController().signal,
+    session,
+  );
+  assert.equal(result.legs[0].status, "COMPLETED");
+});
+
+test(
+  "native fetch abort settles stalled headers and body reads",
+  { timeout: 5000 },
+  async (t) => {
+    for (const stalled of ["headers", "body"])
+      await t.test(stalled, async (t) => {
+        const root = realpathSync(
+          mkdtempSync(path.join(tmpdir(), "course-deadline-native-")),
+        );
+        chmodSync(root, 0o700);
+        const closed = Promise.withResolvers();
+        const server = http.createServer((_req, res) => {
+          res.once("close", () => closed.resolve());
+          if (stalled === "body") {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.write('{"partial":');
+          }
+        });
+        server.listen(0, "127.0.0.1");
+        await once(server, "listening");
+        t.after(() => {
+          server.closeAllConnections();
+          server.close();
+          rmSync(root, { recursive: true, force: true });
+        });
+        let calls = 0,
+          providerCalls = 0;
+        const execute = createCourseAwareExecution({
+          preparationMs: 100,
+          grounder: createCourseGrounder(root, {
+            fetcher(_url, init) {
+              calls++;
+              return fetch(`http://127.0.0.1:${server.address().port}`, init);
+            },
+          }),
+          async executeProvider() {
+            providerCalls++;
+            return providerResult();
+          },
+        });
+        const events = [];
+        await assert.rejects(
+          execute(
+            request("IA340 Lab 5"),
+            new AbortController().signal,
+            session,
+            (...event) => events.push(event),
+          ),
+          { outcome: "TIMEOUT" },
+        );
+        await closed.promise;
+        assert.equal(calls, 1);
+        assert.equal(providerCalls, 0);
+        assert.ok(
+          events.some((e) => e[0] === "RETRIEVAL" && e[1] === "TIMEOUT"),
+        );
+        assert.ok(
+          events.some((e) => e[0] === "PROVIDER" && e[1] === "NOT_EXECUTED"),
+        );
+      });
+  },
+);
 
 test("evidence fits the complete request, preserves multi-turn context and exact displayed sources", async () => {
   const { providerMessages, reservedProviderInput } =

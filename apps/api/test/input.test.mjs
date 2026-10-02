@@ -3,7 +3,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { once } from "node:events";
@@ -12,6 +19,12 @@ import { createSpeechService } from "@laita/speech";
 import { initializePersistence } from "@laita/persistence";
 import { classifyInput } from "@laita/safety";
 import { validConversation } from "@laita/contracts";
+import { createCourseGrounder } from "@laita/course-grounding";
+import { createCourseAwareExecution } from "../dist/course-execution.js";
+import {
+  createGoldenGrounder,
+  publicCourses,
+} from "./course-golden-fixture.mjs";
 const identity = {
   policy: {
     runtimeDigest: `sha256:${"a".repeat(64)}`,
@@ -405,6 +418,263 @@ async function fixture(t, options = {}) {
     },
   };
 }
+
+test(
+  "course deadline/cancellation settles fetch/body cleanup before admission release",
+  { timeout: 10000 },
+  async (t) => {
+    for (const scenario of [
+      "stalled fetch",
+      "late fetch response",
+      "stalled freshness body",
+      "slow freshness body",
+      "stalled staged blob body",
+      "explicit fetch cancel",
+      "explicit body cancel",
+    ])
+      await t.test(scenario, async (t) => {
+        const golden = await createGoldenGrounder(t);
+        const snapshotFiles = () =>
+          Object.fromEntries(
+            readdirSync(golden.root, { recursive: true })
+              .filter((name) =>
+                /current\.json$|manifest\.json$|\/files\//u.test(name),
+              )
+              .filter((name) => statSync(path.join(golden.root, name)).isFile())
+              .map((name) => [
+                name,
+                readFileSync(path.join(golden.root, name)),
+              ]),
+          );
+        const before = snapshotFiles();
+        const statusBefore = JSON.parse(
+          readFileSync(path.join(golden.root, "refresh-status.json"), "utf8"),
+        );
+        let stall = true,
+          aborted = false,
+          cleaned = false,
+          released = 0;
+        let providerCalls = 0,
+          fetchCalls = 0,
+          blobCalls = 0,
+          chunks = 0;
+        const entered = Promise.withResolvers();
+        const abortSeen = Promise.withResolvers();
+        const cleanup = Promise.withResolvers();
+        t.after(() => cleanup.resolve());
+        const fetcher = async (url, init) => {
+          fetchCalls++;
+          assert.equal(init.method, "GET");
+          assert.equal(init.redirect, "error");
+          assert.equal(init.signal.aborted, false, "no new fetch after abort");
+          const response = await golden.fetcher(
+            String(url).replace(
+              "c".repeat(40),
+              publicCourses[String(url).includes("/IA342/") ? "IA342" : "IA340"]
+                .commit,
+            ),
+          );
+          const staged = scenario === "stalled staged blob body";
+          if (stall && staged && String(url).endsWith("/commits/main"))
+            return Response.json({ sha: "c".repeat(40) });
+          const target =
+            stall &&
+            (!staged ||
+              (String(url).includes("/git/blobs/") && ++blobCalls === 2));
+          if (!target) return response;
+          entered.resolve();
+          if (scenario.includes("fetch")) {
+            return new Promise((resolve, reject) => {
+              init.signal.addEventListener(
+                "abort",
+                async () => {
+                  aborted = true;
+                  abortSeen.resolve();
+                  await cleanup.promise;
+                  cleaned = true;
+                  if (scenario === "late fetch response") resolve(response);
+                  else reject(init.signal.reason);
+                },
+                { once: true },
+              );
+            });
+          }
+          let interval;
+          const body = new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"partial":'));
+              if (scenario === "slow freshness body")
+                interval = setInterval(() => {
+                  chunks++;
+                  controller.enqueue(new TextEncoder().encode(" "));
+                }, 2);
+            },
+            async cancel(reason) {
+              clearInterval(interval);
+              assert.equal(
+                reason.outcome,
+                scenario.startsWith("explicit") ? "CANCELLED" : "TIMEOUT",
+              );
+              aborted = true;
+              abortSeen.resolve();
+              await cleanup.promise;
+              cleaned = true;
+            },
+          });
+          return new Response(body);
+        };
+        const execute = createCourseAwareExecution({
+          preparationMs: 60,
+          grounder: createCourseGrounder(golden.root, {
+            fetcher,
+            now: () => new Date("2026-09-29T12:00:00.000Z"),
+          }),
+          async executeProvider(req) {
+            providerCalls++;
+            return {
+              contractVersion: "provider-run-result.v1",
+              interactionRef: `interaction-${randomUUID()}`,
+              mode: "LOCAL",
+              legs: [
+                {
+                  runRef: `run-${randomUUID()}`,
+                  provider: "LOCAL",
+                  model: req.localModel,
+                  status: "COMPLETED",
+                  provenance: {
+                    actualProvider: "LOCAL",
+                    actualModel: req.localModel,
+                    adapter: "synthetic",
+                  },
+                  output: { text: "Synthetic subsequent answer." },
+                  metrics: { latencyMs: 0 },
+                },
+              ],
+            };
+          },
+        });
+        const f = await fixture(t, {
+          recordHistory: true,
+          execute,
+          onRelease: () => {
+            assert.equal(cleaned, true);
+            released++;
+          },
+        });
+        const session = await f.start();
+        const submit = (text) => {
+          const value = submission();
+          value.request.input.text = text;
+          return f.request("/interactions", {
+            session,
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(value),
+          });
+        };
+        const accepted = await submit("What must I submit for IA340 Lab 4?");
+        assert.equal(accepted.status, 202);
+        const job = await accepted.json();
+        await entered.promise;
+        const cancelled = scenario.startsWith("explicit");
+        if (cancelled) {
+          const cancel = await f.request("/jobs/" + job.jobRef, {
+            session,
+            method: "DELETE",
+          });
+          assert.equal((await cancel.json()).state, "CANCELLED");
+        }
+        await abortSeen.promise;
+        assert.equal(aborted, true);
+        assert.equal(providerCalls, 0);
+        assert.equal(released, 0);
+        assert.equal(cleaned, false);
+        const pending = await (
+          await f.request("/jobs/" + job.jobRef, { session })
+        ).json();
+        assert.equal(pending.state, cancelled ? "CANCELLED" : "PROCESSING");
+        assert.equal(
+          (await submit("Independent ordinary question.")).status,
+          503,
+        );
+        const callsAtAbort = fetchCalls;
+        cleanup.resolve();
+        // Explicit cancellation publishes immediately; release must still wait
+        // for the asynchronous preparation cleanup rather than that job state.
+        for (let i = 0; i < 100 && !released; i++)
+          await new Promise((resolve) => setTimeout(resolve, 2));
+        assert.equal(released, 1);
+        const terminal = await f.poll(job.jobRef, session);
+        assert.equal(terminal.state, cancelled ? "CANCELLED" : "TIMEOUT");
+        assert.equal(terminal.result, undefined);
+        assert.equal(providerCalls, 0);
+        assert.equal(fetchCalls, callsAtAbort);
+        assert.deepEqual(snapshotFiles(), before);
+        assert.equal(
+          readdirSync(golden.root, { recursive: true }).some((name) =>
+            name.includes(".staging-"),
+          ),
+          false,
+        );
+        const state = JSON.parse(
+          readFileSync(path.join(golden.root, "refresh-status.json"), "utf8"),
+        );
+        for (const course of ["IA340", "IA342"]) {
+          assert.equal(state.courses[course].status, "FAILED");
+          assert.equal(
+            state.courses[course].commit,
+            statusBefore.courses[course].commit,
+          );
+          assert.equal(
+            state.courses[course].checkedAt,
+            statusBefore.courses[course].checkedAt,
+          );
+          assert.equal(
+            state.courses[course].refreshedAt,
+            statusBefore.courses[course].refreshedAt,
+          );
+        }
+        const turn = f.history
+          .conversation(job.history.conversation)
+          .turns.find((turn) => turn.id === job.history.turn);
+        assert.equal(turn.outcome, cancelled ? "CANCELLED" : "TIMEOUT");
+        assert.equal(turn.answers.length, 0);
+        assert.ok(
+          turn.events.some(
+            (e) => e.stage === "RETRIEVAL" && e.outcome === turn.outcome,
+          ),
+        );
+        assert.ok(
+          turn.events.some(
+            (e) => e.stage === "PROVIDER" && e.outcome === "NOT_EXECUTED",
+          ),
+        );
+        assert.equal(
+          turn.events.some(
+            (e) => e.stage === "PROVIDER" && e.outcome === "REQUESTED",
+          ),
+          false,
+        );
+        if (scenario === "slow freshness body") assert.ok(chunks > 1);
+        stall = false;
+        const next = await submit("What must I submit for IA340 Lab 4?");
+        assert.equal(next.status, 202);
+        assert.equal(
+          (await f.poll((await next.json()).jobRef, session)).result.grounding
+            .status,
+          "GROUNDED",
+        );
+        assert.equal(providerCalls, 1);
+        const ordinary = await submit("Explain a tree.");
+        assert.equal(ordinary.status, 202);
+        assert.equal(
+          (await f.poll((await ordinary.json()).jobRef, session)).state,
+          "COMPLETED",
+        );
+        assert.equal(providerCalls, 2);
+      });
+  },
+);
 test("four device kinds share typed contract; idempotency replay/conflict and cross-session isolation", async (t) => {
   const f = await fixture(t);
   for (const clientKind of ["PHONE", "TABLET", "COMPUTER", "PI"]) {
