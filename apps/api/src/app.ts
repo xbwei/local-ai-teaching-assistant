@@ -562,7 +562,27 @@ export function createApp(options: AppOptions = {}) {
     response.json(access.status());
   });
   if (options.webRoot) {
-    const webHeaders = (_req: Request, res: Response, next: () => void) => {
+    const now = options.browserNow ?? (() => performance.now());
+    let staticWindow = now();
+    let staticRequests = 0;
+    const webHeaders = (req: Request, res: Response, next: () => void) => {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        next();
+        return;
+      }
+      const currentTime = now();
+      if (currentTime - staticWindow >= 60_000) {
+        staticWindow = currentTime;
+        staticRequests = 0;
+      }
+      if (++staticRequests > 600) {
+        sendError(
+          res,
+          createPublicError("RATE_LIMITED", contexts.get(res)!.correlationId),
+          429,
+        );
+        return;
+      }
       contexts.get(res)!.code = "OK";
       res.setHeader(
         "Content-Security-Policy",

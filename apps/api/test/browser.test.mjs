@@ -2,7 +2,122 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fixture } from "./browser-fixture.mjs";
 import { isAccessConfiguration } from "@laita/contracts/server";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 const root = "/api/v1/input";
+test("wall-clock jumps cannot reset static or Owner transport budgets", async (t) => {
+  const webRoot = mkdtempSync(path.join(tmpdir(), "laita-clock-test-"));
+  writeFileSync(path.join(webRoot, "index.html"), "Synthetic page");
+  const originalNow = Date.now;
+  let wallClock = originalNow();
+  let f;
+  t.after(async () => {
+    Date.now = originalNow;
+    await f?.close();
+    rmSync(webRoot, { recursive: true, force: true });
+  });
+  Date.now = () => wallClock;
+  f = await fixture({ webRoot });
+  for (let i = 0; i < 600; i++) {
+    const response = await f.request("/");
+    assert.equal(response.status, 200);
+    await response.text();
+  }
+  assert.equal((await f.request("/")).status, 429);
+  const device = await f.device();
+  const session = await device.send(root + "/sessions", { method: "POST" });
+  assert.equal(session.status, 200);
+  const headers = { "x-input-session": (await session.json()).sessionRef };
+  for (let i = 1; i < 600; i++) {
+    const response = await device.send(root + "/build", { headers });
+    assert.equal(response.status, 200);
+    await response.text();
+  }
+  const checkSaturated = async () => {
+    assert.equal((await f.request("/")).status, 429);
+    assert.equal((await device.send(root + "/build", { headers })).status, 429);
+  };
+  await checkSaturated();
+  wallClock += 60_000;
+  await checkSaturated();
+  wallClock -= 3_600_000;
+  await checkSaturated();
+});
+test("static files share a bounded rate window before filesystem access", async (t) => {
+  const webRoot = mkdtempSync(path.join(tmpdir(), "laita-static-test-"));
+  const populate = () => {
+    mkdirSync(path.join(webRoot, "assets"), { recursive: true });
+    writeFileSync(path.join(webRoot, "index.html"), "Synthetic page");
+    writeFileSync(path.join(webRoot, "capture-worklet.js"), "// synthetic");
+    writeFileSync(path.join(webRoot, "assets/test.js"), "// synthetic");
+  };
+  populate();
+  let now = 0;
+  const f = await fixture({ webRoot, now: () => now });
+  t.after(async () => {
+    await f.close();
+    rmSync(webRoot, { recursive: true, force: true });
+  });
+  const routes = ["/", "/history", "/capture-worklet.js", "/assets/test.js"];
+  // express.static ignores these methods without touching files. They must
+  // neither consume the delivery budget nor turn a normal 404 into a 429.
+  const unsupportedMethods = ["POST", "PUT", "DELETE", "PATCH", "OPTIONS"];
+  for (let i = 0; i < 601; i++) {
+    const response = await f.request("/assets/test.js", {
+      method: unsupportedMethods[i % unsupportedMethods.length],
+    });
+    assert.equal(response.status, 404);
+    await response.text();
+  }
+  // Static entry must work without the API-only Owner header. Alternate HEAD
+  // and GET across every filesystem handler: they share one static budget.
+  for (let i = 0; i < 600; i++) {
+    const response = await f.request(routes[i % routes.length], {
+      method: i % 2 ? "HEAD" : "GET",
+    });
+    assert.equal(response.status, 200);
+    await response.text();
+  }
+  // Removing files proves denial happens before sendFile/static can fall
+  // through to a missing-file error. Query strings cannot reset the budget.
+  rmSync(webRoot, { recursive: true });
+  for (const route of routes) {
+    const response = await f.request(route + "?synthetic=1");
+    assert.equal(response.status, 429);
+    assert.equal((await response.json()).code, "RATE_LIMITED");
+  }
+  const head = await f.request("/history", { method: "HEAD" });
+  assert.equal(head.status, 429);
+  assert.equal(await head.text(), "");
+  assert.equal(
+    (await f.request("/assets/test.js", { method: "POST" })).status,
+    404,
+  );
+  // Static saturation does not consume the separate API transport budget.
+  const device = await f.device();
+  const session = await device.send(root + "/sessions", { method: "POST" });
+  assert.equal(session.status, 200);
+  const headers = { "x-input-session": (await session.json()).sessionRef };
+  for (let i = 1; i < 600; i++) {
+    const response = await device.send(root + "/build", { headers });
+    assert.equal(response.status, 200);
+    await response.text();
+  }
+  assert.equal((await device.send(root + "/build", { headers })).status, 429);
+  now = 59_999;
+  assert.equal((await f.request("/")).status, 429);
+  assert.equal((await device.send(root + "/build", { headers })).status, 429);
+  populate();
+  now = 60_000;
+  for (const route of routes) {
+    const response = await f.request(route);
+    assert.equal(response.status, 200);
+    await response.text();
+  }
+  assert.equal((await device.send(root + "/build", { headers })).status, 200);
+  assert.ok(f.logs.some((entry) => entry.code === "RATE_LIMITED"));
+});
 test("Owner opens directly; retired pairing routes and settings are rejected", async (t) => {
   const f = await fixture();
   t.after(() => f.close());
