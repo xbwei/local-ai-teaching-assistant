@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v1/grade-boundary.schema.json",
+  "title": "Grade boundary policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "gradingBoundaryVersion", "layers", "allowedTransitions", "prohibitions"],
+  "properties": {
+    "schemaVersion": {"const": "grade-boundary-schema.v1"},
+    "gradingBoundaryVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "layers": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "authority", "aiMayCreate", "mutableByAI", "interactionStoreAllowed"],
+        "properties": {
+          "id": {"enum": ["DETERMINISTIC_EVIDENCE", "OBJECTIVE_FORMATIVE_POINTS", "AI_RECOMMENDATION", "INSTRUCTOR_APPROVED_RESULT", "OFFICIAL_GRADE"]},
+          "authority": {"enum": ["VERIFIER", "DETERMINISTIC_RULE", "AI", "INSTRUCTOR", "SEPARATELY_GOVERNED_GRADE_SYSTEM"]},
+          "aiMayCreate": {"type": "boolean"},
+          "mutableByAI": {"const": false},
+          "interactionStoreAllowed": {"type": "boolean"}
+        },
+        "allOf": [
+          {"if": {"properties": {"id": {"const": "DETERMINISTIC_EVIDENCE"}}, "required": ["id"]}, "then": {"properties": {"authority": {"const": "VERIFIER"}, "aiMayCreate": {"const": false}, "interactionStoreAllowed": {"const": true}}}},
+          {"if": {"properties": {"id": {"const": "OBJECTIVE_FORMATIVE_POINTS"}}, "required": ["id"]}, "then": {"properties": {"authority": {"const": "DETERMINISTIC_RULE"}, "aiMayCreate": {"const": false}, "interactionStoreAllowed": {"const": true}}}},
+          {"if": {"properties": {"id": {"const": "AI_RECOMMENDATION"}}, "required": ["id"]}, "then": {"properties": {"authority": {"const": "AI"}, "aiMayCreate": {"const": true}, "interactionStoreAllowed": {"const": true}}}},
+          {"if": {"properties": {"id": {"const": "INSTRUCTOR_APPROVED_RESULT"}}, "required": ["id"]}, "then": {"properties": {"authority": {"const": "INSTRUCTOR"}, "aiMayCreate": {"const": false}, "interactionStoreAllowed": {"const": true}}}},
+          {"if": {"properties": {"id": {"const": "OFFICIAL_GRADE"}}, "required": ["id"]}, "then": {"properties": {"authority": {"const": "SEPARATELY_GOVERNED_GRADE_SYSTEM"}, "aiMayCreate": {"const": false}, "interactionStoreAllowed": {"const": false}}}}
+        ]
+      }
+    },
+    "allowedTransitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "requires"],
+        "properties": {
+          "from": {"enum": ["DETERMINISTIC_EVIDENCE", "OBJECTIVE_FORMATIVE_POINTS", "AI_RECOMMENDATION", "INSTRUCTOR_APPROVED_RESULT"]},
+          "to": {"enum": ["OBJECTIVE_FORMATIVE_POINTS", "AI_RECOMMENDATION", "INSTRUCTOR_APPROVED_RESULT"]},
+          "requires": {"enum": ["DETERMINISTIC_DERIVATION", "READ_ONLY_EVIDENCE_REFERENCE", "INSTRUCTOR_APPROVAL"]}
+        }
+      }
+    },
+    "prohibitions": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {"enum": ["AI_MUTATES_DETERMINISTIC_EVIDENCE", "AI_MUTATES_OBJECTIVE_POINTS", "AI_SELF_APPROVES_RESULT", "OFFICIAL_GRADE_IN_SESSION_DATA", "PERSISTENT_STUDENT_IDENTITY_IN_INTERACTION_STORE", "AUTONOMOUS_OFFICIAL_GRADE_WRITE"]}
+    }
+  }
+}

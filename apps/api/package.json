@@ -1,0 +1,29 @@
+{
+  "name": "@laita/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "dev": "node --watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@laita/contracts": "0.1.0",
+    "@laita/course-grounding": "0.1.0",
+    "@laita/policy": "0.1.0",
+    "@laita/orchestration": "0.1.0",
+    "@laita/providers": "0.1.0",
+    "express": "5.2.1",
+    "@laita/runtime": "0.1.0",
+    "@laita/persistence": "0.1.0",
+    "@laita/safety": "0.1.0",
+    "@laita/speech": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6"
+  }
+}

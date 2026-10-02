@@ -1,0 +1,55 @@
+{
+  "contractVersion": "application-configuration.v2",
+  "provenance": {
+    "demoProfileVersion": "demo-profile.v4",
+    "policyVersion": "demo-policy.v4"
+  },
+  "mode": "operator",
+  "server": {
+    "bind": "loopback",
+    "port": 3100
+  },
+  "runtime": {
+    "maxConcurrentOperations": 1,
+    "operationTimeoutMs": 120000
+  },
+  "runtimeRoot": "__OPERATOR_ABSOLUTE_RUNTIME_ROOT__",
+  "access": {
+    "mode": "single-operator",
+    "enabled": false,
+    "maintenanceMode": false,
+    "publicOrigin": "https://localhost:3443",
+    "requireForwardedHttps": true,
+    "authenticationRateLimit": {
+      "windowSeconds": 60,
+      "maxRequests": 20
+    },
+    "credentialRateLimit": {
+      "windowSeconds": 60,
+      "maxRequests": 120
+    },
+    "credentials": [],
+    "adminCredentials": []
+  },
+  "providers": {
+    "local": {
+      "provider": "LOCAL",
+      "model": "gemma4:12b-mlx",
+      "candidates": [
+        "gemma4:12b-mlx",
+        "llama3.1:8b"
+      ]
+    },
+    "openai": {
+      "provider": "OPENAI",
+      "model": "gpt-5.6-luna",
+      "secretReference": null
+    }
+  },
+  "features": {
+    "local": true,
+    "openai": false,
+    "compare": false,
+    "speech": false
+  }
+}

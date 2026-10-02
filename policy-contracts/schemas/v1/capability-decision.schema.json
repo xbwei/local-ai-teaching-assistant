@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v1/capability-decision.schema.json",
+  "title": "Context-bound capability decision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "decisionRef", "evaluatedContextDigest", "policyVersion", "classificationVersion", "retentionPolicyVersion", "gradingBoundaryVersion", "targetProvider", "targetModel", "allowed", "reasonCodes", "constraints", "recheckOn"],
+  "properties": {
+    "contractVersion": {"const": "capability-decision.v1"},
+    "decisionRef": {"type": "string", "pattern": "^decision-[a-z0-9-]+$"},
+    "evaluatedContextDigest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "policyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "classificationVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "retentionPolicyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "gradingBoundaryVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "targetProvider": {"enum": ["LOCAL", "OPENAI"]},
+    "targetModel": {"type": "string", "minLength": 1},
+    "allowed": {"type": "boolean"},
+    "reasonCodes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["EXPLICIT_ALLOW", "POLICY_VERSION_MISMATCH", "CLIENT_POLICY_OVERRIDE", "UNKNOWN_DATA_CLASS", "PROVIDER_PROCESSING_PROHIBITED", "CLOUD_NOT_EXPLICITLY_ALLOWED", "LOCAL_ONLY_DATA", "PROVIDER_DISABLED", "SCHEDULE_CLOSED", "ACTIVE_ASSESSMENT", "OVER_BUDGET", "QUOTA_UNAVAILABLE", "MODEL_NOT_ALLOWED", "CONTEXT_NOT_ALLOWED"]}},
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localOnly", "noFallback", "minimizedContentRequired"],
+      "properties": {
+        "localOnly": {"type": "boolean"},
+        "noFallback": {"const": true},
+        "minimizedContentRequired": {"type": "boolean"}
+      }
+    },
+    "recheckOn": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["INPUT_CHANGE", "ARTIFACT_CHANGE", "COURSE_OR_MODULE_CHANGE", "WORKFLOW_OR_MODE_CHANGE", "PROVIDER_OR_MODEL_CHANGE", "SCHEDULE_OR_FEATURE_CHANGE", "BUDGET_OR_QUOTA_CHANGE", "ASSESSMENT_STATE_CHANGE", "POLICY_VERSION_CHANGE", "DECISION_EXPIRY"]}}
+  },
+  "allOf": [
+    {"if": {"properties": {"allowed": {"const": true}}, "required": ["allowed"]}, "then": {"properties": {"reasonCodes": {"const": ["EXPLICIT_ALLOW"]}}}},
+    {"if": {"properties": {"allowed": {"const": false}}, "required": ["allowed"]}, "then": {"properties": {"reasonCodes": {"not": {"type": "array", "contains": {"const": "EXPLICIT_ALLOW"}}}}}}
+  ]
+}

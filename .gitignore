@@ -1,0 +1,87 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+.npmrc
+.pypirc
+secrets/
+credentials/
+private/
+local/
+config/local.*
+config/local/
+config/production.*
+config/production/
+
+# Institution- and course-specific material
+course-content/
+restricted-content/
+answer-keys/
+hidden-tests/
+student-data/
+submissions/
+grades/
+research-data/
+recordings/
+exports/
+backups/
+
+# JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Runtime and local data
+logs/
+tmp/
+temp/
+data/
+uploads/
+generated-audio/
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-journal
+*.db-wal
+*.db-shm
+*.gguf
+*.safetensors
+*.onnx
+*.bin
+*.pt
+
+# IDE and OS
+.DS_Store
+.vscode/
+.idea/
+
+# Local instructions and operator-generated artifacts
+AGENTS.md
+*.log
+.caddy/

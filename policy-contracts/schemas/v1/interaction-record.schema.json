@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v1/interaction-record.schema.json",
+  "title": "Identity-minimized interaction record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "sessionRef", "dataClass", "retentionProfile", "policyVersion", "createdAt"],
+  "properties": {
+    "contractVersion": {"const": "interaction-record.v1"},
+    "sessionRef": {"type": "string", "pattern": "^session-[a-z0-9-]+$"},
+    "dataClass": {"enum": ["APPROVED_PUBLIC_COURSE_KNOWLEDGE", "APPROVED_PRIVATE_COURSE_MATERIAL", "IDENTITY_FREE_USER_TEXT", "IDENTITY_MINIMIZED_USER_TEXT", "PRIVACY_SENSITIVE_STUDENT_CONTENT", "TEMPORARY_UPLOAD", "ASSIGNMENT_ARTIFACT", "DERIVED_VERIFIER_EVIDENCE", "RESTRICTED_ASSESSMENT_CONTENT", "INSTRUCTOR_ONLY_SOLUTION_MATERIAL", "OPERATIONAL_METADATA", "FEEDBACK_REPORT_CONTENT", "TEMPORARY_SPEECH_AUDIO", "RESEARCH_DATA"]},
+    "retentionProfile": {"$ref": "common.schema.json#/$defs/identifier"},
+    "policyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "content": {"type": "string", "maxLength": 4096},
+    "objectiveFormativePoints": {"type": "number", "minimum": 0},
+    "aiRecommendation": {"type": "string", "maxLength": 4096},
+    "instructorApprovedResultRef": {"type": "string", "pattern": "^result-[a-z0-9-]+$"}
+  }
+}

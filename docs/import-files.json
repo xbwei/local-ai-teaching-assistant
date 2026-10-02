@@ -1,0 +1,1129 @@
+{
+  "scope": "Public candidate destinations only; excluded private paths are not published.",
+  "files": [
+    {
+      "path": ".env.example",
+      "classification": "COPY"
+    },
+    {
+      "path": ".gemini/config.yaml",
+      "classification": "COPY"
+    },
+    {
+      "path": ".gitattributes",
+      "classification": "COPY"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug.yml",
+      "classification": "RECREATE"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature.yml",
+      "classification": "RECREATE"
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "classification": "COPY"
+    },
+    {
+      "path": ".github/workflows/sast.yml",
+      "classification": "COPY"
+    },
+    {
+      "path": ".github/workflows/security.yml",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": ".gitignore",
+      "classification": "RECREATE"
+    },
+    {
+      "path": ".node-version",
+      "classification": "COPY"
+    },
+    {
+      "path": ".prettierignore",
+      "classification": "COPY"
+    },
+    {
+      "path": ".prettierrc.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "LICENSE",
+      "classification": "COPY"
+    },
+    {
+      "path": "README.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "SECURITY.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "THIRD_PARTY.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/api/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/access.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/app.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/browser.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/course-execution.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/history.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/input.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/local-health.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/main.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/access.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/app.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/browser-fixture.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/browser.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/course-execution.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/course-golden-fixture.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/api/test/course-golden.test.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/api/test/input.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/local-health.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/public-candidate.test.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/api/test/startup-failure.test.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/api/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/index.html",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/public/capture-worklet.js",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/src/base.css",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/chat.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/src/client/api.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/client/audio.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/client/controller.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/client/history.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/client/markdown.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/src/client/microphone.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/src/client/presentation.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/client/style.css",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/client/viewport.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/src/laita.svg",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/web/src/main.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/test/audio.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/test/markdown.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/test/microphone.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/test/presentation.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/test/viewport.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "apps/web/vite.config.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/ABOUT.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/COURSE-GROUNDING.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/DEPLOYMENT.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/GETTING-STARTED.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/HISTORY.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/MODULES.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/OPENAI.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/SCREENSHOTS.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/SPEECH.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/VALIDATION.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/adr/0001-module-and-service-boundaries.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/assets/demo/laita-demo.gif",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/demo/laita-pi-demo.mp4",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/screenshots/laita-course-grounding.png",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/screenshots/laita-history-review.png",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/screenshots/laita-mac-mini.jpg",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/screenshots/laita-main-chat.png",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/screenshots/laita-pi-client.jpg",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/application-config.json.template",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/input-acceptance.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/input-acceptance.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "ops/macos/inventory.sh",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/keychain-mapping.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "ops/macos/org.example.laita-api.plist.template",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/prepare-provider-config.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/prepare-provider-config.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/protected-file.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "ops/macos/quiesce-service.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "ops/macos/quiesce-service.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "ops/macos/render-plist.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/run-service.sh",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/service.sh",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/shared-input-preparation.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/shared-input-preparation.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/sqlite-rollback.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/sqlite-rollback.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/test-operations.sh",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/validate-production-config.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/macos/validate-production-config.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "ops/reference/Caddyfile",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "package-lock.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/src/browser.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/canonical-json.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/capability-client.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/capability.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/configuration-client.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/configuration-server.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/src/health.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/history.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/input-client.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/input.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/instructor-policy.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/policy-contract.generated.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/src/provider-control.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/provider-usage.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/provider.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/src/public-error.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/test/access.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/test/canonical-json.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/test/capability.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/test/configuration.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/test/fixtures/prohibited-values.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/test/health.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/test/input-client.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/test/instructor-policy.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/test/provider-control.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/test/provider-usage.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/contracts/test/public-error.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/course-grounding/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/course-grounding/src/index.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/course-grounding/src/refresh-cli.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/course-grounding/test/chunk-equivalence.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/course-grounding/test/course-grounding.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/course-grounding/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/orchestration/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/orchestration/src/health.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/orchestration/src/index.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/orchestration/test/orchestration.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/orchestration/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/persistence/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/persistence/src/history.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/persistence/src/index.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/persistence/src/migrations.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/persistence/src/policy-state.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/persistence/src/provider-usage.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/persistence/test/history.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/persistence/test/persistence.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/persistence/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/policy/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/policy/src/index.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/policy/src/instructor-controls.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/policy/src/usage-controls.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/policy/test/capability.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/policy/test/instructor-controls.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/policy/test/successor.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/policy/test/usage-controls.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/policy/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/providers/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/index.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/ollama-live-cli.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/ollama-live-harness.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/ollama-live-resources.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/providers/src/ollama.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/openai-live-cli.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/openai-live-harness.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/openai.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/test-support.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/test/ollama-adapter.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/test/ollama-live-harness.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/providers/test/openai-adapter.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/test/openai-live-harness.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/test/provider-contract.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/runtime/examples/local-only.example.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/runtime/examples/openai-demo.example.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/src/index.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/src/operations.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/src/paths.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/src/secret-provider.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/runtime/src/work-gate.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/test/configuration.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/test/operations.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/test/paths.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/test/secret-provider.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/runtime/test/work-gate.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/runtime/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/safety/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/safety/src/index.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/safety/test/input.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/safety/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/speech-client/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/speech-client/src/index.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/speech-client/src/tts.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/speech-client/src/whisper.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/speech-client/test/process.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "packages/speech-client/test/speech.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/speech-client/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v1/comparison-seed.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v1/demo-profile.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v1/provider-eligibility.policy.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v2/comparison-seed.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v2/demo-profile.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v2/provider-eligibility.policy.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v3/comparison-seed.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v3/demo-profile.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v3/provider-eligibility.policy.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v4/comparison-seed.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v4/demo-profile.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/demo/v4/provider-eligibility.policy.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/fixtures/v1/capability-decisions.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/fixtures/v1/interaction-records.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/fixtures/v1/provider-evaluation-cases.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/fixtures/v1/retention-cases.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/package-lock.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/package.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/policies/v1/data-classification.policy.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/policies/v1/grade-boundary.policy.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/policies/v1/policy-bundle.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/policies/v1/provider-eligibility.policy.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/policies/v1/retention.policy.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/capability-decision.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/capability-evaluation.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/common.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/data-classification.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/demo-comparison-seed.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/demo-profile.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/evaluation-cases.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/grade-boundary.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/interaction-record.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/policy-bundle.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/provider-eligibility.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v1/retention.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v2/demo-comparison-seed.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v2/demo-profile.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v3/demo-comparison-seed.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v3/demo-profile.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v4/demo-comparison-seed.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/schemas/v4/demo-profile.schema.json",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/scripts/check-contracts.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/scripts/check-demo.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/scripts/generate-runtime-contract.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/scripts/policy-contracts.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/scripts/runtime-link.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "policy-contracts/scripts/successor.test.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/scripts/support.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/tsconfig.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/types/policy-v1.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "policy-contracts/types/policy-v1.type-fixtures.ts",
+      "classification": "COPY"
+    },
+    {
+      "path": "python/.python-version",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "python/pyproject.toml",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "python/uv.lock",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "scripts/ci/check-architecture-contracts.py",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/ci/check-public-boundary.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "scripts/ci/check-repository-policy.sh",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/ci/check-runtime-cleanliness.sh",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/ci/check-runtime-engines.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/ci/check-runtime-engines.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/ci/check-workspace-boundaries.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/ci/install-reference-caddy.sh",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "scripts/ci/public-boundary.test.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "scripts/ci/test-architecture-contracts.py",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/ci/test-lockfile-integrity.sh",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/ci/test-repository-policy.sh",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/ci/test-runtime-cleanliness.sh",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/ci/validate-application.sh",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/ci/workspace-boundaries.test.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/smoke-workspace.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/test-browser-client.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/test-history-client.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/test-input-client.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/test-public-course-sources.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "scripts/test-reference-edge.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "scripts/test-safety-history.mjs",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "tsconfig.base.json",
+      "classification": "COPY"
+    }
+  ]
+}

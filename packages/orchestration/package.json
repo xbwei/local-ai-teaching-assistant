@@ -1,0 +1,27 @@
+{
+  "name": "@laita/orchestration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "browser": null,
+      "node": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@laita/contracts": "0.1.0",
+    "@laita/policy": "0.1.0",
+    "@laita/providers": "0.1.0",
+    "@laita/runtime": "0.1.0"
+  }
+}

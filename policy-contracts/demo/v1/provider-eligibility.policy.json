@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "provider-eligibility-schema.v1",
+  "providerPolicyVersion": "demo-provider-eligibility.v1",
+  "defaultProvider": "LOCAL",
+  "cloudDefault": "DENY",
+  "fallback": "PROHIBITED",
+  "allowRules": [
+    {
+      "id": "LOCAL_INSTRUCTOR_SYNTHETIC_DEMO",
+      "provider": "LOCAL",
+      "models": [
+        "gemma4:12b",
+        "llama3.1:8b"
+      ],
+      "accessClasses": [
+        "INSTRUCTOR"
+      ],
+      "workflows": [
+        "COURSE_QA",
+        "CODING_COACH"
+      ],
+      "learningModes": [
+        "DIRECT_EXPLANATION"
+      ],
+      "inputTypes": [
+        "TEXT"
+      ],
+      "dataClasses": [
+        "IDENTITY_FREE_USER_TEXT"
+      ],
+      "artifactStates": [
+        "NONE"
+      ],
+      "requireFeatureEnabled": true,
+      "requireScheduleOpen": true,
+      "requireWithinBudget": true,
+      "requireQuotaAvailable": true,
+      "activeAssessment": "DENY"
+    },
+    {
+      "id": "OPENAI_INSTRUCTOR_SYNTHETIC_DEMO",
+      "provider": "OPENAI",
+      "models": [
+        "gpt-5.6-luna"
+      ],
+      "accessClasses": [
+        "INSTRUCTOR"
+      ],
+      "workflows": [
+        "COURSE_QA",
+        "CODING_COACH"
+      ],
+      "learningModes": [
+        "DIRECT_EXPLANATION"
+      ],
+      "inputTypes": [
+        "TEXT"
+      ],
+      "dataClasses": [
+        "IDENTITY_FREE_USER_TEXT"
+      ],
+      "artifactStates": [
+        "NONE"
+      ],
+      "requireFeatureEnabled": true,
+      "requireScheduleOpen": true,
+      "requireWithinBudget": true,
+      "requireQuotaAvailable": true,
+      "activeAssessment": "DENY"
+    }
+  ],
+  "denyReasonPrecedence": [
+    "POLICY_VERSION_MISMATCH",
+    "CLIENT_POLICY_OVERRIDE",
+    "UNKNOWN_DATA_CLASS",
+    "PROVIDER_PROCESSING_PROHIBITED",
+    "LOCAL_ONLY_DATA",
+    "PROVIDER_DISABLED",
+    "SCHEDULE_CLOSED",
+    "ACTIVE_ASSESSMENT",
+    "OVER_BUDGET",
+    "QUOTA_UNAVAILABLE",
+    "MODEL_NOT_ALLOWED",
+    "CLOUD_NOT_EXPLICITLY_ALLOWED",
+    "CONTEXT_NOT_ALLOWED"
+  ]
+}

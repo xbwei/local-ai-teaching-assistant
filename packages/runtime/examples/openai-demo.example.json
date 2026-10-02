@@ -1,0 +1,71 @@
+{
+  "contractVersion": "application-configuration.v2",
+  "provenance": {
+    "demoProfileVersion": "demo-profile.v2",
+    "policyVersion": "demo-policy.v2"
+  },
+  "mode": "operator",
+  "server": {
+    "bind": "loopback",
+    "port": 3100
+  },
+  "providers": {
+    "local": {
+      "provider": "LOCAL",
+      "model": "gemma4:12b-mlx",
+      "candidates": ["gemma4:12b-mlx", "llama3.1:8b"]
+    },
+    "openai": {
+      "provider": "OPENAI",
+      "model": "gpt-5.6-luna",
+      "secretReference": {
+        "kind": "opaque",
+        "id": "placeholder-openai-reference"
+      }
+    }
+  },
+  "features": {
+    "local": true,
+    "openai": true,
+    "compare": true,
+    "speech": false
+  },
+  "runtime": {
+    "maxConcurrentOperations": 1,
+    "operationTimeoutMs": 30000
+  },
+  "runtimeRoot": "/absolute/path/to/protected-runtime-root",
+  "access": {
+    "mode": "controlled-pilot",
+    "enabled": true,
+    "maintenanceMode": false,
+    "publicOrigin": "https://teaching.example.invalid",
+    "requireForwardedHttps": true,
+    "authenticationRateLimit": {
+      "windowSeconds": 60,
+      "maxRequests": 20
+    },
+    "credentialRateLimit": {
+      "windowSeconds": 60,
+      "maxRequests": 120
+    },
+    "credentials": [
+      {
+        "id": "synthetic-student",
+        "role": "student",
+        "courseScopes": ["example-course"],
+        "tokenSha256": "99fa29690a6a266d432002e35c07cd37c1b2ae653c819804b10c71ef79b11e1b",
+        "expiresAtEpochSeconds": 4102444800,
+        "revoked": false
+      }
+    ],
+    "adminCredentials": [
+      {
+        "id": "synthetic-admin",
+        "tokenSha256": "a8a9a091e56b214b235fae4aa0afd41c15fa18c7f8a07b2704f5b330ae09b17e",
+        "expiresAtEpochSeconds": 4102444800,
+        "revoked": false
+      }
+    ]
+  }
+}

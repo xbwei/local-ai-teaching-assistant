@@ -1,0 +1,8 @@
+{
+  "fixtureVersion": "capability-decision-fixtures.v1",
+  "policyVersion": "teaching-policy.v1",
+  "records": [
+    {"contractVersion": "capability-decision.v1", "decisionRef": "decision-synthetic-local", "evaluatedContextDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "targetProvider": "LOCAL", "targetModel": "local-approved-model", "allowed": true, "reasonCodes": ["EXPLICIT_ALLOW"], "constraints": {"localOnly": true, "noFallback": true, "minimizedContentRequired": false}, "recheckOn": ["INPUT_CHANGE", "ARTIFACT_CHANGE", "PROVIDER_OR_MODEL_CHANGE", "POLICY_VERSION_CHANGE", "DECISION_EXPIRY"]},
+    {"contractVersion": "capability-decision.v1", "decisionRef": "decision-synthetic-cloud-denied", "evaluatedContextDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "policyVersion": "teaching-policy.v1", "classificationVersion": "data-classification.v1", "retentionPolicyVersion": "retention-policy.v1", "gradingBoundaryVersion": "grading-boundary.v1", "targetProvider": "OPENAI", "targetModel": "cloud-approved-model", "allowed": false, "reasonCodes": ["LOCAL_ONLY_DATA"], "constraints": {"localOnly": true, "noFallback": true, "minimizedContentRequired": true}, "recheckOn": ["INPUT_CHANGE", "ARTIFACT_CHANGE", "PROVIDER_OR_MODEL_CHANGE", "POLICY_VERSION_CHANGE"]}
+  ]
+}

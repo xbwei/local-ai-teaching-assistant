@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "grade-boundary-schema.v1",
+  "gradingBoundaryVersion": "grading-boundary.v1",
+  "layers": [
+    {"id": "DETERMINISTIC_EVIDENCE", "authority": "VERIFIER", "aiMayCreate": false, "mutableByAI": false, "interactionStoreAllowed": true},
+    {"id": "OBJECTIVE_FORMATIVE_POINTS", "authority": "DETERMINISTIC_RULE", "aiMayCreate": false, "mutableByAI": false, "interactionStoreAllowed": true},
+    {"id": "AI_RECOMMENDATION", "authority": "AI", "aiMayCreate": true, "mutableByAI": false, "interactionStoreAllowed": true},
+    {"id": "INSTRUCTOR_APPROVED_RESULT", "authority": "INSTRUCTOR", "aiMayCreate": false, "mutableByAI": false, "interactionStoreAllowed": true},
+    {"id": "OFFICIAL_GRADE", "authority": "SEPARATELY_GOVERNED_GRADE_SYSTEM", "aiMayCreate": false, "mutableByAI": false, "interactionStoreAllowed": false}
+  ],
+  "allowedTransitions": [
+    {"from": "DETERMINISTIC_EVIDENCE", "to": "OBJECTIVE_FORMATIVE_POINTS", "requires": "DETERMINISTIC_DERIVATION"},
+    {"from": "DETERMINISTIC_EVIDENCE", "to": "AI_RECOMMENDATION", "requires": "READ_ONLY_EVIDENCE_REFERENCE"},
+    {"from": "OBJECTIVE_FORMATIVE_POINTS", "to": "AI_RECOMMENDATION", "requires": "READ_ONLY_EVIDENCE_REFERENCE"},
+    {"from": "AI_RECOMMENDATION", "to": "INSTRUCTOR_APPROVED_RESULT", "requires": "INSTRUCTOR_APPROVAL"}
+  ],
+  "prohibitions": ["AI_MUTATES_DETERMINISTIC_EVIDENCE", "AI_MUTATES_OBJECTIVE_POINTS", "AI_SELF_APPROVES_RESULT", "OFFICIAL_GRADE_IN_SESSION_DATA", "PERSISTENT_STUDENT_IDENTITY_IN_INTERACTION_STORE", "AUTONOMOUS_OFFICIAL_GRADE_WRITE"]
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v1/capability-evaluation.schema.json",
+  "title": "Capability evaluation context v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "policyVersion", "classificationVersion", "retentionPolicyVersion", "gradingBoundaryVersion", "accessClass", "courseRef", "moduleRef", "workflow", "learningMode", "inputType", "dataClass", "artifactState", "targetProvider", "targetModel", "scheduleOpen", "providerFeatureEnabled", "withinBudget", "quotaAvailable", "activeAssessment", "clientPolicyOverrideRequested"],
+  "properties": {
+    "contractVersion": {"const": "capability-evaluation.v1"},
+    "policyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "classificationVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "retentionPolicyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "gradingBoundaryVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "accessClass": {"enum": ["ANONYMOUS_SESSION", "STUDENT", "INSTRUCTOR", "OPERATOR", "RESEARCHER"]},
+    "courseRef": {"type": "string", "pattern": "^course-[a-z0-9-]+$"},
+    "moduleRef": {"type": "string", "pattern": "^module-[a-z0-9-]+$"},
+    "workflow": {"enum": ["COURSE_QA", "CONCEPT_REVIEW", "EXAM_PRACTICE", "CODING_COACH", "ASSIGNMENT_VERIFICATION", "FACULTY_AUTHORING", "FEEDBACK_REPORT", "RESEARCH_EVALUATION"]},
+    "learningMode": {"enum": ["DIRECT_EXPLANATION", "SOCRATIC", "PRACTICE", "VERIFICATION", "AUTHORING", "EVALUATION"]},
+    "inputType": {"enum": ["TEXT", "KNOWLEDGE_REFERENCE", "UPLOAD_REFERENCE", "DETERMINISTIC_EVIDENCE_REFERENCE", "AUDIO_REFERENCE"]},
+    "dataClass": {"$ref": "common.schema.json#/$defs/identifier"},
+    "artifactState": {"enum": ["NONE", "MINIMIZED_DERIVATION", "TEMPORARY_UPLOAD", "ASSIGNMENT_ARTIFACT"]},
+    "targetProvider": {"enum": ["LOCAL", "OPENAI"]},
+    "targetModel": {"type": "string", "minLength": 1},
+    "scheduleOpen": {"type": "boolean"},
+    "providerFeatureEnabled": {"type": "boolean"},
+    "withinBudget": {"type": "boolean"},
+    "quotaAvailable": {"type": "boolean"},
+    "activeAssessment": {"type": "boolean"},
+    "clientPolicyOverrideRequested": {"type": "boolean"}
+  }
+}

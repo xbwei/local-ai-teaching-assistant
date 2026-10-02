@@ -1,0 +1,15 @@
+name: Feature request
+description: Propose one focused outcome.
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What operator problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed behavior, constraints and a synthetic example
+    validations:
+      required: true

@@ -1,0 +1,201 @@
+{
+  "profileVersion": "demo-profile.v1",
+  "status": "DECISION_ONLY_PENDING_OWNER_APPROVAL",
+  "basePolicyVersion": "teaching-policy.v1",
+  "policyBundle": {
+    "schemaVersion": "policy-bundle-schema.v1",
+    "policyVersion": "demo-policy.v1",
+    "classificationVersion": "data-classification.v1",
+    "providerPolicyVersion": "demo-provider-eligibility.v1",
+    "retentionPolicyVersion": "retention-policy.v1",
+    "gradingBoundaryVersion": "grading-boundary.v1",
+    "documents": {
+      "classification": "data-classification.policy.json",
+      "providerEligibility": "provider-eligibility.policy.json",
+      "retention": "retention.policy.json",
+      "gradingBoundary": "grade-boundary.policy.json"
+    }
+  },
+  "evaluationContext": {
+    "contractVersion": "capability-evaluation.v1",
+    "policyVersion": "demo-policy.v1",
+    "classificationVersion": "data-classification.v1",
+    "retentionPolicyVersion": "retention-policy.v1",
+    "gradingBoundaryVersion": "grading-boundary.v1",
+    "accessClass": "INSTRUCTOR",
+    "courseRef": "course-synthetic-demo",
+    "moduleRef": "module-fixed-comparison",
+    "workflow": "COURSE_QA",
+    "learningMode": "DIRECT_EXPLANATION",
+    "inputType": "TEXT",
+    "dataClass": "IDENTITY_FREE_USER_TEXT",
+    "artifactState": "NONE",
+    "targetProvider": "LOCAL",
+    "targetModel": "gemma4:12b",
+    "scheduleOpen": true,
+    "providerFeatureEnabled": true,
+    "withinBudget": true,
+    "quotaAvailable": true,
+    "activeAssessment": false,
+    "clientPolicyOverrideRequested": false
+  },
+  "defaultProvider": "LOCAL",
+  "modes": [
+    "Local",
+    "OpenAI",
+    "Compare"
+  ],
+  "fallback": "PROHIBITED",
+  "capabilities": {
+    "required": [
+      "TEXT_QA",
+      "CODE_EXPLANATION",
+      "STREAMING_OR_VISIBLE_PROGRESS"
+    ],
+    "image": "DEFERRED",
+    "llmSpeech": "NOT_REQUIRED",
+    "tools": "DISABLED",
+    "retrieval": "DISABLED"
+  },
+  "local": {
+    "model": "gemma4:12b",
+    "comparisonModel": "llama3.1:8b",
+    "runtime": "OLLAMA",
+    "source": "https://ollama.com/library/gemma4:12b",
+    "comparisonSource": "https://ollama.com/library/llama3.1:8b",
+    "acceptance": "BENCHMARK_AND_INSTITUTIONAL_APPROVAL_REQUIRED",
+    "contextTokens": 4096
+  },
+  "openai": {
+    "model": "gpt-5.6-luna",
+    "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+    "selection": "EXPLICIT_BACKEND_ONLY",
+    "accountAccess": "NOT_VERIFIED",
+    "store": false,
+    "pricing": {
+      "version": "demo-openai-pricing.v2",
+      "asOf": "2026-09-02",
+      "currency": "USD",
+      "unit": "PER_MILLION_TOKENS",
+      "input": 0.2,
+      "cachedInput": 0.02,
+      "output": 1.2,
+      "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
+    }
+  },
+  "limits": {
+    "referenceUnifiedMemoryGB": 16,
+    "maxResidentPrimaryModels": 1,
+    "maxConcurrentGenerations": 1,
+    "maxQueuedRequests": 1,
+    "maxInputTokensPerProvider": 2048,
+    "maxOutputTokens": 512,
+    "temperature": 0.2,
+    "requestTimeoutSeconds": 90,
+    "localIdleUnloadSeconds": 60,
+    "maxEstimatedUsdPerRequest": 0.01,
+    "maxEstimatedUsdPerComparisonRun": 0.1,
+    "automaticRetries": 0
+  },
+  "comparison": {
+    "seedVersion": "demo-comparison-seed.v1",
+    "execution": "SEQUENTIAL_LOCAL_THEN_OPENAI",
+    "inputPolicy": "IDENTICAL_MESSAGES_NO_HISTORY",
+    "overflow": "REJECT_WITHOUT_TRUNCATION",
+    "unknownEligibilityOrCost": "DENY",
+    "providerFailure": "RECORD_LEG_ERROR_NO_FALLBACK",
+    "budgetAuthority": "BACKEND_RECHECK_EACH_LEG",
+    "speechInFixedComparison": false
+  },
+  "speech": {
+    "implementation": "DEFERRED_TO_81_84_AFTER_80",
+    "placement": "SEPARATE_LOCAL_COMPONENTS",
+    "stt": {
+      "trigger": "BUTTON_ONLY",
+      "continuousListening": false,
+      "maxCaptureSeconds": 15,
+      "maxProcessingSeconds": 30,
+      "maxConcurrentJobs": 1,
+      "retentionProfile": "RAW_MICROPHONE_AUDIO",
+      "transcript": "LOCAL_REVIEW_AND_RECLASSIFY_BEFORE_EXPLICIT_CLOUD"
+    },
+    "tts": {
+      "provider": "LOCAL_ONLY",
+      "maxCharacters": 1200,
+      "maxProcessingSeconds": 30,
+      "maxPlaybackSeconds": 60,
+      "maxConcurrentJobs": 1,
+      "retentionProfile": "GENERATED_TTS_AUDIO"
+    },
+    "fallback": [
+      "CAPTIONS",
+      "TEXT_ONLY"
+    ],
+    "audioDataClass": "TEMPORARY_SPEECH_AUDIO",
+    "cloudAudio": "PROHIBITED",
+    "cleanup": [
+      "DELIVERY",
+      "SESSION_RESET",
+      "SESSION_END",
+      "VALIDATION_FAILURE",
+      "CANCELLATION",
+      "STARTUP_RECOVERY",
+      "EXPIRY"
+    ],
+    "maxAudioLifetimeSeconds": 900,
+    "deletionFailure": "BOUNDED_RETRY_METADATA_ONLY_DISABLE_AUDIO_UNTIL_CLEAN",
+    "schedule": "NO_SPEECH_MODEL_OVERLAP_WITH_PRIMARY_GENERATION"
+  },
+  "retention": {
+    "sessionText": "SESSION_TEXT",
+    "feasibilityMetadata": "SAFETY_OPERATIONS_METADATA",
+    "syntheticResult": "EVALUATION_FIXTURE_RESULT",
+    "rawPromptsInMetadata": false,
+    "persistentIdentity": false,
+    "officialGrades": "PROHIBITED"
+  },
+  "metadata": {
+    "required": [
+      "profileVersion",
+      "seedVersion",
+      "caseId",
+      "inputSha256",
+      "policyVersions",
+      "selectedMode",
+      "requestedProvider",
+      "requestedModel",
+      "resolvedModel",
+      "effectiveParameters",
+      "status",
+      "errorCode",
+      "queueLatencyMs",
+      "firstTokenLatencyMs",
+      "totalLatencyMs",
+      "loadState"
+    ],
+    "localWhenAvailable": [
+      "ollamaVersion",
+      "modelDigest",
+      "quantization",
+      "loadDurationMs",
+      "promptEvalTokens",
+      "generatedTokens",
+      "tokensPerSecond",
+      "processMemoryBytes",
+      "systemMemoryPressure",
+      "swapDeltaBytes"
+    ],
+    "openaiWhenAvailable": [
+      "responseModel",
+      "inputTokens",
+      "cachedInputTokens",
+      "outputTokens",
+      "usageStatus",
+      "pricingVersion",
+      "estimatedCostUsd"
+    ],
+    "missingValues": "NULL_WITH_REASON_NEVER_ZERO",
+    "errorContent": "SANITIZED_CODE_ONLY",
+    "measurementScope": "OPERATIONAL_FEASIBILITY_NOT_RESEARCH"
+  }
+}

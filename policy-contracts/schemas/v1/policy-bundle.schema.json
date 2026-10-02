@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/laita/schemas/policy/v1/policy-bundle.schema.json",
+  "title": "Policy bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "policyVersion", "classificationVersion", "providerPolicyVersion", "retentionPolicyVersion", "gradingBoundaryVersion", "documents"],
+  "properties": {
+    "schemaVersion": {"const": "policy-bundle-schema.v1"},
+    "policyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "classificationVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "providerPolicyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "retentionPolicyVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "gradingBoundaryVersion": {"$ref": "common.schema.json#/$defs/versionIdentifier"},
+    "documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "providerEligibility", "retention", "gradingBoundary"],
+      "properties": {
+        "classification": {"const": "data-classification.policy.json"},
+        "providerEligibility": {"const": "provider-eligibility.policy.json"},
+        "retention": {"const": "retention.policy.json"},
+        "gradingBoundary": {"const": "grade-boundary.policy.json"}
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "@laita/providers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "browser": null,
+      "node": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./test-support": {
+      "browser": null,
+      "node": {
+        "types": "./dist/test-support.d.ts",
+        "default": "./dist/test-support.js"
+      }
+    },
+    "./ollama-live-harness": {
+      "browser": null,
+      "node": {
+        "types": "./dist/ollama-live-harness.d.ts",
+        "default": "./dist/ollama-live-harness.js"
+      }
+    },
+    "./openai-live-harness": {
+      "browser": null,
+      "node": {
+        "types": "./dist/openai-live-harness.d.ts",
+        "default": "./dist/openai-live-harness.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "live:ollama": "node dist/ollama-live-cli.js",
+    "live:openai": "node dist/openai-live-cli.js"
+  },
+  "dependencies": {
+    "@laita/contracts": "0.1.0",
+    "@laita/runtime": "0.1.0",
+    "openai": "7.9.0"
+  }
+}

@@ -1,0 +1,28 @@
+[
+  "SYNTHETIC_API_KEY_DO_NOT_USE",
+  "SYNTHETIC_TOKEN_DO_NOT_USE",
+  "SYNTHETIC_PASSWORD_DO_NOT_USE",
+  "Bearer SYNTHETIC_AUTHORIZATION",
+  "session=SYNTHETIC_COOKIE",
+  "placeholder-private-secret-reference",
+  [
+    "postgresql:",
+    "//",
+    "placeholder",
+    ":",
+    "synthetic-password",
+    "@",
+    "db.example.invalid/demo"
+  ],
+  "synthetic.student@example.invalid",
+  "SYNTHETIC_EID_12345",
+  "192.0.2.123",
+  "2001:db8::123",
+  "http://localhost/placeholder?token=SYNTHETIC_QUERY_TOKEN",
+  "/placeholder/private/course-file.txt",
+  "synthetic-submission.txt",
+  "SYNTHETIC_PROMPT_TEXT",
+  "SYNTHETIC_RESPONSE_TEXT",
+  "SYNTHETIC_ARBITRARY_USER_TEXT",
+  "11111111-1111-4111-8111-111111111111"
+]
