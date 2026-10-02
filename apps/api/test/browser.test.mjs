@@ -6,6 +6,33 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 const root = "/api/v1/input";
+test("wall-clock jumps cannot reset the static request budget", async (t) => {
+  const webRoot = mkdtempSync(path.join(tmpdir(), "laita-clock-test-"));
+  writeFileSync(path.join(webRoot, "index.html"), "Synthetic page");
+  const originalNow = Date.now;
+  let wallClock = originalNow();
+  let f;
+  try {
+    Date.now = () => wallClock;
+    f = await fixture({ webRoot });
+  } finally {
+    Date.now = originalNow;
+  }
+  t.after(async () => {
+    await f.close();
+    rmSync(webRoot, { recursive: true, force: true });
+  });
+  for (let i = 0; i < 600; i++) {
+    const response = await f.request("/");
+    assert.equal(response.status, 200);
+    await response.text();
+  }
+  assert.equal((await f.request("/")).status, 429);
+  wallClock += 60_000;
+  assert.equal((await f.request("/")).status, 429);
+  wallClock -= 3_600_000;
+  assert.equal((await f.request("/")).status, 429);
+});
 test("static files share a bounded rate window before filesystem access", async (t) => {
   const webRoot = mkdtempSync(path.join(tmpdir(), "laita-static-test-"));
   const populate = () => {

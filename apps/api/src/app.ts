@@ -562,7 +562,7 @@ export function createApp(options: AppOptions = {}) {
     response.json(access.status());
   });
   if (options.webRoot) {
-    const now = options.browserNow ?? Date.now;
+    const now = options.browserNow ?? (() => performance.now());
     let staticWindow = now();
     let staticRequests = 0;
     const webHeaders = (req: Request, res: Response, next: () => void) => {
@@ -570,8 +570,9 @@ export function createApp(options: AppOptions = {}) {
         next();
         return;
       }
-      if (now() - staticWindow >= 60_000) {
-        staticWindow = now();
+      const currentTime = now();
+      if (currentTime - staticWindow >= 60_000) {
+        staticWindow = currentTime;
         staticRequests = 0;
       }
       if (++staticRequests > 600) {
