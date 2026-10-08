@@ -20,6 +20,6 @@ jobs:
     container:
       image: semgrep/semgrep:1.164.0@sha256:207983631beecdbe7fa29196c7f4a7a5f29033933cdb76c687ce4a672e07618d
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Scan JavaScript and Python
         run: semgrep scan --config p/javascript --config p/python --error --metrics=off .
