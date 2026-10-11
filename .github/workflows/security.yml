@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Lint GitHub Actions workflows
         uses: raven-actions/actionlint@5ed673bc77a975c2402fdcd464706912c56b103b
 
@@ -25,16 +25,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
       - name: Install pinned uv in an isolated tooling environment
         run: |
           python3 -m venv "$RUNNER_TEMP/uv-tools"
-          "$RUNNER_TEMP/uv-tools/bin/pip" install uv==0.12.7
+          "$RUNNER_TEMP/uv-tools/bin/pip" install "uv==$(cat .uv-version)"
           echo "$RUNNER_TEMP/uv-tools/bin" >> "$GITHUB_PATH"
       - name: Run policy, architecture, and repository gates
         env:
@@ -46,14 +46,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
       - name: Install pinned uv in an isolated tooling environment
         run: |
           python3 -m venv "$RUNNER_TEMP/uv-tools"
-          "$RUNNER_TEMP/uv-tools/bin/pip" install uv==0.12.7
+          "$RUNNER_TEMP/uv-tools/bin/pip" install "uv==$(cat .uv-version)"
           echo "$RUNNER_TEMP/uv-tools/bin" >> "$GITHUB_PATH"
       - name: Install checksum-pinned reference HTTPS test proxy
         run: bash scripts/ci/install-reference-caddy.sh
@@ -64,8 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.19.0
       - name: Match the current reference runtime npm inventory
@@ -82,7 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Scan Git history for secrets

@@ -44,6 +44,6 @@
   "dependencies": {
     "@laita/contracts": "0.1.0",
     "@laita/runtime": "0.1.0",
-    "openai": "7.9.0"
+    "openai": "7.28.0"
   }
 }

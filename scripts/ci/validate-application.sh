@@ -34,13 +34,16 @@ check_node_toolchain() {
 check_uv_toolchain() {
   local expected_uv
   local actual_uv
-  expected_uv="$(tr -d '\r' < python/pyproject.toml | \
-    sed -n 's/^requires = \["uv_build==\([0-9.]*\)"\]$/\1/p')"
-  actual_uv="$(uv --version | awk '{print $2}')"
-  if [[ -z "$expected_uv" ]]; then
-    printf 'Unable to derive the pinned uv version from python/pyproject.toml.\n' >&2
+  if [[ ! -f .uv-version ]]; then
+    printf 'Unable to derive the pinned uv version from .uv-version.\n' >&2
     exit 1
   fi
+  expected_uv="$(tr -d '[:space:]' < .uv-version)"
+  if [[ -z "$expected_uv" ]]; then
+    printf 'Unable to derive the pinned uv version from .uv-version.\n' >&2
+    exit 1
+  fi
+  actual_uv="$(uv --version | awk '{print $2}')"
   require_version uv "$actual_uv" "$expected_uv"
 }
 

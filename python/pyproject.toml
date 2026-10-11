@@ -7,13 +7,8 @@ dependencies = []
 [tool.uv]
 package = false
 
-# Toolchain pin consumed by validate-application.sh.
-[build-system]
-requires = ["uv_build==0.12.7"]
-build-backend = "uv_build"
-
 [dependency-groups]
-dev = ["ruff==0.16.5"]
+dev = ["ruff==0.16.10"]
 
 [tool.ruff]
 target-version = "py312"
