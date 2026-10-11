@@ -523,8 +523,7 @@ test(
           });
           return new Response(body);
         };
-        const execute = createCourseAwareExecution({
-          preparationMs: 60,
+        const executionOptions = {
           grounder: createCourseGrounder(golden.root, {
             fetcher,
             now: () => new Date("2026-09-29T12:00:00.000Z"),
@@ -552,7 +551,16 @@ test(
               ],
             };
           },
+        };
+        // Fault injection keeps its short deadline; successful recovery uses the
+        // application default rather than racing the runner's scheduling load.
+        const stalledExecution = createCourseAwareExecution({
+          ...executionOptions,
+          preparationMs: 60,
         });
+        const recoveryExecution = createCourseAwareExecution(executionOptions);
+        const execute = (...args) =>
+          (stall ? stalledExecution : recoveryExecution)(...args);
         const f = await fixture(t, {
           recordHistory: true,
           execute,
@@ -659,11 +667,9 @@ test(
         stall = false;
         const next = await submit("What must I submit for IA340 Lab 4?");
         assert.equal(next.status, 202);
-        assert.equal(
-          (await f.poll((await next.json()).jobRef, session)).result.grounding
-            .status,
-          "GROUNDED",
-        );
+        const recovered = await f.poll((await next.json()).jobRef, session);
+        assert.equal(recovered.state, "COMPLETED");
+        assert.equal(recovered.result.grounding.status, "GROUNDED");
         assert.equal(providerCalls, 1);
         const ordinary = await submit("Explain a tree.");
         assert.equal(ordinary.status, 202);
