@@ -981,8 +981,8 @@ try {
     const popup = context.waitForEvent("page");
     await page.locator("#history-open").click();
     const historyPage = await popup;
-    assert.equal(await historyPage.evaluate(() => window.opener), null);
     await historyPage.locator(".history-row").first().waitFor();
+    assert.equal(await historyPage.evaluate(() => window.opener), null);
     assert.equal(new URL(historyPage.url()).pathname, "/history");
     assert.equal(await historyPage.locator("#history-dialog").count(), 0);
     const historyDialog = historyPage.locator("#history-page");

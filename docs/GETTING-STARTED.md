@@ -4,7 +4,7 @@ Use a reviewed revision or an approved release of this repository. Run the comma
 
 ## Prerequisites
 
-The reference environment is a single operator on **Apple Silicon macOS** with Ollama supporting MLX, Node **24.16.0** and npm **11.13.0**. Runtime compatibility is also checked with Node 24.19.0/npm 11.17.0; declared engines are Node >=24.16 <25 and npm >=11 <12. Python is optional developer tooling, not a runtime backend.
+The reference environment is a single operator on **Apple Silicon macOS** with Ollama supporting MLX, Node **24.16.0** and npm **11.13.0**. Runtime compatibility is also checked with Node 24.19.0/npm 11.17.0; declared engines are Node >=24.16 <25 and npm >=11 <12. The source build and application require no Codex, Python, uv or Ruff. Python/uv/Ruff are optional maintainer and CI validation tools, not a runtime backend.
 
 Reserve enough memory for your model plus the operating system; 24 GB unified memory is a practical reference choice, not a guaranteed minimum. See the [official Ollama Gemma MLX notes](https://ollama.com/blog/mlx-performance) and [model tags](https://ollama.com/library/gemma4/tags). `gemma4:12b-mlx` requires supported Apple Silicon/MLX; do not silently substitute another tag on unsupported hardware.
 
