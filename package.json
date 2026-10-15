@@ -47,7 +47,7 @@
     "test:reference-edge": "node --test scripts/test-reference-edge.mjs"
   },
   "devDependencies": {
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.5",
     "prettier": "3.9.9",
     "typescript": "5.9.2"
   }
