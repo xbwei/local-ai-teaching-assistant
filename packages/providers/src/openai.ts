@@ -36,7 +36,7 @@ import type {
 } from "openai/resources/responses/responses";
 
 const ADAPTER_VERSION = "openai-responses.v1";
-const SDK_VERSION = "7.32.0";
+const SDK_VERSION = "7.45.1";
 const TEXT_ENCODER = new TextEncoder();
 
 export interface OpenAIModelCandidate {
