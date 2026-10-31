@@ -451,7 +451,7 @@ test("non-streaming Responses call is bounded, provenance-complete, and server-o
     configuredModel: model,
     selectedModel: model,
     responseModel: model,
-    sdk: { name: "openai", version: "7.28.0" },
+    sdk: { name: "openai", version: "7.32.0" },
     store: false,
     automaticRetries: 0,
     sdkLogging: "OFF",
@@ -915,7 +915,7 @@ test("provider boundary exposes no browser export, logs, fallback, or client cre
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
   assert.equal(packageJson.exports["."].browser, null);
-  assert.equal(packageJson.dependencies.openai, "7.28.0");
+  assert.equal(packageJson.dependencies.openai, "7.32.0");
   const source = await readFile(
     new URL("../src/openai.ts", import.meta.url),
     "utf8",
