@@ -6,6 +6,8 @@ test("public gate rejects runtime/private paths and private identifiers while pe
   for (const file of [
     "logs/debug.txt",
     "logs/AGENTS.md",
+    "sub/AGENTS.md",
+    "docs/nested/AGENTS.md",
     "recordings/voice.wav",
     "history.sqlite",
     "secret.pem",
