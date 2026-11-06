@@ -63,8 +63,8 @@ export function createOwnerSessions(options: {
       access.enabled &&
       !access.maintenanceMode &&
       access.mode === "single-operator" &&
-      req.get("x-forwarded-proto") === "https" &&
-      req.get("x-forwarded-host") === publicOrigin.host &&
+      req.get("x-forwarded-proto")?.toLowerCase() === "https" &&
+      req.get("x-forwarded-host")?.toLowerCase() === publicOrigin.host &&
       !req.get("authorization") &&
       !req.get("content-encoding") &&
       !Object.keys(req.query).length &&

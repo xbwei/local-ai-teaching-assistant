@@ -590,12 +590,39 @@ test("Student review aliases cannot cross the repository boundary; Canvas requir
         suspicionReason: "",
       }),
     });
-    assert.ok([400, 403].includes(response.status));
+    assert.equal(response.status, 403, route);
   }
   assert.equal(
     f.persistence.history().conversation(item.conversation).turns[0].review,
     "PENDING",
   );
+  for (const role of ["teacher", "admin"]) {
+    assert.equal((await f.login(role)).status, 200);
+    const c = f.cookie();
+    const ref = await session(f, c);
+    await draft(f, c, ref, `A synthetic ${role} record.`);
+    const item = (await query(f, c)).items[0];
+    for (const route of ["review", "review/", "Review", "REVIEW/"]) {
+      const response = await f.request(`/api/v1/history/${route}`, {
+        method: "POST",
+        headers: authenticated(c, { "content-type": "application/json" }),
+        body: JSON.stringify({
+          conversation: item.conversation,
+          turn: item.id,
+          review: "REVIEWED",
+          note: "Synthetic Owner review",
+          suspected: false,
+          suspicionReason: "",
+        }),
+      });
+      assert.equal(response.status, 200, `${role}: ${route}`);
+      assert.deepEqual(await response.json(), { saved: true });
+    }
+    assert.equal(
+      f.persistence.history().conversation(item.conversation).turns[0].review,
+      "REVIEWED",
+    );
+  }
   for (const route of [
     "/api/v1/canvas/launch/",
     "/API/V1/CANVAS/LAUNCH",
@@ -719,4 +746,88 @@ test("Canvas Origin is rechecked against the final configuration snapshot after 
   });
   assert.equal(response.status, 403);
   assert.equal(response.headers.get("set-cookie"), null);
+});
+
+test("proxy scheme/host casing is equivalent without accepting other authorities, lists or Origins", async (t) => {
+  const f = await fixture({
+    autoLogin: false,
+    publicOrigin: "https://localhost:3443",
+    canvas: () => canvas,
+    authNow: () => now,
+  });
+  t.after(() => f.close());
+  const mixed = {
+    "x-forwarded-proto": "HTTPS",
+    "x-forwarded-host": "LocalHost:3443",
+  };
+  const login = await f.request("/api/v1/auth/login", {
+    method: "POST",
+    headers: { ...mixed, "content-type": "application/json" },
+    body: JSON.stringify({ role: "teacher", passphrase: testPassphrase }),
+  });
+  assert.equal(login.status, 200);
+  const teacher = cookie(login);
+  assert.equal(
+    (
+      await f.request("/api/v1/auth/session", {
+        headers: { ...mixed, cookie: teacher },
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await f.request("/api/v1/input/sessions", {
+        method: "POST",
+        headers: authenticated(teacher, mixed),
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await launch(f, {}, mixed)).status, 303);
+  for (const invalid of [
+    { "x-forwarded-proto": "http" },
+    { "x-forwarded-proto": "https,http" },
+    { "x-forwarded-host": "localhost:3444" },
+    { "x-forwarded-host": "localhost" },
+    { "x-forwarded-host": "localhost:3443,evil.example.test" },
+    { "x-forwarded-host": "localhost:3443.evil.example.test" },
+    { "x-forwarded-host": "user@localhost:3443" },
+    { "x-forwarded-host": "" },
+    { "x-forwarded-proto": "" },
+  ]) {
+    const headers = { ...mixed, ...invalid, cookie: teacher };
+    assert.equal(
+      (await f.request("/api/v1/auth/session", { headers })).status,
+      403,
+    );
+    assert.equal(
+      (
+        await f.request("/api/v1/input/sessions", {
+          method: "POST",
+          headers: authenticated(teacher, headers),
+        })
+      ).status,
+      403,
+    );
+    assert.equal((await launch(f, {}, headers)).status, 403);
+  }
+  for (const origin of [
+    "https://other.example.test",
+    "https://LOCALHOST:3443",
+  ]) {
+    assert.equal(
+      (
+        await f.request("/api/v1/auth/session", {
+          headers: { ...mixed, cookie: teacher, origin },
+        })
+      ).status,
+      403,
+    );
+  }
+  assert.equal(
+    (await launch(f, {}, { ...mixed, origin: "https://CANVAS.example.test" }))
+      .status,
+    403,
+  );
 });

@@ -152,13 +152,11 @@ export function installHistoryRoutes(
   ) => HistoryRepository,
 ) {
   const repositories = new WeakMap<Request, HistoryRepository>();
+  const students = new WeakSet<Request>();
   app.use("/api/v1/history", (req, res, next) => {
     const identity = authenticate(req, res);
     if (!identity) return;
-    if (identity.historyScope?.role === "student" && req.path === "/review") {
-      res.status(403).json({ code: "FORBIDDEN" });
-      return;
-    }
+    if (identity.historyScope?.role === "student") students.add(req);
     const scoped = identity.historyScope
       ? historyForScope?.(identity.historyScope)
       : store;
@@ -184,6 +182,11 @@ export function installHistoryRoutes(
     work: (body: Record<string, unknown>, store: HistoryRepository) => unknown,
   ) =>
     app.post(`/api/v1/history/${path}`, (req, res) => {
+      // Authorize the matched operation, including Express route aliases.
+      if (path === "review" && students.has(req)) {
+        res.status(403).json({ code: "FORBIDDEN" });
+        return;
+      }
       if (!req.is("json") || !object(req.body)) {
         res.status(400).json({ code: "INVALID_REQUEST" });
         return;
