@@ -305,7 +305,7 @@ export async function fixture(options = {}) {
     const headers = {
       ...(cookie ? { cookie } : {}),
       "x-forwarded-proto": "https",
-      "x-forwarded-host": host,
+      "x-forwarded-host": new URL(config.publicOrigin).host,
       origin: config.publicOrigin,
       ...init.headers,
     };
