@@ -1,7 +1,5 @@
 # LAITA v0.2.0 — Canvas Launch, Local Roles, and Course-Grounded AI
 
-Prepared GitHub Release notes. Tag/release publication: **NOT_RUN**. Publish only from reviewed post-merge main after the Owner's separate authorization; v0.1.0 is unchanged.
-
 ## Highlights
 
 - **Individual / self-managed:** Public LAITA serves individual instructors and technical early adopters who manage their machine, models, runtime, Owner credential and optional integrations. Core standalone use needs no institutional server, central SSO or institution-wide provisioning.
