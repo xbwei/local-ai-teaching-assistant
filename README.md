@@ -6,6 +6,14 @@ A teaching assistant that runs locally, keeps a conversation going, answers ques
 
 **Public V1 · v0.1.0**. See [validation status and limitations](docs/VALIDATION.md).
 
+## Who LAITA is for
+
+LAITA is an **individual, self-managed project** for instructors and technical early adopters. You install and operate your own instance using suitable hardware, supported software, approved local models and materials you are permitted to use. Core standalone use does not require school-provided servers, a campus deployment team, central SSO, institutional procurement or an administrator-registered integration. The documented hardware and setup requirements still apply.
+
+Optional integrations are configured by you only when supported by your selected release and allowed by your existing account permissions. A Canvas course App, Canvas REST access and a GitHub connection are separate capabilities; an App's launch credentials are not a Canvas API token. Neither a GitHub token nor a Canvas API token is a universal prerequisite for standalone LAITA. Personal deployment does not bypass institutional/provider restrictions, authorize sensitive records or make planned integrations available today.
+
+Personalization means operator-controlled course context and workflows, not a claim that automated personal knowledge graphs or multi-user accounts already exist. Current supported features and limitations are listed below. A future institutional Enterprise offering would use a separately selected repository/product line; this individual repository is not an automatic migration path to an institution-managed service.
+
 ## See it in action
 
 ![Real course Q&A demo from an earlier MVP recording](docs/assets/demo/laita-demo.gif)
