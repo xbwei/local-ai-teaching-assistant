@@ -5,6 +5,7 @@ import { publicBoundaryViolations } from "./check-public-boundary.mjs";
 test("public gate rejects runtime/private paths and private identifiers while permitting sanitized repository instructions and referenced public courses", () => {
   for (const file of [
     "logs/debug.txt",
+    "logs/AGENTS.md",
     "recordings/voice.wav",
     "history.sqlite",
     "secret.pem",
@@ -25,7 +26,14 @@ test("public gate rejects runtime/private paths and private identifiers while pe
     "/Us" + "ers/operator",
     "jmu" + "-teaching-dev",
   ])
-    assert.ok(publicBoundaryViolations("example.ts", Buffer.from(text)).length);
+    for (const file of ["example.ts", "AGENTS.md"])
+      assert.ok(publicBoundaryViolations(file, Buffer.from(text)).length, file);
+  assert.ok(
+    publicBoundaryViolations(
+      "AGENTS.md",
+      Buffer.from("https://github.com/example/synthetic-repo/issues/1"),
+    ).includes("external issue/handoff reference"),
+  );
   assert.deepEqual(
     publicBoundaryViolations(
       "AGENTS.md",
