@@ -1,3 +1,4 @@
+import type { OwnerSessions } from "./owner-session.ts";
 import type { Request, Response } from "express";
 import type { AccessConfiguration } from "@laita/contracts/server";
 
@@ -7,6 +8,7 @@ import type { AccessConfiguration } from "@laita/contracts/server";
 export function createOwnerTransport(
   configuration: AccessConfiguration,
   now = () => performance.now(),
+  sessions?: OwnerSessions,
 ) {
   const origin = new URL(configuration.publicOrigin);
   let closed = false,
@@ -20,8 +22,8 @@ export function createOwnerTransport(
         !configuration.enabled ||
         configuration.maintenanceMode ||
         configuration.mode !== "single-operator" ||
-        req.get("x-forwarded-proto") !== "https" ||
-        req.get("x-forwarded-host") !== origin.host ||
+        req.get("x-forwarded-proto")?.toLowerCase() !== "https" ||
+        req.get("x-forwarded-host")?.toLowerCase() !== origin.host ||
         (req.get("origin") !== undefined &&
           req.get("origin") !== origin.origin) ||
         (mutation && req.get("origin") !== origin.origin) ||
@@ -48,7 +50,18 @@ export function createOwnerTransport(
         res.status(403).json({ code: "FORBIDDEN" });
         return false as const;
       }
-      return { owner };
+      const session = sessions?.authorize(req, res);
+      if (!session) {
+        if (!res.headersSent) res.status(401).json({ code: "UNAUTHENTICATED" });
+        return false as const;
+      }
+      return {
+        owner: `${session.binding}:${owner}`,
+        historyScope: {
+          role: session.role,
+          ...(session.context ? { context: session.context } : {}),
+        },
+      };
     },
     close() {
       closed = true;

@@ -58,6 +58,7 @@ test(
     backend = await fixture({
       publicOrigin: origin,
       history: persistence.value.history(),
+      persistence: persistence.value,
       observeTransport: (headers) => transport.push({ ...headers }),
       async execute(value, signal) {
         await new Promise((resolve) => {
@@ -127,9 +128,11 @@ test(
         return false;
       }
     });
+    let cookie;
     const edgeFetch = (route, init = {}) =>
       new Promise((resolve, reject) => {
         const headers = {
+          ...(cookie ? { cookie } : {}),
           host: `localhost:${edgePort}`,
           origin,
           "sec-fetch-site": "same-origin",
@@ -176,6 +179,15 @@ test(
         return false;
       }
     });
+    const { testPassphrase } =
+      await import("../apps/api/test/owner-fixture.mjs");
+    const login = await edgeFetch("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "admin", passphrase: testPassphrase }),
+    });
+    assert.equal(login.status, 200);
+    cookie = login.headers.get("set-cookie").split(";")[0];
     const a = new InputApi(edgeFetch),
       b = new InputApi(edgeFetch);
     const aSession = await a.start();

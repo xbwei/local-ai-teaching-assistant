@@ -489,7 +489,7 @@ same_release="$update_deploy/releases/$same_target"
 cp -R "$update_deploy/releases/$candidate_commit" "$same_release"
 chmod -R u+w "$same_release"
 printf '%s\n' "$same_target" > "$same_release/DEPLOYED_COMMIT"
-sed 's/version !== 1/version !== 4/' \
+sed 's/version !== 1/version !== 5/' \
   "$candidate/synthetic-persistence/dist/index.js" > "$same_release/synthetic-persistence/dist/index.js"
 same_backup="$update_deploy/backups/same-schema"
 mkdir -m 700 "$same_backup"
@@ -525,7 +525,7 @@ const bytes = readFileSync(`${root}/sqlite-failed-upgrade.sqlite`);
 const metadata = JSON.parse(readFileSync(`${root}/sqlite-failed-upgrade.json`, "utf8"));
 assert.equal(metadata.contractVersion, "sqlite-rollback-artifact.v1");
 assert.equal(metadata.kind, "FAILED_UPGRADE");
-assert.equal(metadata.schemaVersion, 4);
+assert.equal(metadata.schemaVersion, 5);
 assert.equal(metadata.sizeBytes, bytes.length);
 assert.equal(metadata.databaseSha256, `sha256:${createHash("sha256").update(bytes).digest("hex")}`);
 JS
@@ -628,7 +628,7 @@ database.prepare(
 ).run();
 database.close();
 JS
-expect_equal "$(sqlite_version "$update_runtime/data/foundation.sqlite")" "4"
+expect_equal "$(sqlite_version "$update_runtime/data/foundation.sqlite")" "5"
 export LAITA_ROLLBACK_BACKUP="$update_backup"
 capture_rollback_state
 incompatible_snapshot="$update_deploy/backups/incompatible-snapshot"
@@ -667,11 +667,11 @@ rollback_across_schema=$(
 )
 [[ "$rollback_across_schema" == *"ROLLED_BACK_COMMIT=$candidate_commit"* &&
   "$rollback_across_schema" == *"SQLITE_RESTORED_SCHEMA_VERSION=1"* &&
-  "$rollback_across_schema" == *"SQLITE_RECOVERY_SCHEMA_VERSION=4"* &&
+  "$rollback_across_schema" == *"SQLITE_RECOVERY_SCHEMA_VERSION=5"* &&
   "$rollback_across_schema" == *"RUNTIME_DATA_ACTION=RESTORED_FROM_SNAPSHOT"* ]] ||
   fail "cross-schema rollback result"
 expect_equal "$(sqlite_version "$update_runtime/data/foundation.sqlite")" "1"
-expect_equal "$(sqlite_version "$update_backup/sqlite-failed-upgrade.sqlite")" "4"
+expect_equal "$(sqlite_version "$update_backup/sqlite-failed-upgrade.sqlite")" "5"
 [[ -f "$update_backup/sqlite-failed-upgrade.json" ]] ||
   fail "failed-upgrade SQLite metadata missing"
 assert_recovery_metadata "$update_backup"
@@ -710,7 +710,7 @@ legacy_incompatible_error=$(LAITA_ROLLBACK_BACKUP="$legacy_incompatible" \
   "$root/ops/macos/service.sh" rollback 2>&1 || true)
 expect_equal "$legacy_incompatible_error" \
   "SERVICE_ERROR=INCOMPATIBLE_SQLITE_ROLLBACK_RELEASE"
-expect_equal "$(sqlite_version "$update_runtime/data/foundation.sqlite")" "4"
+expect_equal "$(sqlite_version "$update_runtime/data/foundation.sqlite")" "5"
 assert_rollback_state_unchanged
 
 chmod 600 "$marker"

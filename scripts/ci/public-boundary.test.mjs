@@ -21,6 +21,7 @@ test("public gate rejects runtime/private paths and private identifiers while pe
     );
   for (const text of [
     "JMU" + "_CONFIG",
+    "canvas." + "jmu.edu",
     "S" + "CHOOL",
     "/Us" + "ers/operator",
     "jmu" + "-teaching-dev",

@@ -49,6 +49,15 @@ npm run course-sources:refresh -- "$HOME/.local/share/laita/runtime"
 
 Public course refresh is optional for general chat. It needs read-only access to public GitHub APIs, uses no GitHub token, and can hit unauthenticated rate limits. Missing course evidence fails visibly; it does not trigger ungrounded answering.
 
+Before first start, initialize the one Owner credential for local Admin / Teacher / Student. Stop LAITA for later credential maintenance. Input is hidden; there is no usable default password:
+
+```bash
+export APP_CONFIG_JSON="$(cat "$HOME/.local/share/laita/config/application.json")"
+npm run owner:setup
+```
+
+This writes only salted scrypt material to the existing runtime SQLite. Keep the passphrase private; all three roles belong to you. See [roles, credential recovery and optional Canvas setup](CANVAS.md).
+
 In one terminal, start the API, which also serves the built UI:
 
 ```bash
@@ -61,7 +70,7 @@ In another terminal, from the same checkout, start the loopback HTTPS edge:
 caddy run --config ops/reference/Caddyfile --adapter caddyfile
 ```
 
-Open **https://localhost:3443**. Trust only the local CA you installed yourself; do not bypass unexpected certificate errors. The backend port 3100 is loopback-only and is not the browser entry. The HTTPS edge requires the exact Host and fixes security forwarding headers. It preserves each page’s random, non-secret transient client reference, so opening or resetting another browser/tab does not reset the first. All clients share the same single-operator History and global one-operation limit; overlapping generation returns BUSY without a queue. This reference is not a login or authority credential.
+Open **https://localhost:3443**, choose Teacher (or your local Admin/Student role), and sign in with your initialized Owner passphrase. Trust only the local CA you installed yourself; do not bypass unexpected certificate errors. The backend port 3100 is loopback-only and is not the browser entry. The HTTPS edge requires the exact Host and fixes security forwarding headers. It preserves each page’s random, non-secret transient client reference, so opening or resetting another browser/tab does not reset the first. Authenticated pages share the global one-operation limit; History is scoped by role and, for Canvas, launch context; overlapping generation returns BUSY without a queue. This reference is not a login or authority credential.
 
 Try a general question, then a follow-up. Open `/history` from the UI. Stop foreground processes with Ctrl-C. Unset `APP_CONFIG_JSON` selects a fail-closed developer scaffold rather than this full operator profile; `.env` is not loaded automatically.
 

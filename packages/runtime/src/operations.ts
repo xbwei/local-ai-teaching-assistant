@@ -45,6 +45,7 @@ export type Operation =
   | "SCAFFOLD"
   | "HEALTH"
   | "READINESS"
+  | "AUTHENTICATION"
   | "CAPABILITY"
   | "POLICY_CONTROL"
   | "USAGE_CONTROL"
@@ -95,6 +96,7 @@ export function safeOperationalEvent(input: unknown): OperationalEvent | null {
       operation !== "SCAFFOLD" &&
       operation !== "HEALTH" &&
       operation !== "READINESS" &&
+      operation !== "AUTHENTICATION" &&
       operation !== "CAPABILITY" &&
       operation !== "POLICY_CONTROL" &&
       operation !== "USAGE_CONTROL" &&
@@ -150,7 +152,8 @@ export function safeOperationalEvent(input: unknown): OperationalEvent | null {
     )
       return null;
     if (
-      (operation === "CAPABILITY" ||
+      (operation === "AUTHENTICATION" ||
+        operation === "CAPABILITY" ||
         operation === "POLICY_CONTROL" ||
         operation === "USAGE_CONTROL" ||
         operation === "PROVIDER_HEALTH" ||

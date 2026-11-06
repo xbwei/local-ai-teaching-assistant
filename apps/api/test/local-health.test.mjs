@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import http from "node:http";
 import { once } from "node:events";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { initializeRuntimePaths } from "@laita/runtime";
+import { initializePersistence } from "@laita/persistence";
+import { testCredential, testPassphrase } from "./owner-fixture.mjs";
 import { createProviderHealthController } from "@laita/orchestration";
 import { OllamaLocalAdapter } from "@laita/providers";
 import {
@@ -137,7 +142,18 @@ test("startup outage recovers through async capability and choices routes using 
       ...f.health.capabilityControls(),
     });
   };
+  const root = mkdtempSync(path.join(tmpdir(), "laita-health-owner-"));
+  const paths = initializeRuntimePaths(root);
+  assert.equal(paths.ok, true);
+  const persistence = initializePersistence(paths.value);
+  assert.equal(persistence.ok, true);
+  persistence.value.ownerAuth().setCredential(await testCredential);
+  t.after(() => {
+    persistence.value.close();
+    rmSync(root, { recursive: true, force: true });
+  });
   const app = createApp({
+    ownerAuth: persistence.value.ownerAuth(),
     persistence: { isReady: () => true },
     browserAccess: {
       enabled: true,
@@ -187,9 +203,22 @@ test("startup outage recovers through async capability and choices routes using 
     ["OPENAI"],
   );
   f.advance();
+  const login = await fetch(origin + "/api/v1/auth/login", {
+    method: "POST",
+    headers: {
+      origin: "https://owner.example.invalid",
+      "x-forwarded-host": "owner.example.invalid",
+      "x-forwarded-proto": "https",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ role: "teacher", passphrase: testPassphrase }),
+  });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get("set-cookie").split(";")[0];
   const sessionResponse = await fetch(origin + "/api/v1/input/sessions", {
     method: "POST",
     headers: {
+      cookie,
       "x-owner-client": "a".repeat(64),
       origin: "https://owner.example.invalid",
       "x-forwarded-host": "owner.example.invalid",
@@ -203,6 +232,7 @@ test("startup outage recovers through async capability and choices routes using 
       method: "POST",
       headers: {
         "x-input-session": sessionRef,
+        cookie,
         "x-owner-client": "a".repeat(64),
         origin: "https://owner.example.invalid",
         "x-forwarded-host": "owner.example.invalid",

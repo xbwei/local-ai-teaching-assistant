@@ -164,6 +164,7 @@ try {
   seededHistory.outcome("e".repeat(64), "NO_ANSWER");
   f = await fixture({
     history: persistence.history(),
+    persistence,
     answerText: (request) =>
       request.input.text === "Show a long English answer."
         ? longEnglishAnswer
@@ -275,7 +276,13 @@ try {
       errors = [];
     page.on("request", (r) => requests.push(r.url()));
     page.on("pageerror", (e) => errors.push(e.message));
+    await context.route("**/api/v1/auth/session", route => route.fulfill({status:200,contentType:"application/json",body: name === "phone" ? "not-json" : JSON.stringify({role:"unexpected-role",source:"local"})}));
     await page.goto(f.origin);
+    await page.locator('[name="role"]').selectOption("admin");
+    await context.unroute("**/api/v1/auth/session");
+    const {testPassphrase}=await import("../apps/api/test/owner-fixture.mjs");
+    await page.locator('[name="passphrase"]').fill(testPassphrase);
+    await page.getByRole("button",{name:"Sign in",exact:true}).click();
     await page
       .locator("#question:not([disabled])")
       .waitFor()
@@ -323,7 +330,13 @@ try {
     assert.equal(await page.locator('input[name="provider"]').count(), 3);
     assert.equal(await page.locator("#pairing").count(), 0);
     assert.equal(await page.locator("#speech-language").count(), 0);
-    assert.equal((await context.cookies()).length, 0);
+    const cookies = await context.cookies();
+    assert.equal(cookies.length, 1);
+    assert.equal(cookies[0].name, "__Host-laita-session");
+    assert.equal(cookies[0].httpOnly, true);
+    assert.equal(cookies[0].secure, true);
+    assert.equal(cookies[0].sameSite, "Lax");
+    assert.equal(await page.evaluate(() => document.cookie), "");
     await page.reload();
     await page.locator("#question:not([disabled])").waitFor();
     assert.equal(

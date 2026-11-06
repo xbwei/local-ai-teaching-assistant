@@ -143,10 +143,29 @@ const integer = (v: unknown) =>
 export function installHistoryRoutes(
   app: Express,
   store: HistoryRepository,
-  authenticate: (req: Request, res: Response) => unknown,
+  authenticate: (
+    req: Request,
+    res: Response,
+  ) => false | { historyScope?: import("@laita/persistence").HistoryScope },
+  historyForScope?: (
+    scope: import("@laita/persistence").HistoryScope,
+  ) => HistoryRepository,
 ) {
+  const repositories = new WeakMap<Request, HistoryRepository>();
+  const students = new WeakSet<Request>();
   app.use("/api/v1/history", (req, res, next) => {
-    if (authenticate(req, res)) next();
+    const identity = authenticate(req, res);
+    if (!identity) return;
+    if (identity.historyScope?.role === "student") students.add(req);
+    const scoped = identity.historyScope
+      ? historyForScope?.(identity.historyScope)
+      : store;
+    if (!scoped) {
+      res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
+      return;
+    }
+    repositories.set(req, scoped);
+    next();
   });
   const parse = express.json({ limit: 16384, inflate: false, strict: true });
   app.use("/api/v1/history", (req, res, next) => {
@@ -160,15 +179,20 @@ export function installHistoryRoutes(
   });
   const route = (
     path: string,
-    work: (body: Record<string, unknown>) => unknown,
+    work: (body: Record<string, unknown>, store: HistoryRepository) => unknown,
   ) =>
     app.post(`/api/v1/history/${path}`, (req, res) => {
+      // Authorize the matched operation, including Express route aliases.
+      if (path === "review" && students.has(req)) {
+        res.status(403).json({ code: "FORBIDDEN" });
+        return;
+      }
       if (!req.is("json") || !object(req.body)) {
         res.status(400).json({ code: "INVALID_REQUEST" });
         return;
       }
       try {
-        res.json(work(req.body));
+        res.json(work(req.body, repositories.get(req)!));
       } catch (error) {
         if (error instanceof HistoryValidationError) {
           res.status(400).json({ code: "INVALID_REQUEST" });
@@ -183,7 +207,7 @@ export function installHistoryRoutes(
     if (Object.keys(v).some((k) => !keys.includes(k)))
       throw new HistoryValidationError();
   };
-  route("query", (v) => {
+  route("query", (v, store) => {
     exact(v, [
       "before",
       "limit",
@@ -248,7 +272,7 @@ export function installHistoryRoutes(
       throw new HistoryValidationError();
     return store.list(v as HistoryFilter);
   });
-  route("conversation", (v) => {
+  route("conversation", (v, store) => {
     exact(v, ["conversation", "after"]);
     if (
       !isInputRef(v.conversation) ||
@@ -257,7 +281,7 @@ export function installHistoryRoutes(
       throw new HistoryValidationError();
     return store.conversation(v.conversation, v.after as number | undefined);
   });
-  route("feedback", (v) => {
+  route("feedback", (v, store) => {
     exact(v, ["conversation", "turn", "leg", "vote", "report", "reason"]);
     if (
       !isInputRef(v.conversation) ||
@@ -277,7 +301,7 @@ export function installHistoryRoutes(
     });
     return { saved: true };
   });
-  route("review", (v) => {
+  route("review", (v, store) => {
     exact(v, [
       "conversation",
       "turn",

@@ -14,7 +14,9 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { parseConfiguration } from "@laita/runtime";
+import { parseConfiguration, initializeRuntimePaths } from "@laita/runtime";
+import { initializePersistence } from "@laita/persistence";
+import { testCredential, testPassphrase } from "./owner-fixture.mjs";
 
 for (const cloud of [false, true]) {
   test(`Public operator startup and choices with ${cloud ? "enabled Cloud but absent credential mapping" : "Local-only and no credential"}`, async (t) => {
@@ -67,6 +69,12 @@ for (const cloud of [false, true]) {
     };`,
       { mode: 0o600 },
     );
+    const paths = initializeRuntimePaths(config.runtimeRoot);
+    assert.equal(paths.ok, true);
+    const db = initializePersistence(paths.value);
+    assert.equal(db.ok, true);
+    db.value.ownerAuth().setCredential(await testCredential);
+    db.value.close();
     const child = spawn(
       process.execPath,
       [
@@ -106,6 +114,13 @@ for (const cloud of [false, true]) {
         "x-owner-client": "a".repeat(64),
         origin: "https://localhost:3443",
       };
+      const login = await fetch(`${origin}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ role: "teacher", passphrase: testPassphrase }),
+      });
+      assert.equal(login.status, 200);
+      headers.cookie = login.headers.get("set-cookie").split(";")[0];
       const session = await fetch(`${origin}/api/v1/input/sessions`, {
         method: "POST",
         headers,

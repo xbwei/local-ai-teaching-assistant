@@ -4,7 +4,7 @@
 
 A teaching assistant that runs locally, keeps a conversation going, answers questions using public course evidence, and lets one operator review saved work. LAITA is an independent faculty-led project, not an official James Madison University service or product.
 
-**Public V1 · v0.1.0**. See [validation status and limitations](docs/VALIDATION.md).
+**LAITA v0.2.0 candidate** — optional single-operator Canvas course entry and local role credentials; no release or deployment is implied. See [validation status and limitations](docs/VALIDATION.md).
 
 ## See it in action
 
@@ -30,6 +30,7 @@ Follow [Getting started](docs/GETTING-STARTED.md) for prerequisites, installatio
 
 | Guide | What it covers |
 |---|---|
+| [Local roles and optional Canvas course App](docs/CANVAS.md) | Hidden Terminal credential setup, standalone roles, signed Instructor launch, removal and troubleshooting |
 | [Demo courses / Course-grounded Q&A](docs/COURSE-GROUNDING.md) | Source refresh, visible citations, evidence refusal and substituting supported public course material |
 | [OpenAI / Compare](docs/OPENAI.md) | Cloud data flow, interactive Keychain setup, enabling, missing credentials, rotation and deletion |
 | [History & Review](docs/HISTORY.md) | Retained records, feedback, operator review and access limitations |
@@ -40,7 +41,7 @@ Follow [Getting started](docs/GETTING-STARTED.md) for prerequisites, installatio
 
 Local inference and course evidence remain on your host. Optional OpenAI sends eligible general questions and bounded provider-specific context to OpenAI; course excerpts and archived History are not sent. Text history persists locally; microphone and generated audio are temporary. See [data flow](docs/ARCHITECTURE.md) and [security policy](SECURITY.md).
 
-V1 is **single-operator**: History has no separate password or multi-user isolation, and the reference entry stays on loopback. There is one admitted operation with no queue, bounded context/retrieval, and two explicit public demo-course mappings. It is not a student account, LMS or grading platform. Live model quality, Cloud account availability, real speech quality and physical hardware acceptance are not established by synthetic tests. [Validation and limitations](docs/VALIDATION.md).
+LAITA remains **single-operator**: one Owner operates local Admin / Teacher / Student roles using an initialized passphrase, with scoped sessions and History. Optional Canvas admits only the configured Instructor into Teacher. These are not real participant accounts; the reference entry stays on loopback. There is one admitted operation with no queue, bounded context/retrieval, and two explicit public demo-course mappings. It is not a student account, LMS or grading platform. Live model quality, Cloud account availability, real speech quality and physical hardware acceptance are not established by synthetic tests. [Validation and limitations](docs/VALIDATION.md).
 
 ## Author, support and community
 
