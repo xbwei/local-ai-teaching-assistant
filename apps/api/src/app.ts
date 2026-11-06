@@ -177,6 +177,8 @@ export function createApp(options: AppOptions = {}) {
     next();
   });
   ownerSessions?.install(app);
+  if (ownerSessions)
+    app.use(["/api/admin", "/api/instructor"], ownerSessions.entryLimit);
   function authorize(
     request: Request,
     response: Response,
@@ -189,11 +191,11 @@ export function createApp(options: AppOptions = {}) {
     ) {
       const session = ownerSessions.authorize(request, response);
       if (!session) return false;
-      if (session.role !== "admin") {
-        response.status(403).json({ code: "FORBIDDEN" });
-        return false;
-      }
-      return { actorRole: "ADMIN" };
+      if (session.role === "admin") return { actorRole: "ADMIN" };
+      if (audience === "instructor" && session.role === "teacher")
+        return { actorRole: "INSTRUCTOR" };
+      response.status(403).json({ code: "FORBIDDEN" });
+      return false;
     }
     const accessRequest: Parameters<AccessController["authorize"]>[0] = {};
     const authorization = request.get("authorization");

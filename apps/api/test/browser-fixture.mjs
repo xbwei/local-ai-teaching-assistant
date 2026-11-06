@@ -189,6 +189,7 @@ export async function fixture(options = {}) {
     options.history === true ? persistence.value.history() : options.history;
   app = createApp({
     ownerAuth: authStore,
+    capabilities: { read: () => capabilities() },
     historyForScope: (scope) =>
       options.persistence
         ? options.persistence.history(scope)

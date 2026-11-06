@@ -21,7 +21,8 @@
     "@laita/runtime": "0.1.0",
     "@laita/persistence": "0.1.0",
     "@laita/safety": "0.1.0",
-    "@laita/speech": "0.1.0"
+    "@laita/speech": "0.1.0",
+    "express-rate-limit": "8.7.3"
   },
   "devDependencies": {
     "@types/express": "5.0.6"

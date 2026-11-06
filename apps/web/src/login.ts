@@ -7,14 +7,28 @@ export async function requireOwnerSession(): Promise<boolean> {
       mode: "same-origin",
       redirect: "error",
       cache: "no-store",
+      signal: AbortSignal.timeout(45_000),
       headers: body ? { "content-type": "application/json" } : {},
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-  const response = await request("session").catch(() => undefined);
-  if (response?.ok) {
-    const session = (await response.json()) as { role: string; source: string };
-    if (!["admin", "teacher", "student"].includes(session.role))
-      throw new Error();
+  let session: { role: string; source: string } | undefined;
+  try {
+    const response = await request("session");
+    const value: unknown = response.ok ? await response.json() : undefined;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const data = value as Record<string, unknown>;
+      if (
+        Object.keys(data).sort().join(",") === "role,source" &&
+        typeof data.role === "string" &&
+        ["admin", "teacher", "student"].includes(data.role) &&
+        (data.source === "local" || data.source === "canvas")
+      )
+        session = { role: data.role, source: data.source };
+    }
+  } catch {
+    /* Unavailable/malformed status returns to the local sign-in screen. */
+  }
+  if (session) {
     const bar = document.createElement("nav");
     bar.setAttribute("aria-label", "Owner role");
     bar.className = "owner-role";

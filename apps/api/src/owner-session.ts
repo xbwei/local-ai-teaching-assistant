@@ -1,3 +1,4 @@
+import { rateLimit, MemoryStore } from "express-rate-limit";
 import { createHash, randomBytes } from "node:crypto";
 import express, { type Express, type Request, type Response } from "express";
 import type { AccessConfiguration } from "@laita/contracts/server";
@@ -27,6 +28,20 @@ export function createOwnerSessions(options: {
   const { access, store } = options;
   const now = options.now ?? Date.now;
   const sessions = new Map<string, OwnerSession>();
+  // One Owner entry, deliberately no per-person/IP profiling. The shared
+  // Express limiter also bounds status/logout and control requests.
+  const entryStore = new MemoryStore();
+  const entryLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 600,
+    keyGenerator: () => "single-owner-entry",
+    store: entryStore,
+    standardHeaders: false,
+    legacyHeaders: false,
+    handler: (_req, res) => {
+      res.status(429).json({ code: "RATE_LIMITED" });
+    },
+  });
   const publicOrigin = new URL(access.publicOrigin);
   let attempts = 0,
     window = now(),
@@ -133,8 +148,9 @@ export function createOwnerSessions(options: {
   }
   return {
     authorize,
+    entryLimit,
     install(app: Express) {
-      app.get("/api/v1/auth/session", (req, res) => {
+      app.get("/api/v1/auth/session", entryLimit, (req, res) => {
         const s = authorize(req, res);
         if (s) res.json({ role: s.role, source: s.source });
       });
@@ -146,6 +162,7 @@ export function createOwnerSessions(options: {
       });
       app.post(
         "/api/v1/auth/login",
+        entryLimit,
         (req, res, next) => {
           if (!transport(req)) {
             deny(res);
@@ -215,12 +232,10 @@ export function createOwnerSessions(options: {
           } finally {
             req.body.passphrase = "";
             verifying = false;
-            let launches = 0,
-              launchWindow = now();
           }
         },
       );
-      app.post("/api/v1/auth/logout", (req, res) => {
+      app.post("/api/v1/auth/logout", entryLimit, (req, res) => {
         if (!transport(req)) {
           deny(res);
           return;
@@ -239,6 +254,7 @@ export function createOwnerSessions(options: {
       });
       app.post(
         "/api/v1/canvas/launch",
+        entryLimit,
         (req, res, next) => {
           if (now() - launchWindow >= 60000) {
             launches = 0;
@@ -273,6 +289,7 @@ export function createOwnerSessions(options: {
               return;
             }
             if (
+              req.get("origin") !== c.canvasOrigin ||
               !req.is("application/x-www-form-urlencoded") ||
               typeof req.body !== "string"
             ) {
@@ -320,6 +337,7 @@ export function createOwnerSessions(options: {
     },
     close() {
       sessions.clear();
+      entryStore.shutdown();
     },
   };
 }

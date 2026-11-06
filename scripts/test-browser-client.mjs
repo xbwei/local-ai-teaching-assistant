@@ -276,8 +276,10 @@ try {
       errors = [];
     page.on("request", (r) => requests.push(r.url()));
     page.on("pageerror", (e) => errors.push(e.message));
+    await context.route("**/api/v1/auth/session", route => route.fulfill({status:200,contentType:"application/json",body: name === "phone" ? "not-json" : JSON.stringify({role:"unexpected-role",source:"local"})}));
     await page.goto(f.origin);
     await page.locator('[name="role"]').selectOption("admin");
+    await context.unroute("**/api/v1/auth/session");
     const {testPassphrase}=await import("../apps/api/test/owner-fixture.mjs");
     await page.locator('[name="passphrase"]').fill(testPassphrase);
     await page.getByRole("button",{name:"Sign in",exact:true}).click();

@@ -4,7 +4,7 @@ This early-adopter reference connects **one Owner, one Canvas course and one Ins
 
 ## 1. Install and initialize standalone access
 
-Complete [Getting started](GETTING-STARTED.md), including the pinned Node/npm installation, build, operator configuration, models and loopback HTTPS edge. No Canvas configuration, API token, OpenAI key or cloud speech service is needed for standalone use.
+Complete [Getting started](GETTING-STARTED.md), including the pinned Node/npm installation, build, operator configuration, models and loopback HTTPS edge. No Canvas configuration, API token, OpenAI key or cloud speech service is needed for standalone use. Credential/configuration checks require macOS/Linux POSIX ownership; Windows is unsupported and fails closed.
 
 Stop LAITA before credential maintenance. In its checkout, load the same operator configuration/runtime that you will use to start the API:
 
@@ -13,7 +13,7 @@ export APP_CONFIG_JSON="$(cat "$HOME/.local/share/laita/config/application.json"
 npm run owner:setup
 ```
 
-Type and repeat one Owner passphrase in the Terminal's hidden prompts. Use at least 15 characters (maximum 1024 UTF-8 bytes), preferably a unique password-manager-generated passphrase. Input is not echoed, accepted from redirected stdin, passed as a command argument or read from a password environment variable. There is no built-in usable password. SQLite stores only a random 128-bit salt, a 256-bit scrypt verifier and a random credential revision. The fixed scrypt parameters are N=131072, r=8, p=1; the application permits one derivation at a time and 20 login attempts per minute.
+Type and repeat one Owner passphrase in the Terminal's hidden prompts. Use at least 15 characters (maximum 1024 UTF-8 bytes), preferably a unique password-manager-generated passphrase. Input is not echoed, accepted from redirected stdin, passed as a command argument or read from a password environment variable. There is no built-in usable password. SQLite stores only a random 128-bit salt, a 256-bit scrypt verifier and a random credential revision. The fixed scrypt parameters are N=131072, r=8, p=1; the application permits one derivation at a time and 20 login attempts per minute. A pinned Express rate-limit middleware additionally bounds the authentication entry and control routes to a shared 600 requests/minute using one constant Owner key, without collecting IP/person identities.
 
 Start LAITA and its HTTPS edge as documented. Open `https://localhost:3443`, choose Admin, Teacher or Student and enter the same Owner passphrase. Sign out to change role. Simultaneous roles require separate browser profiles: a cookie is shared by tabs in one profile. Never give this passphrase to students or other instructors. Re-running `owner:setup` replaces the credential and invalidates existing role sessions without deleting History.
 

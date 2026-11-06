@@ -20,7 +20,10 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
-import { migrate } from "../../packages/persistence/dist/migrations.js";
+import {
+  migrate,
+  migrations,
+} from "../../packages/persistence/dist/migrations.js";
 
 const helper = path.resolve("ops/macos/sqlite-rollback.mjs");
 const ledgerSql =
@@ -89,19 +92,19 @@ function migrateToCurrent(file) {
   }
 }
 
-test("v1 snapshot restores after v4 migration while preserving failed-upgrade state", (t) => {
+test("v1 snapshot restores after v5 migration while preserving failed-upgrade state", (t) => {
   const { database, backup } = fixture(t);
   createV1(database);
   assert.equal(run("snapshot", database, backup).status, 0);
   const artifacts = snapshotPaths(backup);
   assert.equal(schemaVersion(artifacts.snapshot), 1);
   migrateToCurrent(database);
-  assert.equal(schemaVersion(database), 4);
+  assert.equal(schemaVersion(database), 5);
 
   const restored = run("restore", database, backup);
   assert.equal(restored.status, 0, restored.stderr);
   assert.equal(schemaVersion(database), 1);
-  assert.equal(schemaVersion(artifacts.recovery), 4);
+  assert.equal(schemaVersion(artifacts.recovery), 5);
   const recovery = new DatabaseSync(artifacts.recovery, { readOnly: true });
   assert.equal(
     recovery.prepare("SELECT count(*) AS count FROM policy_versions").get()
@@ -242,7 +245,7 @@ test("partial snapshot and restore never replace the live database", (t) => {
       0,
     );
     const artifacts = snapshotPaths(backup);
-    assert.equal(schemaVersion(database), 4);
+    assert.equal(schemaVersion(database), 5);
     assert.equal(schemaVersion(artifacts.snapshot), 1);
     assert.equal(existsSync(artifacts.recovery), false);
   }
@@ -258,9 +261,9 @@ test("partial snapshot and restore never replace the live database", (t) => {
       0,
     );
     const artifacts = snapshotPaths(backup);
-    assert.equal(schemaVersion(database), 4);
+    assert.equal(schemaVersion(database), 5);
     assert.equal(schemaVersion(artifacts.snapshot), 1);
-    assert.equal(schemaVersion(artifacts.recovery), 4);
+    assert.equal(schemaVersion(artifacts.recovery), 5);
   }
 });
 
@@ -270,12 +273,54 @@ test("same-schema rollback preserves both copies and successful promotion retain
   migrateToCurrent(database);
   assert.equal(run("snapshot", database, backup).status, 0);
   const artifacts = snapshotPaths(backup);
-  assert.equal(schemaVersion(database), 4);
-  assert.equal(schemaVersion(artifacts.snapshot), 4);
+  assert.equal(schemaVersion(database), 5);
+  assert.equal(schemaVersion(artifacts.snapshot), 5);
   assert.equal(existsSync(artifacts.recovery), false);
 
   assert.equal(run("restore", database, backup).status, 0);
+  assert.equal(schemaVersion(database), 5);
+  assert.equal(schemaVersion(artifacts.snapshot), 5);
+  assert.equal(schemaVersion(artifacts.recovery), 5);
+});
+
+test("pre-v5 History backup restores after v5 while newer History remains in the recovery copy", (t) => {
+  const { database, backup } = fixture(t);
+  const db = new DatabaseSync(database);
+  for (const migration of migrations.slice(0, 4)) {
+    db.exec(migration.sql);
+    db.prepare("INSERT INTO schema_migrations VALUES (?,?)").run(
+      migration.version,
+      createHash("sha256").update(migration.sql).digest("hex"),
+    );
+    db.exec(`PRAGMA user_version=${migration.version}`);
+  }
+  db.exec(
+    "INSERT INTO history_conversations(id,created) VALUES ('synthetic-legacy','2026-01-01'); INSERT INTO history_turns(id,conversation,created,input_type,text,outcome,recording) VALUES ('synthetic-old-turn','synthetic-legacy','2026-01-01','TYPED','Synthetic pre-v5 History','SUCCESS','RECORDED')",
+  );
+  db.close();
+  chmodSync(database, 0o600);
+  assert.equal(run("snapshot", database, backup).status, 0);
+  migrateToCurrent(database);
+  assert.equal(schemaVersion(database), 5);
+  const newer = new DatabaseSync(database);
+  newer.exec(
+    "INSERT INTO history_turns(id,conversation,created,input_type,text,outcome,recording) VALUES ('synthetic-new-turn','synthetic-legacy','2026-01-02','TYPED','Synthetic post-backup History','SUCCESS','RECORDED')",
+  );
+  newer.close();
+  assert.equal(run("restore", database, backup).status, 0);
   assert.equal(schemaVersion(database), 4);
-  assert.equal(schemaVersion(artifacts.snapshot), 4);
-  assert.equal(schemaVersion(artifacts.recovery), 4);
+  const restored = new DatabaseSync(database, { readOnly: true });
+  assert.equal(
+    restored.prepare("SELECT count(*) AS n FROM history_turns").get().n,
+    1,
+  );
+  restored.close();
+  const artifacts = snapshotPaths(backup);
+  assert.equal(schemaVersion(artifacts.recovery), 5);
+  const preserved = new DatabaseSync(artifacts.recovery, { readOnly: true });
+  assert.equal(
+    preserved.prepare("SELECT count(*) AS n FROM history_turns").get().n,
+    2,
+  );
+  preserved.close();
 });

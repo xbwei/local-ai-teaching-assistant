@@ -653,3 +653,70 @@ test("role switch revokes the previous browser session and expiry/revocation clo
     401,
   );
 });
+
+test("Teacher local and Canvas sessions can read instructor capabilities while Student and Admin controls remain isolated", async (t) => {
+  const f = await fixture({
+    autoLogin: false,
+    canvas: () => canvas,
+    authNow: () => now,
+  });
+  t.after(() => f.close());
+  await f.login("teacher");
+  const local = f.cookie();
+  const launched = await launch(f);
+  assert.equal(launched.status, 303);
+  for (const c of [local, cookie(launched)]) {
+    assert.equal(
+      (
+        await f.request("/api/instructor/capabilities", {
+          headers: { cookie: c },
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await f.request("/api/admin/access", { headers: { cookie: c } })).status,
+      403,
+    );
+    assert.equal(
+      (
+        await f.request("/api/admin/provider-policy", {
+          headers: { cookie: c },
+        })
+      ).status,
+      403,
+    );
+  }
+  await f.login("student");
+  assert.equal((await f.request("/api/instructor/capabilities")).status, 403);
+});
+
+test("authorization status/logout entry has a shared finite rate budget", async (t) => {
+  const f = await fixture({ autoLogin: false });
+  t.after(() => f.close());
+  for (let i = 0; i < 600; i++)
+    assert.equal((await f.request("/api/v1/auth/session")).status, 401);
+  assert.equal((await f.request("/api/v1/auth/session")).status, 429);
+  assert.equal(
+    (await f.request("/api/v1/auth/logout", { method: "POST" })).status,
+    429,
+  );
+});
+
+test("Canvas Origin is rechecked against the final configuration snapshot after body parsing", async (t) => {
+  let reads = 0;
+  const f = await fixture({
+    autoLogin: false,
+    authNow: () => now,
+    canvas: () =>
+      ++reads <= 2
+        ? canvas
+        : { ...canvas, canvasOrigin: "https://changed.example.test" },
+  });
+  t.after(() => f.close());
+  const response = await launch(f, {
+    custom_canvas_api_domain: "changed.example.test",
+  });
+  assert.equal(response.status, 403);
+  assert.equal(response.headers.get("set-cookie"), null);
+});
