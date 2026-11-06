@@ -31,7 +31,7 @@ test("public gate rejects runtime/private paths and private identifiers while pe
   assert.ok(
     publicBoundaryViolations(
       "AGENTS.md",
-      Buffer.from("https://github.com/example/synthetic-repo/issues/1"),
+      Buffer.from("https://github.com/example/synthetic-repo/" + "issues/1"),
     ).includes("external issue/handoff reference"),
   );
   assert.deepEqual(
