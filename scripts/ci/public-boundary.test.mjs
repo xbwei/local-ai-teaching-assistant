@@ -27,7 +27,10 @@ test("public gate rejects runtime/private paths and private identifiers while pe
   ])
     assert.ok(publicBoundaryViolations("example.ts", Buffer.from(text)).length);
   assert.deepEqual(
-    publicBoundaryViolations("AGENTS.md", Buffer.from("public-safe instructions")),
+    publicBoundaryViolations(
+      "AGENTS.md",
+      Buffer.from("public-safe instructions"),
+    ),
     [],
   );
   assert.deepEqual(
