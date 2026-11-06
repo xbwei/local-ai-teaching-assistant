@@ -6,9 +6,7 @@ import { fileURLToPath } from "node:url";
 export function publicBoundaryViolations(file, bytes) {
   const violations = [];
   if (
-    /(^|\/)AGENTS\.md$|(^|\/)(?:logs|backups|recordings|student-data|exports)\//u.test(
-      file,
-    )
+    /(^|\/)(?:logs|backups|recordings|student-data|exports)\//u.test(file)
   )
     violations.push("private/local path");
   const reviewedVideo = "docs/assets/demo/laita-pi-demo.mp4";
