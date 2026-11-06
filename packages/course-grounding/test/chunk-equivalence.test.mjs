@@ -17,7 +17,7 @@ const expected = {
     "b3fcbc31520be786b762ccc21f54f6723bc857adffffac6db92e049e2a778cbd",
   manyShortParagraphs:
     "84fadde135a49f67659158631238750f5741c5a4c1f84b1366d73a5733b8897d",
-  nearCourseLimit:
+  nearHistoricalCourseLimit:
     "f08a88353ca9e14600417b70fd6f17cdc4396319caf17acf4b9205821ba79f64",
 };
 
@@ -73,7 +73,7 @@ const fixture = {
         ).join("\n\n"),
     ],
   ],
-  nearCourseLimit: [
+  nearHistoricalCourseLimit: [
     [
       "README.md",
       fill(
@@ -122,8 +122,8 @@ for (const [name, files] of Object.entries(fixture)) {
         ([, text]) => Buffer.byteLength(text) <= courseLimits.maxFileBytes,
       ),
     );
-    if (name === "nearCourseLimit")
-      assert.ok(totalBytes > courseLimits.maxCourseBytes * 0.98);
+    if (name === "nearHistoricalCourseLimit")
+      assert.ok(totalBytes > 768 * 1024 * 0.98);
     const chunks = files.flatMap(([filePath, text]) =>
       chunksFor(filePath, text),
     );

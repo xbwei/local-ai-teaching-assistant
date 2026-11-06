@@ -165,6 +165,134 @@ async function refreshed(t, overrides, options) {
   };
 }
 
+// Keep the regression thresholds independent of the implementation constant.
+function capacityFiles(course, totalBytes) {
+  const files = {};
+  let remaining =
+    totalBytes -
+    Object.values(baseFiles[course]).reduce(
+      (sum, content) => sum + Buffer.byteLength(content),
+      0,
+    );
+  for (let module = 1; remaining > 0; module++) {
+    const size = Math.min(192 * 1024, remaining);
+    files[`docs/modules/module-${module}/capacity.md`] = "x".repeat(size);
+    remaining -= size;
+  }
+  const allFiles = { ...baseFiles[course], ...files };
+  assert.ok(Object.keys(allFiles).length <= 32);
+  assert.ok(
+    Object.values(allFiles).every(
+      (text) => Buffer.byteLength(text) <= 192 * 1024,
+    ),
+  );
+  assert.equal(
+    Object.values(allFiles).reduce(
+      (sum, text) => sum + Buffer.byteLength(text),
+      0,
+    ),
+    totalBytes,
+  );
+  return files;
+}
+
+for (const totalBytes of [786_433, 1_048_576]) {
+  test(`public snapshots accept ${totalBytes} bytes and remain readable`, async (t) => {
+    const overrides = Object.fromEntries(
+      ["IA340", "IA342"].map((course) => [
+        course,
+        capacityFiles(course, totalBytes),
+      ]),
+    );
+    const { root, result, grounder } = await refreshed(t, overrides);
+    assert.equal(result.ok, true);
+    for (const course of ["IA340", "IA342"]) {
+      assert.equal(result.courses[course].status, "SUCCESS");
+      const manifest = JSON.parse(
+        readFileSync(
+          path.join(
+            root,
+            course,
+            "snapshots",
+            commits[course],
+            "manifest.json",
+          ),
+          "utf8",
+        ),
+      );
+      assert.equal(
+        manifest.files.reduce((sum, file) => sum + file.bytes, 0),
+        totalBytes,
+      );
+      const grounded = await grounder.ground(
+        `What must students submit for ${course} Lab 5?`,
+        new AbortController().signal,
+      );
+      assert.equal(grounded.status, "FOUND");
+      assert.equal(grounded.snapshot, commits[course]);
+      assert.ok(grounded.sources.length <= 3);
+      assert.ok(
+        grounded.sources.reduce(
+          (sum, source) => sum + Buffer.byteLength(source.excerpt),
+          0,
+        ) <= 2_700,
+      );
+    }
+  });
+}
+
+test("one byte above 1 MiB fails closed and preserves prior snapshots and pointers", async (t) => {
+  const { root } = await refreshed(t);
+  const before = new Map();
+  for (const course of ["IA340", "IA342"]) {
+    const pointer = path.join(root, course, "current.json");
+    const snapshot = path.join(root, course, "snapshots", commits[course]);
+    before.set(pointer, readFileSync(pointer));
+    before.set(
+      path.join(snapshot, "manifest.json"),
+      readFileSync(path.join(snapshot, "manifest.json")),
+    );
+    for (const file of Object.keys(baseFiles[course])) {
+      const target = path.join(snapshot, "files", file);
+      before.set(target, readFileSync(target));
+    }
+  }
+  const changedCommits = { IA340: "c".repeat(40), IA342: "d".repeat(40) };
+  const api = apiFixture(
+    Object.fromEntries(
+      ["IA340", "IA342"].map((course) => [
+        course,
+        capacityFiles(course, 1_048_577),
+      ]),
+    ),
+    { commits: changedCommits },
+  );
+  const failed = await refreshCourseSources(root, {
+    fetcher: api.fetcher,
+    now: () => new Date("2026-09-22T12:00:00.000Z"),
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(
+    api.calls(),
+    6,
+    "oversized trees must be rejected before blob reads",
+  );
+  for (const [file, bytes] of before)
+    assert.deepEqual(readFileSync(file), bytes);
+  const grounder = createCourseGrounder(root, { fetcher: api.fetcher });
+  for (const course of ["IA340", "IA342"]) {
+    assert.equal(failed.courses[course].status, "FAILED");
+    assert.equal(
+      existsSync(path.join(root, course, "snapshots", changedCommits[course])),
+      false,
+    );
+    assert.deepEqual(
+      await grounder.ground(`${course} Lab 5`, new AbortController().signal),
+      { status: "UNAVAILABLE", course },
+    );
+  }
+});
+
 test("fixed public snapshots support representative English and Chinese lookup with inspectable bounds", async (t) => {
   const { result, grounder } = await refreshed(t);
   assert.equal(result.ok, true);
