@@ -1,4 +1,4 @@
-# Optional Canvas course App — v0.2.0 candidate
+# Optional Canvas course App — v0.2.0
 
 This early-adopter reference connects **one Owner, one Canvas course and one Instructor identity** to the existing local Teacher role. Admin, Teacher and Student are three views operated by that same Owner, not three real people. Canvas is an authentication/context entry point into the same API, chat, grounding, SQLite and History. It does not fetch Canvas content or provision accounts or memberships.
 
@@ -17,12 +17,12 @@ Type and repeat one Owner passphrase in the Terminal's hidden prompts. Use at le
 
 Start LAITA and its HTTPS edge as documented. Open `https://localhost:3443`, choose Admin, Teacher or Student and enter the same Owner passphrase. Sign out to change role. Simultaneous roles require separate browser profiles: a cookie is shared by tabs in one profile. Never give this passphrase to students or other instructors. Re-running `owner:setup` replaces the credential and invalidates existing role sessions without deleting History.
 
-| Entry | Authority and History |
-|---|---|
-| Standalone Admin | Local administrative control APIs and all Owner History, including pre-v0.2 records |
-| Standalone Teacher | Chat and Teacher History, including this Owner's Canvas contexts; cannot use Admin control APIs |
-| Standalone Student | Chat and Student History/feedback; cannot review records as Owner or use Admin control APIs |
-| Canvas Teacher | Same Teacher identity, with History restricted to the configured Canvas origin/course/identity context; cannot use Admin control APIs |
+| Entry              | Authority and History                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Standalone Admin   | Local administrative control APIs and all Owner History, including pre-v0.2 records                                                   |
+| Standalone Teacher | Chat and Teacher History, including this Owner's Canvas contexts; cannot use Admin control APIs                                       |
+| Standalone Student | Chat and Student History/feedback; cannot review records as Owner or use Admin control APIs                                           |
+| Canvas Teacher     | Same Teacher identity, with History restricted to the configured Canvas origin/course/identity context; cannot use Admin control APIs |
 
 Sessions use an opaque, random, Secure/HttpOnly/SameSite=Lax cookie with an eight-hour maximum lifetime. No passphrase or bearer is saved in browser storage. Server-side browser sessions are transient; API restart signs them out. Conversation references are bound to both the authenticated session and each page's random client reference. Copying a conversation reference into a different role/session does not transfer access. The existing one-operation BUSY/no-queue limit remains global.
 
@@ -30,11 +30,11 @@ Sessions use an opaque, random, Secure/HttpOnly/SameSite=Lax cookie with an eigh
 
 Your Canvas permissions must allow **course-level external Apps installed with Paste XML and a consumer key/shared secret**. Ask your Canvas administrator about availability if this UI is disabled. This implementation does not support institution-wide registration or LTI 1.3.
 
-The Owner's browser must reach both Canvas and the configured LAITA HTTPS origin. For an instructor working on the same Mac, the existing trusted `https://localhost:3443` entry can be used; the browser posts the launch form to localhost. Canvas servers do not need to call the LAITA API. Browser private-network/loopback policies or institution policy may block this. Confirm on your own authorized setup. The supplied Caddyfile stays loopback-only. A remote browser requires a separately configured, independently protected Owner entry with the exact public origin and fixed forwarding headers; it is outside this reference setup. Do not open the loopback API or expose this candidate as a hosted service.
+The Owner's browser must reach both Canvas and the configured LAITA HTTPS origin. For an instructor working on the same Mac, the existing trusted `https://localhost:3443` entry can be used; the browser posts the launch form to localhost. Canvas servers do not need to call the LAITA API. Browser private-network/loopback policies or institution policy may block this. Confirm on your own authorized setup. The supplied Caddyfile stays loopback-only. A remote browser requires a separately configured, independently protected Owner entry with the exact public origin and fixed forwarding headers; it is outside this reference setup. Do not open the loopback API or expose this reference as a hosted service.
 
-Identify your own numeric Canvas **course ID** and **user ID** using your authorized Canvas UI/course profile or your Canvas administrator. The LTI `context_id` and opaque `user_id` are not substitutes for these numeric Canvas values. No Canvas REST API or API token is used. Generic examples are `https://canvas.example.test`, course `42001`, user `73001`; these are synthetic and will not connect to a service.
+Identify your own numeric Canvas **course ID** and **user ID** using your authorized Canvas UI/course profile or your Canvas administrator. The LTI `context_id` and opaque `user_id` are not substitutes for these numeric Canvas values. No Canvas REST API or API token is used. There is no roster, grade, submission or Canvas course-content ingestion. Generic examples are `https://canvas.example.test`, course `42001`, user `73001`; these are synthetic and will not connect to a service.
 
-Generate a new random consumer key (at least 16 characters) and shared secret (at least 32 random characters, ideally 256 bits) in your password manager. Store them privately there for transfer into the Canvas App settings and the next hidden Terminal prompts. Neither is a Canvas API token. Do not use institutional login credentials. Do not put secrets into shell commands/history, Git, issue reports, screenshots, application JSON or browser local/session storage.
+Generate a new random consumer key (at least 16 characters) and shared secret (at least 32 random characters, ideally 256 bits) in your password manager. Store them privately there for transfer into the Canvas App settings and the next hidden Terminal prompts. These are launch credentials, not a Canvas password or Canvas REST API token. Do not use institutional login credentials. Do not put secrets into shell commands/history, Git, issue reports, screenshots, application JSON or browser local/session storage.
 
 ## 3. Save one private local configuration
 
@@ -52,7 +52,7 @@ The hidden prompts request Canvas HTTPS origin (origin only, no trailing slash/p
 
 Start the existing API with **both** `APP_CONFIG_JSON` and `LAITA_CANVAS_CONFIG_FILE` exported in its process environment. The optional file is revalidated on launch and Canvas-session access. Absent, unreadable, non-private, malformed or disabled configuration closes Canvas access while standalone remains usable. Do not place Canvas secrets in `APP_CONFIG_JSON`.
 
-The existing macOS LaunchAgent does not automatically inherit shell exports or configure Canvas. This candidate's Canvas instructions use the foreground API. Automated Canvas environment injection into that lifecycle is not included; do not assume shell exports configure a running service. Standalone credential access works with the existing lifecycle and its configured runtime.
+The existing macOS LaunchAgent does not automatically inherit shell exports or configure Canvas. The Canvas instructions use the foreground API. Automated Canvas environment injection into that lifecycle is not included; do not assume shell exports configure a running service. Standalone credential access works with the existing lifecycle and its configured runtime.
 
 ## 4. Install the course App with Paste XML
 
@@ -88,18 +88,18 @@ Schema v5 adds the singleton verifier, bounded nonce table and role/context colu
 
 Public failure responses deliberately omit submitted identifiers and signatures. Diagnose locally; share only synthetic reproductions, error codes and the reviewed revision.
 
-| Symptom | Local checks |
-|---|---|
-| `403 FORBIDDEN`, suspected invalid signature | Consumer key/shared secret must match the App exactly; compare privately in the password manager. Check canonical HTTPS public origin, port and launch path, no redirect/rewrite/query string, and the signed Canvas substitutions in the generated XML. Do not log form bodies or signatures. |
-| Wrong Canvas user | Launch from the configured Owner's Canvas login, with the exact numeric user ID in local setup; masquerading/testing as another participant is not supported. No automatic admission occurs. |
-| Wrong course | Install/launch the App from the one configured numeric course, not a copied App in another course. |
-| Wrong role | Course launch must carry `Instructor` or `urn:lti:role:ims/lis/Instructor`. Student, TA, Designer or platform Administrator alone is insufficient. |
-| Stale/future timestamp | Synchronize the LAITA host and Canvas clocks. The window is ±300 seconds; do not enlarge it to mask clock errors. |
-| Replayed launch / reloading POST | Launch afresh from Canvas for a new nonce. Do not resubmit a captured form or clear the nonce table. Nonces survive API restarts until the freshness window ends. |
-| `503 SERVICE_UNAVAILABLE` | Initialize the local Owner credential. Check the API process's optional config path, private parent/file permissions (0700/0600), ownership, JSON schema, enabled state and secret lengths. Missing/disabled config does not fall back to unsigned access. |
-| `401 UNAUTHENTICATED` after prior success | Session expired, API restarted, credential/config rotated/disabled, or another tab changed role. Re-launch from Canvas or sign in standalone. |
-| `429 RATE_LIMITED` | Wait a minute. Login has 20 attempts/minute and one outstanding password derivation; Canvas has 120 launch attempts/minute. Use an independently protected Owner entry. |
-| Empty/denied History | Check current role and Canvas context. Student/Teacher cannot read another role's records; Canvas sees only its configured context. Admin can inspect older retained records. |
-| No new tab / certificate / browser private-network block | Trust only your own local HTTPS CA, confirm new-window App configuration and browser/institution policy. Use standalone while resolving the environment; never disable TLS, Origin checks or framing/cookie protections. |
+| Symptom                                                  | Local checks                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `403 FORBIDDEN`, suspected invalid signature             | Consumer key/shared secret must match the App exactly; compare privately in the password manager. Check canonical HTTPS public origin, port and launch path, no redirect/rewrite/query string, and the signed Canvas substitutions in the generated XML. Do not log form bodies or signatures. |
+| Wrong Canvas user                                        | Launch from the configured Owner's Canvas login, with the exact numeric user ID in local setup; masquerading/testing as another participant is not supported. No automatic admission occurs.                                                                                                   |
+| Wrong course                                             | Install/launch the App from the one configured numeric course, not a copied App in another course.                                                                                                                                                                                             |
+| Wrong role                                               | Course launch must carry `Instructor` or `urn:lti:role:ims/lis/Instructor`. Student, TA, Designer or platform Administrator alone is insufficient.                                                                                                                                             |
+| Stale/future timestamp                                   | Synchronize the LAITA host and Canvas clocks. The window is ±300 seconds; do not enlarge it to mask clock errors.                                                                                                                                                                              |
+| Replayed launch / reloading POST                         | Launch afresh from Canvas for a new nonce. Do not resubmit a captured form or clear the nonce table. Nonces survive API restarts until the freshness window ends.                                                                                                                              |
+| `503 SERVICE_UNAVAILABLE`                                | Initialize the local Owner credential. Check the API process's optional config path, private parent/file permissions (0700/0600), ownership, JSON schema, enabled state and secret lengths. Missing/disabled config does not fall back to unsigned access.                                     |
+| `401 UNAUTHENTICATED` after prior success                | Session expired, API restarted, credential/config rotated/disabled, or another tab changed role. Re-launch from Canvas or sign in standalone.                                                                                                                                                  |
+| `429 RATE_LIMITED`                                       | Wait a minute. Login has 20 attempts/minute and one outstanding password derivation; Canvas has 120 launch attempts/minute. Use an independently protected Owner entry.                                                                                                                        |
+| Empty/denied History                                     | Check current role and Canvas context. Student/Teacher cannot read another role's records; Canvas sees only its configured context. Admin can inspect older retained records.                                                                                                                  |
+| No new tab / certificate / browser private-network block | Trust only your own local HTTPS CA, confirm new-window App configuration and browser/institution policy. Use standalone while resolving the environment; never disable TLS, Origin checks or framing/cookie protections.                                                                       |
 
-Deterministic tests use generic/synthetic state. Real Canvas installation/substitution/origin/new-window behavior and real browser-to-loopback/private-network behavior require Owner checks and are **NOT_RUN** unless explicitly recorded for this Public revision. No new screenshots/GIFs are needed for this change; do not publish captures from a private deployment.
+Deterministic tests use generic/synthetic state. Real Canvas installation/substitution/origin/new-window behavior and real browser-to-loopback/private-network behavior require Owner checks and are **NOT_RUN** unless explicitly recorded for this Public revision. The Owner-authorized sandbox demo is documented in [media provenance](SCREENSHOTS.md); it does not establish interoperability for every environment. Do not publish captures from a private deployment.

@@ -27,6 +27,8 @@ export function publicBoundaryViolations(file, bytes) {
     ].map((name) => `docs/assets/screenshots/${name}`),
   );
   reviewedImages.add("docs/assets/demo/laita-demo.gif");
+  // Owner-authorized sandbox derivative; provenance/privacy: docs/SCREENSHOTS.md.
+  reviewedImages.add("docs/assets/demo/laita-v020-canvas.gif");
   if (isImage && !reviewedImages.has(file))
     violations.push("unreviewed image location");
   if (!isImage && file !== reviewedVideo) {
