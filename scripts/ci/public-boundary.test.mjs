@@ -58,6 +58,7 @@ test("public gate rejects runtime/private paths and private identifiers while pe
   for (const file of [
     "docs/assets/screenshots/laita-history-review.png",
     "docs/assets/demo/laita-demo.gif",
+    "docs/assets/demo/laita-v020-canvas.gif",
     "docs/assets/demo/laita-pi-demo.mp4",
   ])
     assert.deepEqual(publicBoundaryViolations(file, Buffer.from([0, 1])), []);

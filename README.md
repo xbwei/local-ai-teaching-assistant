@@ -4,38 +4,48 @@
 
 A teaching assistant that runs locally, keeps a conversation going, answers questions using public course evidence, and lets one operator review saved work. LAITA is an independent faculty-led project, not an official James Madison University service or product.
 
-**LAITA v0.2.0 candidate** — optional single-operator Canvas course entry and local role credentials; no release or deployment is implied. See [validation status and limitations](docs/VALIDATION.md).
+**LAITA v0.2.0** · [Release notes](docs/RELEASE-NOTES-v0.2.0.md)
+
+Public LAITA is an **individual / self-managed** installation for individual instructors and technical early adopters. You manage your own machine, local models, runtime, Owner credential and optional integrations. Core standalone use needs no school-provided server, central SSO or institution-wide provisioning. A future Enterprise offering is a separate future product/repository direction; it is not available today.
 
 ## See it in action
 
-![Real course Q&A demo from an earlier MVP recording](docs/assets/demo/laita-demo.gif)
+![LAITA v0.2.0 sandbox Canvas course launch and demo](docs/assets/demo/laita-v020-canvas.gif)
 
-A silent, 12-second excerpt at normal playback speed from a real earlier MVP recording. The original already shortened a waiting period. Its interface and branding differ from LAITA Public V1; no product text or UI state was fabricated. [Watch/download the full 28-second MP4](docs/assets/demo/laita-pi-demo.mp4) · [Media provenance and privacy review](docs/SCREENSHOTS.md).
+Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teacher data.** [Media provenance and privacy review](docs/SCREENSHOTS.md).
 
 ## What you can do
 
 - **Chat locally:** `gemma4:12b-mlx` by default, with an explicit `llama3.1:8b` alternative. Continue across turns, cancel a response, or start a new conversation.
 - **Choose your provider:** Local / optional OpenAI / Compare, with visible provider/model attribution and no silent fallback. OpenAI uses your own key through server-side macOS Keychain.
-- **Ask course-grounded questions:** demo-course public sources, bounded evidence and visible citations. Insufficient evidence stops the request before model invocation.
+- **Ask course-grounded questions:** supported public course sources, bounded evidence and visible source provenance. Unavailable, invalid or insufficient evidence fails closed before model invocation.
 - **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review.
 - **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.
+- **Use local roles:** Owner Admin / Teacher / Student views with scoped History, all operated by the same Owner.
+- **Launch from Canvas optionally:** enter the local Teacher view from one configured course; standalone use remains independent of Canvas.
 
-![Local chat interface from an earlier recording](docs/assets/screenshots/laita-main-chat.png)
+## Optional Canvas course launch
 
-This real capture also shows an earlier interface. Hardware and dashboard images are in the deployment and History guides.
+Canvas is optional. Installation requires permission in your own Canvas environment to add a **course-level External App / Paste XML**; actual account and institution policies still apply. You provide the Canvas HTTPS origin, numeric course ID, numeric Canvas Owner user ID, generated consumer key, generated shared secret and exact LAITA HTTPS origin.
+
+The consumer key/shared secret are launch credentials, not your Canvas password or a Canvas REST API token. This launch requires **no Canvas REST API token** and fetches no roster, grades, submissions or Canvas course content. Follow the full [Canvas installation guide](docs/CANVAS.md).
+
+## Public course sources
+
+Course grounding is separate from Canvas credentials. It uses explicitly supported public GitHub repositories (currently the two demo-course mappings), read-only public GitHub APIs and a **1 MiB per-course snapshot budget**. No GitHub token or GitHub account is needed to run standalone LAITA; neither a GitHub token nor a Canvas API token is a universal prerequisite. Anonymous API rate limits may apply. Unsupported repositories are not accepted, and unavailable, invalid or insufficient evidence fails closed. [Supported sources and limits](docs/COURSE-GROUNDING.md).
 
 ## Start with Local
 
 Follow [Getting started](docs/GETTING-STARTED.md) for prerequisites, installation, configuration, model setup and the first conversation. The reference deployment uses an Apple Silicon Mac, Ollama, Node 24 and an operator-controlled HTTPS entry on loopback. OpenAI is optional.
 
-| Guide | What it covers |
-|---|---|
-| [Local roles and optional Canvas course App](docs/CANVAS.md) | Hidden Terminal credential setup, standalone roles, signed Instructor launch, removal and troubleshooting |
-| [Demo courses / Course-grounded Q&A](docs/COURSE-GROUNDING.md) | Source refresh, visible citations, evidence refusal and substituting supported public course material |
-| [OpenAI / Compare](docs/OPENAI.md) | Cloud data flow, interactive Keychain setup, enabling, missing credentials, rotation and deletion |
-| [History & Review](docs/HISTORY.md) | Retained records, feedback, operator review and access limitations |
-| [Speech and Pi client](docs/SPEECH.md) | English/Chinese reference support, local adapters and hardware acceptance |
-| [Deployment](docs/DEPLOYMENT.md) | Operator-owned macOS lifecycle, hardware photos, HTTPS and recovery |
+| Guide                                                          | What it covers                                                                                            |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [Local roles and optional Canvas course App](docs/CANVAS.md)   | Hidden Terminal credential setup, standalone roles, signed Instructor launch, removal and troubleshooting |
+| [Demo courses / Course-grounded Q&A](docs/COURSE-GROUNDING.md) | Source refresh, visible citations, evidence refusal and substituting supported public course material     |
+| [OpenAI / Compare](docs/OPENAI.md)                             | Cloud data flow, interactive Keychain setup, enabling, missing credentials, rotation and deletion         |
+| [History & Review](docs/HISTORY.md)                            | Retained records, feedback, operator review and access limitations                                        |
+| [Speech and Pi client](docs/SPEECH.md)                         | English/Chinese reference support, local adapters and hardware acceptance                                 |
+| [Deployment](docs/DEPLOYMENT.md)                               | Operator-owned macOS lifecycle, hardware photos, HTTPS and recovery                                       |
 
 ## Privacy and current limits
 

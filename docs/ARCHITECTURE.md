@@ -10,7 +10,6 @@ The local store retains text/transcripts/answers, sources, provider/model identi
 
 ## Data flow
 
-
 ```mermaid
 flowchart LR
   Browser[Operator browser] --> Edge[Operator-controlled HTTPS edge]
@@ -27,7 +26,7 @@ The browser never receives an OpenAI key. Public-source refresh requests go to G
 
 ## Optional signed Canvas entry
 
-The v0.2.0 candidate adds no application, database or authentication framework. One Owner credential (salted scrypt N=131072/r=8/p=1) initializes standalone Admin/Teacher/Student access. A bounded in-memory session map stores only token digests, role, credential revision, expiry and optional Canvas context/config fingerprint. API restart clears browser sessions; credential revision changes invalidate them. Existing input sessions bind to that authenticated session plus the transient client reference, preserving page isolation and global admission.
+The v0.2.0 release adds no application, database or authentication framework. One Owner credential (salted scrypt N=131072/r=8/p=1) initializes standalone Admin/Teacher/Student access. A bounded in-memory session map stores only token digests, role, credential revision, expiry and optional Canvas context/config fingerprint. API restart clears browser sessions; credential revision changes invalidate them. Existing input sessions bind to that authenticated session plus the transient client reference, preserving page isolation and global admission.
 
 The optional course-level LTI 1.1 form POST is authenticated using OAuth HMAC-SHA1 and the configured canonical launch URL. It requires the exact Canvas HTTP Origin, signed Canvas domain/course/user substitutions, Instructor role, consumer key, ±300-second timestamp and an atomic previously unused nonce in the same SQLite database. Only Teacher is issued. A stable origin/course/identity digest scopes Canvas History; a separate credential/config fingerprint invalidates sessions on configuration rotation/removal. No profiles, enrollment/membership tables or Canvas REST calls exist. Standalone Teacher can inspect its own Canvas records; Student remains separate and Admin can inspect all retained Owner History.
 

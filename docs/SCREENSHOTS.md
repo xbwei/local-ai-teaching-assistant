@@ -4,13 +4,13 @@ The Owner supplied seven real images through a synced folder, kept outside Git a
 
 These captures show an earlier working Local AI interface, including its original name, mascot, colors and status messages. They are not captures of the exact Public V1 build. The IA342 image shows a Local answer, not an expanded citation panel. They do not establish current answer correctness, speech accuracy or Public V1 hardware readiness. The Owner subsequently approved a History dashboard capture for the History guide; this specific public demo record is an exception to the default prohibition on real History captures. No database or other runtime record was read or imported.
 
-| Owner source filename | Public derivative | Edits |
-|---|---|---|
-| `Screenshot 2026-09-26 134032.png` | `assets/screenshots/laita-main-chat.png` | No crop, resize or text/pixel alteration; converted to metadata-free RGB PNG, 1267 × 1252. |
-| `1790082677781.jpeg` | `assets/screenshots/laita-course-grounding.png` | No crop, resize or text alteration; decoded to metadata-free RGB PNG, 1238 × 1126. |
-| `2026-09-21 18.33.52.jpg` | `assets/screenshots/laita-pi-client.jpg` | Crop `(0, 1060, 2680, 2840)` in the 3064 × 4080 source removes excess surroundings; resize to 1600 × 1063. Screen content preserved. |
-| `Screenshot 2026-10-01 224750.png` | `assets/screenshots/laita-history-review.png` | No crop, resize or UI/text/pixel alteration; metadata-free RGB PNG, 1234 × 918. Placed in History docs. |
-| `2026-09-21 18.37.19.jpg` | `assets/screenshots/laita-mac-mini.jpg` | Crop `(250, 200, 2380, 1600)` in the 3064 × 4080 source; opaque polygon covers the entire institutional asset label/barcode; resize to 1600 × 1052. |
+| Owner source filename              | Public derivative                               | Edits                                                                                                                                               |
+| ---------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Screenshot 2026-09-26 134032.png` | `assets/screenshots/laita-main-chat.png`        | No crop, resize or text/pixel alteration; converted to metadata-free RGB PNG, 1267 × 1252.                                                          |
+| `1790082677781.jpeg`               | `assets/screenshots/laita-course-grounding.png` | No crop, resize or text alteration; decoded to metadata-free RGB PNG, 1238 × 1126.                                                                  |
+| `2026-09-21 18.33.52.jpg`          | `assets/screenshots/laita-pi-client.jpg`        | Crop `(0, 1060, 2680, 2840)` in the 3064 × 4080 source removes excess surroundings; resize to 1600 × 1063. Screen content preserved.                |
+| `Screenshot 2026-10-01 224750.png` | `assets/screenshots/laita-history-review.png`   | No crop, resize or UI/text/pixel alteration; metadata-free RGB PNG, 1234 × 918. Placed in History docs.                                             |
+| `2026-09-21 18.37.19.jpg`          | `assets/screenshots/laita-mac-mini.jpg`         | Crop `(250, 200, 2380, 1600)` in the 3064 × 4080 source; opaque polygon covers the entire institutional asset label/barcode; resize to 1600 × 1052. |
 
 Crop coordinates use `(left, top, right, bottom)` in source pixels. The redaction polygon in the Mac photo uses `(1568,916), (1738,663), (1932,735), (1748,995)`. The private identifier itself is not transcribed here. EXIF, XMP, ICC profiles and inherited comments were stripped from all derivatives; only image-format encoding metadata remains. No color/style correction, generative fill, UI substitution or model text replacement was applied.
 
@@ -28,3 +28,7 @@ The Owner also supplied `pi-ta-demo-final.mp4`: a 27.8-second, 1080 × 1920 H.26
 Source review used full-sequence contact sheets, 28 full-resolution one-second samples, individual camera/UI views, local OCR and local audio review/transcription. Speech contains two general demo questions; no student names, keys, hostnames, operational paths or private identifiers were found in the reviewed video/audio. The final GIF's 72 frames were inspected at their full output resolution; the full MP4's decode/metadata, resized visual content and unchanged audio were verified. The Dashboard image was inspected at full resolution: only an Owner-approved public demo question/answer, source/model UI and its real timestamp are visible. Its decoded pixels match the original. All source files remain outside Git with unchanged hashes. No internal JSON, handoff, scripts or other files from the video directory were imported.
 
 These exact media derivatives have Owner authorization. That permission does not permit importing other real conversations, History screenshots, recordings or operational material.
+
+## v0.2.0 sandbox Canvas demo
+
+`assets/demo/laita-v020-canvas.gif` is the Owner-provided, Owner-authorized derivative for Public repository use, supplied in PR #51: a 960 × 540 animated GIF showing Canvas → LAITA launch/demo. It visibly displays **SANDBOX ONLY** and **No real student or teacher data.** No real student or teacher data, credentials, consumer key, shared secret, API token, private hostname or private operational path is present. No UI or state was fabricated. The supplied GIF is committed unchanged; the separate social-media MP4 is not included. This sandbox demonstration is not universal Canvas/browser acceptance evidence.
