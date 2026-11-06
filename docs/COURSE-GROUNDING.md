@@ -2,6 +2,8 @@
 
 V1 recognizes IA340 and IA342 and their explicit public `JMU-Data` repositories. Run `npm run course-sources:refresh -- /absolute/operator/runtime` to refresh both. The runtime must be outside every Git checkout, canonical and protected. Refresh uses only unauthenticated public GitHub APIs, verifies public repository identity, resolves `main` to a commit, bounds file counts/sizes and reads allowed Markdown. It never follows arbitrary source links or fetches private repository credentials.
 
+Each course snapshot accepts at most 32 allowed Markdown files, at most 192 KiB per file and 1 MiB (1,048,576 bytes) total. Oversized refreshes fail closed and preserve the prior snapshot files and pointer.
+
 The bounded snapshot is local. A query-triggered freshness check runs after 24 hours. A manifest/source/hash validation or network failure is visible and does not grant permission to answer from remembered course facts. Each displayed citation has the actual repository, commit, path, section and supporting excerpt. Prepared request evidence is bounded and supplied only to Local. OpenAI/Compare course requests are refused before sending excerpts.
 
 Query-triggered Local course preparation has one server-side 30-second deadline

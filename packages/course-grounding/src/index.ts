@@ -17,7 +17,7 @@ export const courseIds = ["IA340", "IA342"] as const;
 export const courseLimits = Object.freeze({
   maxFiles: 32,
   maxFileBytes: 192 * 1024,
-  maxCourseBytes: 768 * 1024,
+  maxCourseBytes: 1024 * 1024,
   maxExcerpts: 3,
   maxExcerptBytes: 900,
   maxEvidenceBytes: 2_700,
