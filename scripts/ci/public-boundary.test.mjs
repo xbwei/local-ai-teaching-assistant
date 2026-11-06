@@ -2,9 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { publicBoundaryViolations } from "./check-public-boundary.mjs";
 
-test("public gate rejects runtime/private paths and private identifiers while permitting referenced public courses", () => {
+test("public gate rejects runtime/private paths and private identifiers while permitting sanitized repository instructions and referenced public courses", () => {
   for (const file of [
-    "AGENTS.md",
     "logs/debug.txt",
     "recordings/voice.wav",
     "history.sqlite",
@@ -27,6 +26,10 @@ test("public gate rejects runtime/private paths and private identifiers while pe
     "jmu" + "-teaching-dev",
   ])
     assert.ok(publicBoundaryViolations("example.ts", Buffer.from(text)).length);
+  assert.deepEqual(
+    publicBoundaryViolations("AGENTS.md", Buffer.from("public-safe instructions")),
+    [],
+  );
   assert.deepEqual(
     publicBoundaryViolations(
       "example.ts",
