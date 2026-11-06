@@ -44,7 +44,11 @@
     "python:test": "uv run --project python --locked python -B scripts/ci/test-architecture-contracts.py",
     "python:lint": "uv run --project python --locked ruff check --config python/pyproject.toml scripts/ci/*.py",
     "python:format": "uv run --project python --locked ruff format --config python/pyproject.toml --check scripts/ci/*.py",
-    "test:reference-edge": "node --test scripts/test-reference-edge.mjs"
+    "test:reference-edge": "node --test scripts/test-reference-edge.mjs",
+    "owner:setup": "node apps/api/dist/owner-setup.js owner-setup",
+    "canvas:setup": "node apps/api/dist/owner-setup.js canvas-setup",
+    "canvas:xml": "node apps/api/dist/owner-setup.js canvas-xml",
+    "canvas:disable": "node apps/api/dist/owner-setup.js canvas-disable"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

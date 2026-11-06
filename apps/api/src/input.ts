@@ -22,6 +22,9 @@ import { classifyInput } from "@laita/safety";
 import { speechLanguage, validateWav } from "@laita/speech";
 import type { createSpeechService } from "@laita/speech";
 export interface InputPorts {
+  historyForScope?: (
+    scope: import("@laita/persistence").HistoryScope,
+  ) => import("@laita/persistence").HistoryRepository;
   history?: import("@laita/persistence").HistoryRepository;
   buildIdentity?: string;
   health?(): ProviderHealthSnapshot;
@@ -56,6 +59,7 @@ interface Session {
   >;
   media: Map<string, { capture: HistoryCapture; leg: string }>;
   owner: string;
+  historyScope?: import("@laita/persistence").HistoryScope;
   providerRef: `session-${string}`;
   jobs: Map<string, Job>;
   pending: Set<AbortController>;
@@ -66,7 +70,15 @@ const ref = () => randomBytes(32).toString("hex");
 export function installInputRoutes(
   app: Express,
   ports: InputPorts,
-  authenticate: (req: Request, res: Response) => false | { owner: string },
+  authenticate: (
+    req: Request,
+    res: Response,
+  ) =>
+    | false
+    | {
+        owner: string;
+        historyScope?: import("@laita/persistence").HistoryScope;
+      },
   limits: Readonly<{
     uploadMs: number;
   }> = inputLimits,
@@ -620,7 +632,9 @@ export function installInputRoutes(
       const capture =
         transcript?.capture ??
         createHistoryCapture(
-          ports.history,
+          s.historyScope
+            ? ports.historyForScope?.(s.historyScope)
+            : ports.history,
           s.conversation,
           "TYPED",
           safe ? v.text : null,
@@ -756,7 +770,9 @@ export function installInputRoutes(
         draft?.capture ??
         transcript?.capture ??
         createHistoryCapture(
-          ports.history,
+          s.historyScope
+            ? ports.historyForScope?.(s.historyScope)
+            : ports.history,
           s.conversation,
           "TYPED",
           safe ? v.request.input.text : null,
@@ -911,7 +927,9 @@ export function installInputRoutes(
     const capture =
       s.jobs.get(key)?.capture ??
       createHistoryCapture(
-        ports.history,
+        s.historyScope
+          ? ports.historyForScope?.(s.historyScope)
+          : ports.history,
         s.conversation,
         "VOICE",
         null,

@@ -13,8 +13,28 @@ import type {
 
 export class HistoryValidationError extends Error {}
 
+export interface HistoryScope {
+  role: "admin" | "teacher" | "student";
+  context?: string;
+}
+
 /** All SQL is fixed here; callers never receive a connection or raw query seam. */
-export function createHistoryRepository(db: DatabaseSync) {
+export function createHistoryRepository(
+  db: DatabaseSync,
+  scope?: HistoryScope,
+) {
+  const allowed = (conversation: string) => {
+    if (!scope || scope.role === "admin") return;
+    const row = db
+      .prepare("SELECT role, scope FROM history_conversations WHERE id = ?")
+      .get(conversation);
+    if (
+      !row ||
+      row.role !== scope.role ||
+      (scope.context !== undefined && row.scope !== scope.context)
+    )
+      throw new HistoryValidationError("History target unavailable");
+  };
   const transaction = (work: () => void) => {
     db.exec("BEGIN IMMEDIATE");
     try {
@@ -26,10 +46,14 @@ export function createHistoryRepository(db: DatabaseSync) {
     }
   };
   const exists = (turn: string) => {
-    if (!db.prepare("SELECT id FROM history_turns WHERE id = ?").get(turn))
-      throw new Error("History target unavailable");
+    const row = db
+      .prepare("SELECT conversation FROM history_turns WHERE id = ?")
+      .get(turn);
+    if (!row) throw new Error("History target unavailable");
+    allowed(String(row.conversation));
   };
   const binding = (conversation: string, turn: string, leg: string) => {
+    allowed(conversation);
     if (
       !db
         .prepare(
@@ -80,8 +104,14 @@ export function createHistoryRepository(db: DatabaseSync) {
       transaction(() => {
         const at = new Date().toISOString();
         db.prepare(
-          "INSERT INTO history_conversations(id, created) VALUES (?, ?) ON CONFLICT DO NOTHING",
-        ).run(value.conversation, at);
+          "INSERT INTO history_conversations(id, created, role, scope) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+        ).run(
+          value.conversation,
+          at,
+          scope?.role ?? "legacy",
+          scope?.context ?? "",
+        );
+        allowed(value.conversation);
         db.prepare(
           "INSERT INTO history_turns(id, conversation, created, input_type, text, outcome, recording, correlation) VALUES (?, ?, ?, ?, ?, 'PENDING', 'RECORDED', ?)",
         ).run(
@@ -245,6 +275,8 @@ export function createHistoryRepository(db: DatabaseSync) {
         "review" | "note" | "suspected" | "suspicionReason"
       >,
     ) {
+      if (scope?.role === "student")
+        throw new HistoryValidationError("Owner review unavailable");
       binding(conversation, turn, "");
       db.prepare(
         "UPDATE history_turns SET review = ?, note = ?, suspected = ?, suspicion_reason = ?, suspicion_source = ? WHERE id = ?",
@@ -270,6 +302,14 @@ export function createHistoryRepository(db: DatabaseSync) {
         conditions.push(sql);
         args.push(...values);
       };
+      if (scope && scope.role !== "admin") {
+        add(
+          "EXISTS (SELECT 1 FROM history_conversations c WHERE c.id = t.conversation AND c.role = ?" +
+            (scope.context === undefined ? ")" : " AND c.scope = ?)"),
+          scope.role,
+          ...(scope.context === undefined ? [] : [scope.context]),
+        );
+      }
       if (filter.search)
         add(
           "(instr(lower(coalesce(t.text, '')), lower(?)) > 0 OR EXISTS (SELECT 1 FROM history_answers a WHERE a.turn = t.id AND instr(lower(json_extract(a.document, '$.text')), lower(?)) > 0))",
@@ -348,6 +388,7 @@ export function createHistoryRepository(db: DatabaseSync) {
       };
     },
     conversation(id: string, after = 0): ConversationPage {
+      allowed(id);
       const rows = db
         .prepare(
           "SELECT * FROM history_turns WHERE conversation = ? AND ordinal > ? ORDER BY ordinal LIMIT 6",

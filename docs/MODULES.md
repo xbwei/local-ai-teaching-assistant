@@ -14,7 +14,7 @@ Eleven npm workspaces implement one single-operator application. Python is devel
 | `course-grounding` | `packages/course-grounding/` | Fixed public-course refresh, snapshot validation and bounded deterministic text retrieval | Arbitrary repositories/paths, execution, provider calls, crawler/database/daemon behavior |
 | `provider-adapters` | `packages/providers/` | Provider-neutral interface, Ollama/OpenAI adapters, exact model/provider provenance | Eligibility, retrieval, persistence, safety authority, fallback |
 | `policy-capability` | `packages/policy/` | Fail-closed capability/eligibility decisions, schedules, budgets, disable controls | Provider invocation, student-facing policy invention |
-| `interaction-store` | `packages/persistence/` | SQLite migrations/repositories, transactions, retention/deletion, local operational state | Neo4j knowledge, identity profiles, official grades |
+| `interaction-store` | `packages/persistence/` | SQLite migrations/repositories, transactions, retention/deletion, local operational state, singleton Owner verifier and launch nonces | Neo4j knowledge, participant identity profiles, official grades |
 | `safety-boundary` | `packages/safety/` | Sensitive-value, prompt-injection, assessment, output, and abuse/resource decisions | Disciplinary profiles, provider-only safety delegation |
 | `speech-media` | `packages/speech-client/` | Bounded STT/TTS adapters and temporary-media lifecycle | Permanent audio, LLM/provider routing, kiosk-only backend |
 | `operations-runtime` | `ops/` and `.github/` | CI, generic deployment/service templates, inventory, backup/rollback, environment adapters | Application business logic, real deployment identifiers/secrets |

@@ -42,6 +42,15 @@ export const migrations: readonly Migration[] = Object.freeze([
       "CREATE TABLE history_feedback (turn TEXT NOT NULL REFERENCES history_turns(id), leg TEXT NOT NULL, vote TEXT, report INTEGER NOT NULL, reason TEXT NOT NULL, updated TEXT NOT NULL, PRIMARY KEY(turn, leg)) STRICT",
     ].join(";"),
   }),
+  Object.freeze({
+    version: 5,
+    sql: [
+      "CREATE TABLE owner_credential (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), salt TEXT NOT NULL, verifier TEXT NOT NULL, revision TEXT NOT NULL) STRICT",
+      "CREATE TABLE canvas_nonces (digest TEXT PRIMARY KEY, expires INTEGER NOT NULL) STRICT",
+      "ALTER TABLE history_conversations ADD COLUMN role TEXT NOT NULL DEFAULT 'legacy' CHECK (role IN ('legacy','admin','teacher','student'))",
+      "ALTER TABLE history_conversations ADD COLUMN scope TEXT NOT NULL DEFAULT ''",
+    ].join(";"),
+  }),
 ]);
 const checksum = (sql: string) =>
   createHash("sha256").update(sql).digest("hex");
@@ -98,7 +107,9 @@ export function migrate(
               ? "policy_active,policy_history,policy_versions,schema_migrations"
               : version === 3
                 ? "policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations"
-                : "history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations")
+                : version === 4
+                  ? "history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations"
+                  : "canvas_nonces,history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,owner_credential,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations")
       )
         throw new Error();
       const rows = database

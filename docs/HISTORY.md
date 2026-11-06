@@ -6,7 +6,7 @@ The existing SQLite store retains full text questions, successful transcripts, a
 
 New conversation clears active model context, not saved history. No automatic expiry/deletion schedule or encrypted-at-rest storage is implemented. Protect your account/disk and runtime directory. Preserve the store before diagnosing capture or migration failures; do not blindly delete/recreate it to hide a problem. Raw microphone/generated audio is temporary and is not archived in the store.
 
-This is one operator's dashboard, with no separate dashboard password, per-person permissions or multi-user record isolation. A person who can access the operator entry can review its history. Never expose the reference entry as a public student/admin system.
+This is one Owner's dashboard behind local role sign-in, not a multi-person service. Admin can inspect all retained records, including pre-v0.2 History. Teacher and Student see their respective role records; Canvas Teacher sees only its configured origin/course/identity context. Student cannot write Owner review annotations. Role/session references cannot transfer access. See [role setup and Canvas boundaries](CANVAS.md). Never expose the reference entry as a public student/admin system.
 
 ## Dashboard example
 

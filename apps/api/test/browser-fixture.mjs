@@ -11,7 +11,9 @@ import path from "node:path";
 import { createApp } from "../dist/app.js";
 import { createAccessController } from "../dist/access.js";
 import { createSpeechService } from "@laita/speech";
-import { defaultConfiguration } from "@laita/runtime";
+import { defaultConfiguration, initializeRuntimePaths } from "@laita/runtime";
+import { initializePersistence } from "@laita/persistence";
+import { testCredential, testPassphrase } from "./owner-fixture.mjs";
 const sha = `sha256:${"a".repeat(64)}`;
 export function capabilities(text) {
   // Match the production distinction: absent discovery text is allowed, empty input is not.
@@ -112,6 +114,16 @@ export async function fixture(options = {}) {
     ],
     credentialRateLimit: { maxRequests: 120, windowSeconds: 60 },
   };
+  const authRoot = mkdtempSync(path.join(tmpdir(), "browser-owner-auth-"));
+  const paths = initializeRuntimePaths(authRoot);
+  if (!paths.ok) throw new Error("Synthetic runtime unavailable");
+  const persistence = options.persistence
+    ? { ok: true, value: options.persistence }
+    : initializePersistence(paths.value);
+  if (!persistence.ok) throw new Error("Synthetic store unavailable");
+  const authStore = persistence.value.ownerAuth();
+  if (options.initializeCredential !== false)
+    authStore.setCredential(await testCredential);
   let app;
   const handler = (req, res) => {
     options.observeTransport?.(req.headers);
@@ -173,15 +185,26 @@ export async function fixture(options = {}) {
       },
     },
   });
+  const history =
+    options.history === true ? persistence.value.history() : options.history;
   app = createApp({
-    ...(options.history ? { history: options.history } : {}),
+    ownerAuth: authStore,
+    historyForScope: (scope) =>
+      options.persistence
+        ? options.persistence.history(scope)
+        : options.history && options.history !== true
+          ? options.history
+          : persistence.value.history(scope),
+    ...(options.canvas ? { canvas: options.canvas } : {}),
+    ...(options.authNow ? { authNow: options.authNow } : {}),
+    ...(history ? { history } : {}),
     access: options.access ?? createAccessController(config),
     browserAccess: config,
     ...(options.now ? { browserNow: options.now } : {}),
     ...(options.webRoot ? { webRoot: options.webRoot } : {}),
     logger: { write: (v) => logs.push(v) },
     input: {
-      ...(options.history ? { history: options.history } : {}),
+      ...(history ? { history } : {}),
       localState: () => ({ selectedModel, residency: "UNLOADED" }),
       async switchLocal(model) {
         selectedModel = model;
@@ -277,14 +300,17 @@ export async function fixture(options = {}) {
     },
   });
   const origin = `${options.tls ? "https" : "http"}://${host}`;
+  let cookie;
   const request = (route, init = {}) => {
     const headers = {
+      ...(cookie ? { cookie } : {}),
       "x-forwarded-proto": "https",
       "x-forwarded-host": host,
       origin: config.publicOrigin,
       ...init.headers,
     };
-    if (!options.tls) return fetch(origin + route, { ...init, headers });
+    if (!options.tls)
+      return fetch(origin + route, { redirect: "manual", ...init, headers });
     // Isolated test certificate on this fixture's loopback server only.
     return new Promise((resolve, reject) => {
       const req = httpsRequest(
@@ -311,6 +337,19 @@ export async function fixture(options = {}) {
       req.end(init.body);
     });
   };
+  async function login(role = "admin", passphrase = testPassphrase) {
+    const response = await request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: "" },
+      body: JSON.stringify({ role, passphrase }),
+    });
+    if (response.ok) cookie = response.headers.get("set-cookie").split(";")[0];
+    return response;
+  }
+  if (options.autoLogin !== false) {
+    const response = await login();
+    if (!response.ok) throw new Error("Synthetic login failed");
+  }
   async function device() {
     const owner = randomBytes(32).toString("hex");
     return {
@@ -323,6 +362,10 @@ export async function fixture(options = {}) {
   }
   return {
     config,
+    authStore,
+    persistence: persistence.value,
+    login,
+    cookie: () => cookie,
     token,
     request,
     device,
@@ -333,9 +376,11 @@ export async function fixture(options = {}) {
     requests,
     close() {
       app.locals.closeInput();
+      if (!options.persistence) persistence.value.close();
       server.closeAllConnections();
       server.close();
       rmSync(root, { recursive: true, force: true });
+      rmSync(authRoot, { recursive: true, force: true });
     },
     app,
   };

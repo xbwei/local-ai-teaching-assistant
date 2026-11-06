@@ -1,3 +1,5 @@
+import { createOwnerSessions } from "./owner-session.ts";
+import type { CanvasConfiguration } from "./canvas.ts";
 import { installHistoryRoutes } from "./history.ts";
 import path from "node:path";
 import { createOwnerTransport } from "./browser.ts";
@@ -39,6 +41,12 @@ interface RequestContext {
   recorded: boolean;
 }
 interface AppOptions {
+  ownerAuth?: import("@laita/persistence").OwnerAuthRepository;
+  historyForScope?: (
+    scope: import("@laita/persistence").HistoryScope,
+  ) => import("@laita/persistence").HistoryRepository;
+  canvas?: () => CanvasConfiguration | undefined;
+  authNow?: () => number;
   browserAccess?: AccessConfiguration;
   browserNow?: () => number;
   webRoot?: string;
@@ -118,6 +126,21 @@ export function createApp(options: AppOptions = {}) {
             : response.statusCode === 503
               ? "SERVICE_UNAVAILABLE"
               : "INVALID_REQUEST";
+      if (context.operation === "AUTHENTICATION")
+        context.code =
+          response.statusCode < 400
+            ? "OK"
+            : response.statusCode === 401
+              ? "UNAUTHENTICATED"
+              : response.statusCode === 403
+                ? "FORBIDDEN"
+                : response.statusCode === 429
+                  ? "RATE_LIMITED"
+                  : response.statusCode === 503
+                    ? "SERVICE_UNAVAILABLE"
+                    : response.statusCode >= 500
+                      ? "INTERNAL_FAILURE"
+                      : "INVALID_REQUEST";
       record(context);
     });
     next();
@@ -139,11 +162,39 @@ export function createApp(options: AppOptions = {}) {
     }
     response.status(status).json(error);
   }
+  const ownerSessions = options.browserAccess
+    ? createOwnerSessions({
+        access: options.browserAccess,
+        ...(options.ownerAuth ? { store: options.ownerAuth } : {}),
+        ...(options.canvas ? { canvas: options.canvas } : {}),
+        ...(options.authNow ? { now: options.authNow } : {}),
+      })
+    : undefined;
+  app.use(["/api/v1/auth", "/api/v1/canvas"], (_req, res, next) => {
+    const context = contexts.get(res)!;
+    context.operation = "AUTHENTICATION";
+    context.code = "OK";
+    next();
+  });
+  ownerSessions?.install(app);
   function authorize(
     request: Request,
     response: Response,
     audience: "student" | "kiosk" | "instructor" | "admin" | "control",
   ): false | { actorRole?: "ADMIN" | "INSTRUCTOR" } {
+    if (
+      ownerSessions &&
+      request.get("cookie") &&
+      !request.get("authorization")
+    ) {
+      const session = ownerSessions.authorize(request, response);
+      if (!session) return false;
+      if (session.role !== "admin") {
+        response.status(403).json({ code: "FORBIDDEN" });
+        return false;
+      }
+      return { actorRole: "ADMIN" };
+    }
     const accessRequest: Parameters<AccessController["authorize"]>[0] = {};
     const authorization = request.get("authorization");
     const origin = request.get("origin");
@@ -175,7 +226,11 @@ export function createApp(options: AppOptions = {}) {
     return false;
   }
   const browser = options.browserAccess
-    ? createOwnerTransport(options.browserAccess, options.browserNow)
+    ? createOwnerTransport(
+        options.browserAccess,
+        options.browserNow,
+        ownerSessions,
+      )
     : undefined;
   if (options.history && browser) {
     app.use("/api/v1/history", (_req, res, next) => {
@@ -184,7 +239,12 @@ export function createApp(options: AppOptions = {}) {
       context.code = "OK";
       next();
     });
-    installHistoryRoutes(app, options.history, browser.authenticate);
+    installHistoryRoutes(
+      app,
+      options.history,
+      browser.authenticate,
+      options.historyForScope,
+    );
   }
   if (options.input) {
     app.use("/api/v1/input", (_req, res, next) => {
@@ -193,13 +253,22 @@ export function createApp(options: AppOptions = {}) {
       context.code = "OK";
       next();
     });
-    const input = installInputRoutes(app, options.input, (request, response) =>
-      browser
-        ? browser.authenticate(request, response)
-        : (response.sendStatus(403), false),
+    const input = installInputRoutes(
+      app,
+      {
+        ...options.input,
+        ...(options.historyForScope
+          ? { historyForScope: options.historyForScope }
+          : {}),
+      },
+      (request, response) =>
+        browser
+          ? browser.authenticate(request, response)
+          : (response.sendStatus(403), false),
     );
     app.locals.closeInput = () => {
       browser?.close();
+      ownerSessions?.close();
       input.close();
     };
   }
@@ -594,7 +663,7 @@ export function createApp(options: AppOptions = {}) {
       );
       next();
     };
-    app.get(["/", "/history"], webHeaders, (_req, res) =>
+    app.get(["/", "/history", "/login"], webHeaders, (_req, res) =>
       res.sendFile(path.join(options.webRoot!, "index.html")),
     );
     app.get("/capture-worklet.js", webHeaders, (_req, res) =>

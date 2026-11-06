@@ -37,6 +37,7 @@ export function publicBoundaryViolations(file, bytes) {
       "jmu" + "-teaching-dev",
       "jmu" + "-teaching-plan",
       "JMU" + "_",
+      "canvas." + "jmu.edu",
       "S" + "CHOOL",
       "/Us" + "ers/",
     ];

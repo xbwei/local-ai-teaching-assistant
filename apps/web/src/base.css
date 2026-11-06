@@ -559,3 +559,29 @@ select {
     min-height: 110px;
   }
 }
+
+.owner-login {
+  max-width: 36rem;
+  margin: 3rem auto;
+  padding: 1rem;
+}
+.owner-login label {
+  display: block;
+  margin: 1rem 0;
+}
+
+.owner-role {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 0.8rem;
+}
+.owner-role button {
+  padding: 4px 8px;
+}
+html[data-touch-capable][data-virtual-keyboard] .owner-role {
+  display: none;
+}

@@ -567,6 +567,7 @@ function renderTurn(api: InputApi, turn: HistoryTurn) {
   });
   const annotation = element("details");
   annotation.className = "owner-annotation";
+  annotation.hidden = document.body.dataset.ownerRole === "student";
   annotation.append(
     element("summary", `Optional Owner annotation · ${turn.review}`),
     element(

@@ -1,7 +1,10 @@
 import "./base.css";
 import "./client/style.css";
 
-if (window.location.pathname === "/history") {
+const { requireOwnerSession } = await import("./login.ts");
+if (!(await requireOwnerSession())) {
+  // The login screen owns the page until the server establishes a session.
+} else if (window.location.pathname === "/history") {
   document.body.classList.add("history-page");
   document.querySelector<HTMLElement>(".app")!.hidden = true;
   const root = document.getElementById("history-page")!;

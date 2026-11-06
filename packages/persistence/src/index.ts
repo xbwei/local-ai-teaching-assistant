@@ -1,4 +1,12 @@
-import { createHistoryRepository, type HistoryRepository } from "./history.ts";
+import {
+  createHistoryRepository,
+  type HistoryRepository,
+  type HistoryScope,
+} from "./history.ts";
+import {
+  createOwnerAuthRepository,
+  type OwnerAuthRepository,
+} from "./owner-auth.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { FoundationResult, RuntimePaths } from "@laita/runtime";
 import { migrate } from "./migrations.ts";
@@ -14,7 +22,8 @@ export interface Persistence {
   isReady(): boolean;
   policyState(initialPolicy: InstructorPolicyDocument): PolicyStateRepository;
   providerUsage(): ProviderUsageRepository;
-  history(): HistoryRepository;
+  history(scope?: HistoryScope): HistoryRepository;
+  ownerAuth(): OwnerAuthRepository;
   close(): FoundationResult<undefined>;
 }
 export function initializePersistence(
@@ -41,9 +50,13 @@ export function initializePersistence(
           if (!ready) throw new Error();
           return createPolicyStateRepository(connection, initialPolicy);
         },
-        history() {
+        ownerAuth() {
           if (!ready) throw new Error();
-          return createHistoryRepository(connection);
+          return createOwnerAuthRepository(connection);
+        },
+        history(scope?: HistoryScope) {
+          if (!ready) throw new Error();
+          return createHistoryRepository(connection, scope);
         },
         providerUsage() {
           if (!ready) throw new Error();
@@ -76,4 +89,10 @@ export type {
 } from "./policy-state.ts";
 export { createProviderUsageRepository } from "./provider-usage.ts";
 
-export { HistoryValidationError, type HistoryRepository } from "./history.ts";
+export {
+  HistoryValidationError,
+  type HistoryRepository,
+  type HistoryScope,
+} from "./history.ts";
+
+export type { OwnerAuthRepository, OwnerCredential } from "./owner-auth.ts";

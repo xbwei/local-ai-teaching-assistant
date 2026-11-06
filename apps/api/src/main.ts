@@ -15,6 +15,7 @@ import {
   initializeRuntimePaths,
 } from "@laita/runtime";
 import { initializePersistence, type Persistence } from "@laita/persistence";
+import { readCanvasConfiguration } from "./canvas.ts";
 import { createApp } from "./app.ts";
 import { createAccessController } from "./access.ts";
 import {
@@ -451,6 +452,9 @@ try {
   });
   closeSpeech = () => speech.close();
   const app = createApp({
+    ownerAuth: persistence.ownerAuth(),
+    historyForScope: (scope) => persistence!.history(scope),
+    canvas: () => readCanvasConfiguration(process.env.LAITA_CANVAS_CONFIG_FILE),
     history,
     browserAccess: configuration.value.access,
     webRoot: fileURLToPath(new URL("../../web/dist", import.meta.url)),
