@@ -165,15 +165,13 @@ test("one Owner credential has unique salt/revision, safe derivation and no usab
 test("role/session isolation covers chat references, History list/detail/feedback/review and Admin controls", async (t) => {
   const f = await fixture({ autoLogin: false, history: true });
   t.after(() => f.close());
-  f.persistence
-    .history()
-    .begin({
-      id: "d".repeat(64),
-      conversation: "e".repeat(64),
-      inputType: "TYPED",
-      text: "Synthetic legacy unscoped record",
-      correlation: null,
-    });
+  f.persistence.history().begin({
+    id: "d".repeat(64),
+    conversation: "e".repeat(64),
+    inputType: "TYPED",
+    text: "Synthetic legacy unscoped record",
+    correlation: null,
+  });
   await f.login("teacher");
   const teacher = f.cookie(),
     teacherSession = await session(f, teacher);
