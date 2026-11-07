@@ -17,7 +17,7 @@
     "@laita/policy": "0.1.0",
     "@laita/orchestration": "0.1.0",
     "@laita/providers": "0.1.0",
-    "express": "5.2.1",
+    "express": "5.3.0",
     "@laita/runtime": "0.1.0",
     "@laita/persistence": "0.1.0",
     "@laita/safety": "0.1.0",
