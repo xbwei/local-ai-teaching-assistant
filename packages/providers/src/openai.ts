@@ -28,6 +28,7 @@ import OpenAI, {
   PermissionDeniedError,
   RateLimitError,
 } from "openai";
+import { VERSION as SDK_VERSION } from "openai/version";
 import type {
   Response,
   ResponseCreateParamsNonStreaming,
@@ -36,7 +37,6 @@ import type {
 } from "openai/resources/responses/responses";
 
 const ADAPTER_VERSION = "openai-responses.v1";
-const SDK_VERSION = "7.45.1";
 const TEXT_ENCODER = new TextEncoder();
 
 export interface OpenAIModelCandidate {
