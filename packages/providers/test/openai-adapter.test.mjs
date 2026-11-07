@@ -13,6 +13,13 @@ import {
 } from "../dist/index.js";
 import { createFakeProviderAdapter } from "../dist/test-support.js";
 
+const sdkPackage = JSON.parse(
+  await readFile(
+    new URL("package.json", import.meta.resolve("openai")),
+    "utf8",
+  ),
+);
+
 const model = "gpt-5.6-luna";
 const sha = `sha256:${"d".repeat(64)}`;
 const syntheticSecret = `sk-test_${"z".repeat(32)}`;
@@ -451,7 +458,7 @@ test("non-streaming Responses call is bounded, provenance-complete, and server-o
     configuredModel: model,
     selectedModel: model,
     responseModel: model,
-    sdk: { name: "openai", version: "7.45.1" },
+    sdk: { name: "openai", version: sdkPackage.version },
     store: false,
     automaticRetries: 0,
     sdkLogging: "OFF",
@@ -915,7 +922,22 @@ test("provider boundary exposes no browser export, logs, fallback, or client cre
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
   assert.equal(packageJson.exports["."].browser, null);
-  assert.equal(packageJson.dependencies.openai, "7.45.1");
+  assert.match(packageJson.dependencies.openai, /^\d+\.\d+\.\d+$/u);
+  assert.equal(packageJson.dependencies.openai, sdkPackage.version);
+  const lockfile = JSON.parse(
+    await readFile(
+      new URL("../../../package-lock.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    lockfile.packages["packages/providers"].dependencies.openai,
+    sdkPackage.version,
+  );
+  assert.equal(
+    lockfile.packages["node_modules/openai"].version,
+    sdkPackage.version,
+  );
   const source = await readFile(
     new URL("../src/openai.ts", import.meta.url),
     "utf8",
