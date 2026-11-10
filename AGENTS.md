@@ -14,38 +14,25 @@ For formal tracked work:
 2. Make the smallest maintainable, testable, reversible change that satisfies the Issue.
 3. Run all applicable deterministic build, test, type, lint/format, security/dependency, repository-policy, and public-sanitization checks.
 4. Self-review the complete diff against the fresh intended base.
-5. Complete the required Antigravity review on the exact final substantive HEAD **before opening the PR**.
-6. Open a focused PR only after the Antigravity gate passes.
+5. Follow the ChatGPT-assigned review profile. For STANDARD/HIGH_ASSURANCE, complete the required exact-final-substantive-HEAD Antigravity review **before opening the PR**; for approved NO_ANTIGRAVITY, record SKIPPED_BY_POLICY.
+6. Open a focused PR only after its assigned review profile and required pre-PR gates are satisfied.
 7. Let GitHub CI and Gemini review the exact submitted HEAD; address substantive findings and rerun affected validation.
 8. Stop for final ChatGPT / Owner review and the Owner's explicit merge decision.
 
 Do not create churn for duplicate, false-positive, style-only, or technically inapplicable review comments. Record a concise evidence-based disposition instead.
 
-## Required Antigravity gate
+## Risk-based Antigravity review policy
 
-Use the maintainer-configured Antigravity command `agy`.
+This policy is shared with the other actively maintained projects, regardless of whether a coordinating Dot exists. **ChatGPT assigns the provisional review level in the controlling Issue or explicit Owner-approved handoff. Codex develops the change, inspects the complete final substantive diff, selects the actual model/effort inside the approved level, and executes the review.** Codex may report `RISK_ESCALATION_REQUIRED` with evidence but may not downgrade or waive a level assigned by ChatGPT; ChatGPT adjudicates escalation. If a task has no assigned level, request one before using the gate or opening a PR.
 
-Before declaring the gate unavailable:
+- **`NO_ANTIGRAVITY`**: Documentation, copy, or cosmetic-only UI with no runtime, security, privacy, data-contract, or acceptance behavior change. Preserve applicable validation, CI, public-boundary checks and GitHub Gemini. Record `SKIPPED_BY_POLICY`, never a fabricated Antigravity PASS.
+- **`STANDARD_ANTIGRAVITY`**: Ordinary bounded implementation and read-only functionality. Prefer **Gemini 4 Argon Medium**, with **Gemini 3.8 Flash Medium** as an approved quota fallback *only after the same restricted-review protocol has been verified for that exact model*. Do not automatically consume the shared Claude quota for ordinary PRs.
+- **`HIGH_ASSURANCE_ANTIGRAVITY`**: Authentication/Canvas course identity, credentials, participant or student privacy boundaries, authorization, persistent state/transactions, migration, external writes, deployment, complex concurrency/recovery, resource limits, or changes to these review rules themselves. Prefer **Gemini 4 Argon Medium/High**, selecting effort according to actual complexity; when verified Argon quota is unavailable, **Claude Opus 5.5 Medium/High** or **Claude Sonnet 5.5 High** may be selected only if the installed CLI and the unchanged restricted protocol support them. Flash is not an automatic high-assurance substitute. Opus and Sonnet share third-party model quotas; avoid unnecessary retries.
+- **Final-diff escalation:** Codex must check for the above high-risk triggers after implementing the diff. If any are newly present above the assigned level, stop the review handoff and submit `RISK_ESCALATION_REQUIRED` to ChatGPT, including exact affected code, impact and actual available models. Do not self-approve a lower tier to conserve quota.
+- **Model integrity:** Always verify the specific installed `agy` model ID and effort using the CLI, explicit model selection, plan/sandbox/read-only permissions, no file writes, shell, URL/network, MCP/tools or silent fallback; maintain full diff and exact base/HEAD identity. Record requested and actual models, effort, quota/fallback reason, review result and exceptions. Only confirmed model-quota unavailability allows the approved fallback; do not treat generic HTTP 429, protocol/permission failure, timeout or adverse findings as proof that fallback is safe. If no qualified model is available, report `BLOCKED / NOT_RUN` and do not enable paid overages.
+- **Transition:** This AGENTS.md-only policy does not prove that any existing CLI wrapper, model-verification schema, or local agent already supports alternate models. Check the actual setup and tests before invoking a fallback. Existing open work is not retroactively exempt from its prior review contract. This governance change itself requires independent review and Owner merge approval; do not use it to self-waive the pre-existing gate.
 
-- run `command -v agy`;
-- run `agy --version`;
-- use the CLI's model-listing command to confirm `gemini-4-argon-high` is available.
-
-Use **`gemini-4-argon-high`** unless the Owner explicitly changes the required model.
-
-Review the complete exact-final substantive diff in plan/sandbox/read-only mode with strict permissions:
-
-- no file writes;
-- no shell/command execution;
-- no URL/network access;
-- no MCP/tool expansion;
-- no fallback model.
-
-Do not save or commit raw review transcripts.
-
-If `agy` or the required model is genuinely unavailable after those checks, record **BLOCKED / NOT_RUN**. Do not substitute another reviewer or open the PR as though the gate passed.
-
-Any substantive change after Antigravity invalidates that review evidence. Rerun affected deterministic checks and repeat the complete-diff Antigravity review on the new exact HEAD before continuing.
+Do not save or commit raw review transcripts. After any substantive change, refresh affected tests and every review that the assigned profile requires; do not repeat low-yield calls on an unchanged HEAD.
 
 ## GitHub CI and Gemini
 
@@ -55,9 +42,9 @@ After the PR is opened:
 - let the normal Gemini review run on the exact submitted substantive HEAD;
 - verify the reviewed HEAD before manually requesting another review;
 - never request duplicate Gemini review for the same exact substantive HEAD;
-- after a substantive fix, repeat the required pre-PR-equivalent validation and Antigravity review for the new exact HEAD, then obtain fresh exact-HEAD CI/Gemini evidence.
+- after a substantive fix, repeat required validation and any profile-required Antigravity review for the new exact HEAD, then obtain fresh exact-HEAD CI/Gemini evidence.
 
-The final substantive HEAD must have complete required validation, Antigravity, CI, and Gemini evidence before merge review.
+The final substantive HEAD must have required validation, profile-applicable Antigravity (or honest SKIPPED_BY_POLICY), CI, and Gemini evidence before merge review.
 
 ## PR handoff
 
