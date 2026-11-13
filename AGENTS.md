@@ -14,23 +14,49 @@ For formal tracked work:
 2. Make the smallest maintainable, testable, reversible change that satisfies the Issue.
 3. Run all applicable deterministic build, test, type, lint/format, security/dependency, repository-policy, and public-sanitization checks.
 4. Self-review the complete diff against the fresh intended base.
-5. Follow the ChatGPT-assigned review profile. For explicitly assigned `STANDARD_ANTIGRAVITY` or `HIGH_ASSURANCE_ANTIGRAVITY`, complete the required exact-final-substantive-HEAD Antigravity review **before opening the PR**; record `SKIPPED_BY_POLICY` only for explicitly assigned `NO_ANTIGRAVITY`. Missing, pending, or ambiguous profiles **block** this gate and do not authorize a skip.
-6. Open a focused PR only after its assigned review profile and required pre-PR gates are satisfied.
+5. Follow the ChatGPT-assigned review profile. For any of the four reviewed profiles, complete the required exact-final-substantive-HEAD Antigravity review **before opening the PR**, unless the Owner has recorded an explicit scoped exception under Governance authorship below. Record `SKIPPED_BY_POLICY` only for explicitly assigned `NO_ANTIGRAVITY`. Missing, pending, or ambiguous profiles **block** this gate and do not authorize a skip.
+6. Open a focused PR only after its assigned review profile and required pre-PR gates are satisfied or specifically waived by the Owner; never commit or push directly to main.
 7. Let GitHub CI and Gemini review the exact submitted HEAD; address substantive findings and rerun affected validation.
 8. Stop for final ChatGPT / Owner review and the Owner's explicit merge decision.
 
 Do not create churn for duplicate, false-positive, style-only, or technically inapplicable review comments. Record a concise evidence-based disposition instead.
 
+## Governance authorship and explicit exceptions
+
+The Owner and ChatGPT author substantive changes to `AGENTS.md` and review policy through separate governance branches/PRs. Codex remains the implementation agent; it may identify policy problems and provide evidence or execute validation/review, but must not decide or amend its own governing policy to unblock work. Reviewer models review independently; they do not replace Codex as the routine implementation agent.
+
+Governance changes follow the currently effective main policy, not their proposed rules. Only an explicit Owner decision recorded in the controlling Issue/PR may waive a named gate for a defined scope. Record an Antigravity waiver as `NOT_RUN / OWNER_AUTHORIZED_EXCEPTION`, with its authority and scope, never as PASS or `SKIPPED_BY_POLICY`. Authorship alone grants no exemption. A waiver does not transfer to other PRs or in-flight work; applicable validation, public-boundary checks, CI, exact-HEAD Gemini and the Owner's separate merge decision remain required.
+
 ## Risk-based Antigravity review policy
 
-This policy is shared with the other actively maintained projects, regardless of whether a coordinating Dot exists. **ChatGPT assigns the provisional review level in the controlling Issue or explicit Owner-approved handoff. Codex develops the change, inspects the complete final substantive diff, selects the actual model/effort inside the approved level, and executes the review.** Codex may report `RISK_ESCALATION_REQUIRED` with evidence but may not downgrade or waive a level assigned by ChatGPT; ChatGPT adjudicates escalation. If a task has no assigned level, request one before using the gate or opening a PR.
+**ChatGPT assigns the provisional review profile in the controlling Issue or explicit Owner-approved handoff. Codex develops the change, inspects the complete final substantive diff, selects a qualified actual model/effort within that profile, and executes review.** Codex reports `RISK_ESCALATION_REQUIRED` with exact affected code, concrete impact and available models if the final diff exceeds the profile. ChatGPT adjudicates; Codex cannot downgrade or waive its assigned level. Missing or ambiguous profiles block the review/PR gate.
 
-- **`NO_ANTIGRAVITY`**: Documentation, copy, or cosmetic-only UI with no runtime, security, privacy, data-contract, or acceptance behavior change. Preserve applicable validation, CI, public-boundary checks and GitHub Gemini. Record `SKIPPED_BY_POLICY`, never a fabricated Antigravity PASS.
-- **`STANDARD_ANTIGRAVITY`**: Ordinary bounded implementation and read-only functionality. Prefer **Gemini 4 Argon Medium**. On verified Argon quota exhaustion, use a restricted-protocol-verified **Claude Sonnet 5.5 Medium** (High only if the diff warrants it), preserving Opus for high-risk work. If Claude's shared quota is also unavailable or the preapproved quota budget is unsuitable, use **Gemini 3.8 Flash Medium**, but only after verifying the same restricted-review protocol for that model. Record each fallback reason; do not spend shared Claude quota on repeated low-yield reviews.
-- **`HIGH_ASSURANCE_ANTIGRAVITY`**: Authentication/Canvas course identity, credentials, participant or student privacy boundaries, authorization, persistent state/transactions, migration, external writes, deployment, complex concurrency/recovery, resource limits, or changes to these review rules themselves. Prefer **Gemini 4 Argon Medium/High**, selecting effort according to actual complexity; when verified Argon quota is unavailable, **Claude Opus 5.5 Medium/High** or **Claude Sonnet 5.5 High** may be selected only if the installed CLI and the unchanged restricted protocol support them. If both Argon and qualified Claude are unavailable, report `BLOCKED / NOT_RUN`; Flash must not substitute for high assurance. Opus and Sonnet share third-party model quotas; avoid unnecessary retries.
-- **Final-diff escalation:** Codex must check for the above high-risk triggers after implementing the diff. If any are newly present above the assigned level, stop the review handoff and submit `RISK_ESCALATION_REQUIRED` to ChatGPT, including exact affected code, impact and actual available models. Do not self-approve a lower tier to conserve quota.
-- **Model integrity:** Always verify the specific installed `agy` model ID and effort using the CLI, explicit model selection, plan/sandbox/read-only permissions, with no file writes, no shell/command execution, no URL/network access, no MCP/tool expansion, and no silent fallback; maintain full diff and exact base/HEAD identity. Record requested and actual models, effort, quota/fallback reason, review result and exceptions. Only confirmed model-quota unavailability allows the approved fallback; do not treat generic HTTP 429, protocol/permission failure, timeout or adverse findings as proof that fallback is safe. If no qualified model is available, report `BLOCKED / NOT_RUN` and do not enable paid overages.
-- **Transition:** This AGENTS.md-only policy does not prove that any existing CLI wrapper, model-verification schema, or local agent already supports alternate models. Check the actual setup and tests before invoking a fallback. Existing open work is not retroactively exempt from its prior review contract. This governance change itself requires independent review and Owner merge approval; do not use it to self-waive the pre-existing gate.
+Choose by actual authority changes, consequences, reversibility and uncertainty, not a file name, security keyword or line count alone. A small session-lifetime change still changes credential authority; a cosmetic label does not. These routes allocate review effort, not guarantees that a model finds every bug.
+
+**`NO_ANTIGRAVITY` is a separate skip state, not one of the four reviewed profiles.** It requires an explicit ChatGPT assignment for genuinely non-behavioral documentation/copy/cosmetic work with no runtime, security, privacy, data-contract or acceptance change. Preserve applicable validation, CI, public-boundary checks and Gemini. Record `SKIPPED_BY_POLICY`, never an Antigravity PASS.
+
+### Four reviewed profiles
+
+- **`STANDARD_ANTIGRAVITY`**: Ordinary bounded features, routine bugs, UI behavior and read-only logic without material authority or sensitive-state changes. Default: **Gemini 4 Hydrogen Medium**, effort **medium**.
+- **`ELEVATED_ANTIGRAVITY`**: Difficult but bounded non-authority-changing logic, parsing, validation or state handling needing more scrutiny than STANDARD. Default: **Gemini 4 Hydrogen High**, effort **high**. Localized permission checks or concurrency work fit here only if they do not change authority, isolation or material resource/recovery guarantees. Those changes remain HIGH or above; ELEVATED is not a quota-driven way around high-risk triggers.
+- **`HIGH_ASSURANCE_ANTIGRAVITY`**: Material authentication/session/credential semantics, Canvas course identity, student/participant privacy or isolation, authorization, durable production state/transactions/migration, external writes, deployment/security boundaries, or consequential concurrency, cancellation, resource-limit and recovery changes. Default: **Gemini 4 Argon Medium**, effort **medium**. A bounded session-lifetime change belongs here; HIGH does not automatically require Argon High.
+- **`CRITICAL_ANTIGRAVITY`**: New or substantially redesigned authentication or authorization, major credential/privacy/security architecture, high-impact destructive migration/recovery, or broad review-gate redesign where failure has unusually large consequences or is difficult to contain or reverse. Default: **Gemini 4 Argon High**, effort **high**. Not every governance edit or production-related file automatically belongs here; justify the actual risk.
+
+Codex verifies the installed model ID/effort and uses the assigned route or a permitted qualified fallback; it does not silently change tiers. Existing NO/STANDARD/HIGH identifiers remain valid. Do not retroactively invalidate historical evidence or reclassify in-flight work because new tiers exist.
+
+### Qualified fallback
+
+- After verified Hydrogen quota exhaustion, STANDARD may use restricted-protocol-qualified **Gemini 3.8 Flash Medium**, or **Claude Sonnet 5.5 Medium** within an approved third-party quota budget. Do not automatically consume that budget.
+- After verified Argon quota exhaustion, HIGH may use qualified **Claude Opus 5.5 Medium/High** or **Claude Sonnet 5.5 High** within the approved budget. Hydrogen and Flash do not substitute for HIGH or CRITICAL.
+- ELEVATED and CRITICAL alternatives require an explicit task-specific ChatGPT/Owner-approved route before invocation; do not infer them from another tier's whitelist. Opus and Sonnet share third-party quota. If no permitted qualified reviewer is available, record `BLOCKED / NOT_RUN`; no paid overages.
+
+Only confirmed model-quota unavailability allows a permitted fallback. Generic HTTP 429, capacity/transport error, protocol/permission failure, timeout or adverse findings are not evidence for downgrading. Record the assigned profile, requested/actual model, effort, exact base/HEAD, review result and fallback/exception authority. Do not repeatedly spend quota on an unchanged diff.
+
+### Model integrity and transition
+
+Always verify the specific installed `agy` model ID and effort, explicit requested/actual identity, plan/sandbox/read-only permissions and effective no-tools restrictions, including negative-path evidence. No file reads/writes, shell/commands, URL/network access, MCP/skills/delegation expansion or silent fallback. A model promise or zero observed tool calls alone is not qualification. Use an already verified transport for the complete fresh-base-to-final-HEAD diff; reject stale, empty or truncated evidence. Record exact coverage and structured review results, not raw transcripts.
+
+A UI model label or an AGENTS.md edit does not prove that the installed CLI, wrapper, reviewer schema or agent supports a route. Verify the actual setup before using it; unqualified candidates remain `BLOCKED / NOT_RUN`, not PASS. Proposed rules take effect only after Owner-authorized merge. A governance PR cannot use its candidate policy to waive the effective gate; any exception must come from an explicit external Owner decision. Existing in-flight obligations are not automatically waived, and changed base/HEAD requires fresh applicable evidence rather than a transferred PASS.
 
 Do not save or commit raw review transcripts. After any substantive change, refresh affected tests and every review that the assigned profile requires; do not repeat low-yield calls on an unchanged HEAD.
 
@@ -40,11 +66,11 @@ After the PR is opened:
 
 - wait for configured CI/security checks;
 - let the normal Gemini review run on the exact submitted substantive HEAD;
-- verify the reviewed HEAD before manually requesting another review;
+- verify the reviewed HEAD and any pending automatic/manual request before requesting a review;
 - never request duplicate Gemini review for the same exact substantive HEAD;
 - after a substantive fix, repeat required validation and any profile-required Antigravity review for the new exact HEAD, then obtain fresh exact-HEAD CI/Gemini evidence.
 
-The final substantive HEAD must have required validation, profile-applicable Antigravity (or honest SKIPPED_BY_POLICY), CI, and Gemini evidence before merge review.
+The final substantive HEAD must have required validation, profile-applicable Antigravity evidence (or honest `SKIPPED_BY_POLICY` / scoped `NOT_RUN / OWNER_AUTHORIZED_EXCEPTION`), CI and Gemini evidence before merge review. The skip and exception states are not review PASS results.
 
 ## PR handoff
 
@@ -52,7 +78,7 @@ Record:
 
 - exact final HEAD SHA and intended base;
 - validation results;
-- Antigravity exact-HEAD result and model;
+- Antigravity exact-HEAD result, actual model/effort, or precisely scoped skip/exception authority;
 - GitHub CI result;
 - Gemini exact-HEAD result and finding dispositions;
 - honest `NOT_RUN` checks and known limitations;
