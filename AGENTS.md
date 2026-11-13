@@ -2,7 +2,7 @@
 
 ## Scope
 
-This is a public repository. Keep all work public-safe, repository-focused, and limited to the controlling Issue. A bounded Issue batch may select successive controlling Issues only under the explicit authorization below; it does not combine their scopes.
+This is a public repository. Keep all work public-safe, repository-focused, and limited to the controlling Issue. A bounded Issue batch may select successive controlling Issues only under explicit Owner authorization recorded in Issues and the bounded batch rules below; it does not combine their scopes.
 
 Before substantive work, read the current Issue, this file, relevant code/tests/docs, any open PR for the work, and current CI/review state. Use an independent branch/worktree from the intended current base. Never add credentials, private institutional configuration, private repository content, student/participant data, restricted research data, runtime databases/logs/backups, or other non-public operational material.
 
