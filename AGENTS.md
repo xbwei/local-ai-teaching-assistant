@@ -2,7 +2,7 @@
 
 ## Scope
 
-This is a public repository. Keep all work public-safe, repository-focused, and limited to the controlling Issue.
+This is a public repository. Keep all work public-safe, repository-focused, and limited to the controlling Issue. A bounded Issue batch may select successive controlling Issues only under explicit Owner authorization recorded in Issues and the bounded batch rules below; it does not combine their scopes.
 
 Before substantive work, read the current Issue, this file, relevant code/tests/docs, any open PR for the work, and current CI/review state. Use an independent branch/worktree from the intended current base. Never add credentials, private institutional configuration, private repository content, student/participant data, restricted research data, runtime databases/logs/backups, or other non-public operational material.
 
@@ -17,13 +17,25 @@ For formal tracked work:
 5. Follow the ChatGPT-assigned review profile. For any of the four reviewed profiles, complete the required exact-final-substantive-HEAD Antigravity review **before opening the PR**, unless the Owner has recorded an explicit scoped exception under Governance authorship below. Record `SKIPPED_BY_POLICY` only for explicitly assigned `NO_ANTIGRAVITY`. Missing, pending, or ambiguous profiles **block** this gate and do not authorize a skip.
 6. Open a focused PR only after its assigned review profile and required pre-PR gates are satisfied or specifically waived by the Owner; never commit or push directly to main.
 7. Let GitHub CI and Gemini review the exact submitted HEAD; address substantive findings and rerun affected validation.
-8. Stop for final ChatGPT / Owner review and the Owner's explicit merge decision.
+8. Obtain final ChatGPT / Owner review and the Owner's explicit merge decision, except where an applicable Owner-approved bounded batch explicitly delegates routine final merge-readiness assessment to DOT and conditional merge execution. Without that delegation, stop for individual Owner merge approval.
 
 Do not create churn for duplicate, false-positive, style-only, or technically inapplicable review comments. Record a concise evidence-based disposition instead.
 
+## Bounded Issue batches
+
+Only an Owner-authorized and ChatGPT-profiled finite batch record in Issues may authorize this loop: selected Issue and assigned profile (missing, pending or ambiguous profiles block the loop) -> DOT dispatch/follow-up -> Codex implementation, validation, self-review, final-diff risk check and required Antigravity -> focused PR, CI, exact-HEAD Gemini and findings disposition -> DOT independent complete-diff review -> conditionally delegated merge -> next already-authorized Issue -> stop at the recorded boundary. Durable rules belong here; batch selection, authority and status remain in Issues. A roadmap, task launch, handoff or passing CI is not batch or merge permission.
+
+- The batch record must identify this repository, ordered Issues, each Issue's scope/exclusions and assigned profile, the Owner's explicit conditional merge delegation (if any), and the stop boundary. ChatGPT retains profile assignment and material architecture/risk-escalation decisions. DOT coordinates dispatch/follow-up and independently reads the actual complete diff, tests, review evidence and findings dispositions; Codex remains the implementation agent and selects a qualified model/effort within the assigned profile. Codex self-review is not DOT's independent review or approval.
+- Keep one traceable engineering task and one coherent Issue/PR scope per selected Issue, reusing valid handoffs. Ordinary in-scope debugging remains Codex's responsibility. Verify unknown task delivery or write effects before retrying; if the effect remains unknown, stop rather than risk duplicate execution.
+- Before starting each next selected Issue, re-read GitHub for its current authority, scope, relevant PR/base/HEAD, checks, reviews and dependency state. Continue only while that Issue remains within the approved batch and all required gates and prior outcomes are established; do not infer permission for an unselected successor.
+- Within an applicable Owner conditional delegation, DOT may make the routine final merge-readiness assessment without repeated manual relay. Before a merge, the authorized executor verifies the exact final HEAD, current required checks/reviews, resolved substantive findings and branch protections, then reads back the actual result. Do not bypass protections or enable unconditional auto-merge. Without applicable delegation, retain individual Owner merge approval. Merge alone does not authorize Issue closure, destructive cleanup, release, deployment or live acceptance.
+- Stop for unresolved required gates, `RISK_ESCALATION_REQUIRED`, scope/architecture/security/permission/credential/cost changes, unknown effects, batch completion, the recorded stop boundary, or release/deployment/live acceptance. Report the evidence and required decision; do not broaden authority or spend unapproved quota to continue. No scheduler, orchestrator service, database or agent platform is introduced by this workflow.
+
+Keep a concise English engineering handoff for each Issue: authority, exact base/HEAD, validation and review evidence, findings/dispositions, DOT's independent conclusion (or explicitly pending), actual execution/result and next action. If Codex posts a DOT conclusion, attribute its source and the executor accurately; DOT must read it back. Task submission alone does not prove completion or unattended continuation.
+
 ## Governance authorship and explicit exceptions
 
-The Owner and ChatGPT author substantive changes to `AGENTS.md` and review policy through separate governance branches/PRs. Codex remains the implementation agent; it may identify policy problems and provide evidence or execute validation/review, but must not decide or amend its own governing policy to unblock work. Reviewer models review independently; they do not replace Codex as the routine implementation agent.
+The Owner and ChatGPT author substantive changes to `AGENTS.md` and review policy through separate governance branches/PRs. Codex may faithfully edit an explicitly approved governance contract and provide evidence or execute validation/review as the implementation agent, but must not invent policy or decide or amend its own governing policy to unblock work. Reviewer models review independently; they do not replace Codex as the routine implementation agent.
 
 Governance changes follow the currently effective main policy, not their proposed rules. Only an explicit Owner decision recorded in the controlling Issue/PR may waive a named gate for a defined scope. Record an Antigravity waiver as `NOT_RUN / OWNER_AUTHORIZED_EXCEPTION`, with its authority and scope, never as PASS or `SKIPPED_BY_POLICY`. Authorship alone grants no exemption. A waiver does not transfer to other PRs or in-flight work; applicable validation, public-boundary checks, CI, exact-HEAD Gemini and the Owner's separate merge decision remain required.
 
@@ -82,6 +94,7 @@ Record:
 - GitHub CI result;
 - Gemini exact-HEAD result and finding dispositions;
 - honest `NOT_RUN` checks and known limitations;
+- for a bounded batch, its authority, DOT's independent conclusion (or pending status), actual execution/result and next action, with accurate source/executor attribution;
 - rollback or migration impact when relevant.
 
 A passing review or CI result is not merge authority.
@@ -94,4 +107,4 @@ Keep public claims consistent with executable behavior and validated evidence. D
 
 ## Authority
 
-Only the Owner may authorize merge, tag/release publication, deployment, live/institutional configuration changes, or credential changes. Merge, release, and deployment are separate decisions.
+Only the Owner may authorize merge, including explicit conditional merge delegation within a bounded batch, tag/release publication, deployment, live/institutional configuration changes, or credential changes. Delegated routine merge-readiness assessment does not authorize policy changes, release, deployment or live acceptance. Merge, release, and deployment are separate decisions. Proposed governance rules apply only after Owner-authorized merge; a governance PR cannot use its proposed batch loop or delegation to merge itself.
