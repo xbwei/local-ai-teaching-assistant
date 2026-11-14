@@ -452,17 +452,48 @@ test("course missing, provider exception, timeout and successful text with faile
       );
     });
 });
-test("cancel and busy capture retain questions; incomplete disk capture still delivers one answer", async (t) => {
-  const { c, api, store, f } = await setup(t);
+test("cancel and busy capture retain questions; incomplete disk capture still delivers one answer", { timeout: 5000 }, async (t) => {
+  const entered = Promise.withResolvers();
+  const cleanup = Promise.withResolvers();
+  // Cancellation invalidates the client session before server execution drains.
+  // Hold that execution explicitly so the next admission must observe BUSY.
+  t.after(() => cleanup.resolve());
+  let executionSignal;
+  const { c, store, f } = await setup(t, {
+    async execute(_request, signal) {
+      executionSignal = signal;
+      entered.resolve();
+      await cleanup.promise;
+      throw new Error("Synthetic cancelled execution drained");
+    },
+  });
   const pending = c.send("A slow synthetic question.");
-  await new Promise((r) => setTimeout(r, 80));
+  await entered.promise;
+  const cancelledRef = c.messages[0].history;
   await c.cancel();
   await pending;
+  assert.equal(executionSignal.aborted, true);
+  const cancelled = store.conversation(cancelledRef.conversation).turns[0];
+  assert.equal(cancelled.id, cancelledRef.turn);
+  assert.equal(cancelled.outcome, "CANCELLED");
+  assert.equal(cancelled.answers.length, 0);
   assert.equal(store.list({ outcome: "CANCELLED" }).items.length, 1);
   await c.send("Another question while work drains.");
+  assert.equal(c.phase, "error");
+  const busyRef = c.messages.find(
+    (m) => m.role === "question" && m.text === "Another question while work drains.",
+  ).history;
+  const busy = store.conversation(busyRef.conversation).turns[0];
+  assert.equal(busy.id, busyRef.turn);
+  assert.equal(busy.outcome, "NO_ANSWER");
+  assert.equal(busy.answers.length, 0);
+  assert.ok(
+    busy.events.some((e) => e.stage === "ADMISSION" && e.outcome === "BUSY"),
+  );
   assert.ok(store.list({ outcome: "NO_ANSWER" }).items.length);
   assert.ok(store.list({ search: "Another question" }).items.length);
   assert.equal(f.calls(), 1);
+  cleanup.resolve();
   const broken = await setup(t, {
     history: {
       begin() {
