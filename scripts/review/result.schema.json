@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["binding", "coverage", "verdict", "findings"],
+  "properties": {
+    "binding": { "type": "object" },
+    "coverage": { "enum": ["complete", "incomplete"] },
+    "verdict": { "enum": ["PASS", "FINDINGS", "BLOCKED"] },
+    "findings": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "severity", "message"],
+        "properties": {
+          "path": { "type": "string" },
+          "severity": { "enum": ["high", "medium", "low"] },
+          "message": { "type": "string", "minLength": 1, "maxLength": 2000 }
+        }
+      }
+    }
+  }
+}
