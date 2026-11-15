@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   sha256,
   routeFiles,
@@ -886,6 +886,50 @@ readPrompt(()=>emit(result));`,
     ).result.verdict,
     "PASS",
   );
+});
+test("a fast result waits for successful input delivery before final acceptance", async (t) => {
+  const diff = Buffer.from("synthetic diff");
+  const binding = inputBinding(diff);
+  for (const writeFails of [false, true]) {
+    const { executable } = fakeCli(
+      t,
+      `
+emit(init);
+readPrompt(() => { emit(result); setTimeout(()=>{},100); });`,
+    );
+    let sawResult = false;
+    const launch = (...args) => {
+      const child = spawn(...args);
+      const write = child.stdin.write.bind(child.stdin);
+      let release;
+      child.stdin.write = (packet, callback) =>
+        write(packet, (error) => {
+          release = () =>
+            callback(error || (writeFails ? new Error("synthetic") : null));
+          if (sawResult) setImmediate(release);
+        });
+      let output = "";
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+        if (!sawResult && output.includes('"event":"result"')) {
+          sawResult = true;
+          if (release) setImmediate(release);
+        }
+      });
+      return child;
+    };
+    const review = runReview(
+      executable,
+      { ...config, timeoutMs: 1000 },
+      binding,
+      diff,
+      "synthetic policy",
+      launch,
+    );
+    if (writeFails) await assert.rejects(review, /INPUT_TRANSPORT_FAILED/);
+    else assert.equal((await review).result.verdict, "PASS");
+    assert.equal(sawResult, true);
+  }
 });
 test("transport rejects CLI errors, incomplete output and prohibited events", async (t) => {
   const diff = Buffer.from("synthetic diff");

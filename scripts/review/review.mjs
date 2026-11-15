@@ -495,7 +495,14 @@ export function nativeArguments(config, schemaPath) {
     os.devNull,
   ];
 }
-export async function runReview(executable, config, binding, diff, policy) {
+export async function runReview(
+  executable,
+  config,
+  binding,
+  diff,
+  policy,
+  launch = spawn,
+) {
   requireThat(
     diff.length > 0 &&
       diff.length === binding.diffBytes &&
@@ -527,7 +534,7 @@ export async function runReview(executable, config, binding, diff, policy) {
       diff: diff.toString("utf8"),
     });
     return await new Promise((resolve, reject) => {
-      const child = spawn(executable, nativeArguments(config, schemaPath), {
+      const child = launch(executable, nativeArguments(config, schemaPath), {
         cwd: directory,
         env: reviewEnvironment(process.env),
         stdio: ["pipe", "pipe", "pipe"],
@@ -582,15 +589,21 @@ export async function runReview(executable, config, binding, diff, policy) {
             buffer = buffer.slice(newline + 1);
             requireThat(line.length > 0, "EMPTY_EVENT");
             const event = JSON.parse(line);
+            // A fast result may precede the write callback. Final acceptance
+            // below still requires successful delivery and normal process exit.
             if (event.event === "result")
-              requireThat(inputWritten, "RESULT_BEFORE_INPUT_WRITTEN");
+              requireThat(sent, "RESULT_BEFORE_INPUT_SUBMITTED");
             validator.accept(event);
             if (event.event === "result") child.stdin.end();
             if (!sent) {
               sent = true;
               child.stdin.write(
                 `${JSON.stringify({ event: "user", message: { content: prompt } })}\n`,
-                () => {
+                (error) => {
+                  if (error) {
+                    abort(new Error("INPUT_TRANSPORT_FAILED"));
+                    return;
+                  }
                   inputWritten = true;
                 },
               );
