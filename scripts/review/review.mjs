@@ -301,12 +301,23 @@ export function streamValidator(config, binding, schema) {
       } else if (event.event === "result") {
         const result = event.result;
         requireThat(
-          result &&
-            result.conversation_id === conversation &&
-            result.status === "SUCCESS" &&
-            result.num_turns === 1,
-          "INCOMPLETE_REVIEW",
+          result && result.conversation_id === conversation,
+          "RESULT_CONVERSATION_MISMATCH",
         );
+        if (result.status !== "SUCCESS") {
+          const status = [
+            "ERROR",
+            "CANCELED",
+            "INTERRUPTED",
+            "INVALID",
+            "WAITING",
+            "RUNNING",
+          ].includes(result.status)
+            ? result.status
+            : "UNKNOWN";
+          fail(`NATIVE_STATUS_${status}`);
+        }
+        requireThat(result.num_turns === 1, "INVALID_REVIEW_TURN_COUNT");
         equal(result.json_schema, schema, "SCHEMA_DRIFT");
         output = validateResult(result.structured_output, binding);
       } else fail("UNKNOWN_EVENT");
