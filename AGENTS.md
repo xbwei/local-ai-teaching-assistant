@@ -70,7 +70,7 @@ For every required Antigravity review, verify the safety-critical facts at the t
 
 - the intended fresh base and final substantive HEAD are exact, and the complete nonempty diff is delivered without truncation;
 - the requested and actual model ID and effort match the assigned profile or an explicitly approved fallback;
-- execution remains plan/sandbox/read-only with effective no-tools restrictions; any prohibited file, shell, URL/network, MCP/plugin/skill/subagent/delegation or other tool event blocks the review;
+- execution remains plan/sandbox/read-only with effective no-tools restrictions; any prohibited file read/write, shell command, URL/network access, MCP/plugin/skill/subagent/delegation or other tool event blocks the review;
 - the structured result is valid, and the base/HEAD/binding has not drifted before the result is accepted.
 
 These are invocation-time checks, not a separate persistent reviewer-qualification gate. Do not require a `QUALIFIED/UNQUALIFIED` certificate, route registry, two-fresh-session ceremony, or reviewer self-qualification before ordinary review. When reviewer tooling itself changes, validate it with deterministic tests, a bounded smoke check, GitHub CI, Gemini, and ChatGPT/Owner review; do not require the reviewer to approve itself.
