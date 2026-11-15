@@ -67,8 +67,9 @@ tool inventory cannot fill that gap.
 
 Consequently the current wrapper rejects even an otherwise matching startup
 with `BLOCKED / RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED`, before sending any
-prompt. Available tools, mismatched identity/schema, unknown metadata/events,
-tool events (including denied file, shell, network, MCP, plugin, skill or
+prompt. An advertised tool inventory is not itself a prohibited event or proof
+of effective permissions; it is not compared to a stored or empty inventory.
+Mismatched identity/schema, unknown events, tool events (including denied file, shell, network, MCP, plugin, skill or
 delegation attempts), diagnostics, malformed output and timeouts also block.
 There is currently **no supported native PASS path**. A supported authoritative
 native evidence mechanism needs a separately reviewed implementation; adding

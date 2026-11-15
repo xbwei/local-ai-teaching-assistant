@@ -226,15 +226,22 @@ test("native metadata cannot substitute requested flags or model assertions for 
   ]) {
     assert.throws(
       () => stream().accept({ ...init, init: { ...init.init, [key]: value } }),
-      /UNKNOWN_RUNTIME_METADATA/,
+      /RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED/,
     );
   }
+  // Inventory discovery is not itself an invocation or an enforcement proof.
+  assert.throws(
+    () =>
+      stream().accept({
+        ...init,
+        init: { ...init.init, tools: ["view_file", "run_command"] },
+      }),
+    /RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED/,
+  );
   for (const [key, value] of [
     ["model", "other"],
     ["agent", "other"],
     ["permission_mode", "always-proceed"],
-    ["tools", ["view_file"]],
-    ["tools", null],
     ["json_schema", {}],
   ]) {
     assert.throws(() =>

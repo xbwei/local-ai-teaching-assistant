@@ -252,32 +252,15 @@ export function streamValidator(config, binding, schema) {
         event?.event === "init" && event.init,
         "CAPABILITY_OR_UNKNOWN_EVENT",
       );
-      keys(
-        event,
-        ["event", "conversation_id", "init"],
-        "UNKNOWN_RUNTIME_METADATA",
-      );
       const init = event.init;
-      requireThat(
-        Object.keys(init).every((key) =>
-          [
-            "cwd",
-            "tools",
-            "permission_mode",
-            "model",
-            "agent",
-            "json_schema",
-          ].includes(key),
-        ),
-        "UNKNOWN_RUNTIME_METADATA",
-      );
       requireThat(
         init.model === config.model &&
           init.agent === "laita-restricted-reviewer" &&
           init.permission_mode === "strict",
         "RUNTIME_ROUTE_DRIFT",
       );
-      equal(init.tools, [], "TOOLS_AVAILABLE");
+      // An advertised inventory is neither a prohibited tool event nor proof
+      // that permissions are effective. Do not certify or compare inventories.
       equal(init.json_schema, schema, "SCHEMA_DRIFT");
       equal(
         schema.properties.binding,
