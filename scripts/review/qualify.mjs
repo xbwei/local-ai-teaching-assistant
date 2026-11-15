@@ -105,6 +105,7 @@ export function validateEvidence(e) {
     "session",
     "head",
     "base",
+    "headTree",
     "routeSha256",
     "harnessSha256",
     "source",
@@ -117,7 +118,7 @@ export function validateEvidence(e) {
     "INVALID_EVIDENCE",
   );
   check(
-    e.format === 1 &&
+    e.format === 2 &&
       ["NOT_ESTABLISHED", "BLOCKED"].includes(e.status) &&
       e.source === "native-cli" &&
       e.established === false,
@@ -127,7 +128,7 @@ export function validateEvidence(e) {
     probes.includes(e.probe) && /^[a-zA-Z0-9-]{8,80}$/.test(e.session),
     "INVALID_EVIDENCE_ID",
   );
-  for (const k of ["head", "base"])
+  for (const k of ["head", "base", "headTree"])
     check(/^[a-f0-9]{40}$/.test(e[k]), "INVALID_COMMIT");
   for (const k of ["routeSha256", "harnessSha256"])
     check(/^[a-f0-9]{64}$/.test(e[k]), "INVALID_HASH");
@@ -471,6 +472,25 @@ export function syntheticDiff(directory, large = true) {
     ),
   };
 }
+// Qualification may inspect clean current main without inventing a review diff.
+// Candidate branches still use the unchanged production complete-diff binding.
+export function bindQualification(root, base, head) {
+  check(
+    /^[a-f0-9]{40}$/.test(base) && /^[a-f0-9]{40}$/.test(head),
+    "FULL_COMMIT_IDS_REQUIRED",
+  );
+  assertFreshBase(root, base);
+  if (base !== head) return bindDiff(root, base, head, 1048576).binding;
+  check(git(root, ["rev-parse", "HEAD"]) === head, "HEAD_MISMATCH");
+  check(
+    git(root, ["status", "--porcelain=v1", "--untracked-files=all"]) === "",
+    "DIRTY_CHECKOUT",
+  );
+  const tree = git(root, ["rev-parse", `${head}^{tree}`]);
+  check(/^[a-f0-9]{40}$/.test(tree), "INVALID_TREE");
+  return { base, head, baseTree: tree, headTree: tree };
+}
+
 async function main() {
   const [probe, session, base, head, ...extra] = process.argv.slice(2);
   check(
@@ -480,8 +500,7 @@ async function main() {
     "USAGE_INVALID",
   );
   const root = path.resolve(here, "../..");
-  assertFreshBase(root, base);
-  const binding = bindDiff(root, base, head, 1048576).binding;
+  const binding = bindQualification(root, base, head);
   const route = inspect();
   assertNoCustomizations(os.homedir());
   const harnessSha256 = sha256(fs.readFileSync(fileURLToPath(import.meta.url)));
@@ -502,9 +521,8 @@ async function main() {
       path.join(agent, "agent.md"),
     );
     const result = await nativeProbe(route, probe, directory, snapshot);
-    assertFreshBase(root, base);
     check(
-      isDeepStrictEqual(binding, bindDiff(root, base, head, 1048576).binding) &&
+      isDeepStrictEqual(binding, bindQualification(root, base, head)) &&
         isDeepStrictEqual(route.identity, inspect().identity) &&
         harnessSha256 ===
           sha256(fs.readFileSync(fileURLToPath(import.meta.url))),
@@ -513,12 +531,13 @@ async function main() {
     console.log(
       JSON.stringify(
         validateEvidence({
-          format: 1,
+          format: 2,
           status: evidenceStatus(result.code),
           probe,
           session,
           head,
           base,
+          headTree: binding.headTree,
           routeSha256: route.identity.routeSha256,
           harnessSha256,
           source: "native-cli",
