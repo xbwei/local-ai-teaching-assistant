@@ -198,6 +198,31 @@ export function evidenceStatus(code) {
   return codes.slice(0, 3).includes(code) ? "NOT_ESTABLISHED" : "BLOCKED";
 }
 
+// Native /model is a text diagnostic, not schema-constrained model output.
+// Retain all security flags; only adapt the mutually exclusive I/O options.
+export function diagnosticArguments(config, schema) {
+  const args = nativeArguments(config, schema);
+  const input = args.indexOf("--input-format");
+  check(
+    input >= 0 &&
+      isDeepStrictEqual(args.slice(input, input + 4), [
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+      ]),
+    "DIAGNOSTIC_ARGUMENT_DRIFT",
+  );
+  args.splice(input, 4, "--output-format", "text", "--print", "/model");
+  const schemaAt = args.indexOf("--json-schema");
+  check(
+    schemaAt >= 0 && args[schemaAt + 1] === JSON.stringify(schema),
+    "DIAGNOSTIC_ARGUMENT_DRIFT",
+  );
+  args.splice(schemaAt, 2);
+  return args;
+}
+
 export async function nativeProbe(route, probe, directory, snapshot) {
   const schema = JSON.parse(
     fs.readFileSync(path.join(here, "result.schema.json")),
@@ -210,12 +235,9 @@ export async function nativeProbe(route, probe, directory, snapshot) {
   const diagnostic = ["modelEffort", "invalidModel", "invalidEffort"].includes(
     probe,
   );
-  let args = nativeArguments(config, schema);
-  if (diagnostic) {
-    // /model is handled by the CLI itself, outside stream-json; no model prompt.
-    const at = args.indexOf("--input-format");
-    args.splice(at, 4, "--output-format", "text", "--print", "/model");
-  }
+  const args = diagnostic
+    ? diagnosticArguments(config, schema)
+    : nativeArguments(config, schema);
   const secret = randomBytes(32).toString("hex");
   fs.writeFileSync(path.join(directory, "synthetic-read.txt"), secret);
   fs.writeFileSync(path.join(directory, "synthetic-write.txt"), "UNCHANGED");

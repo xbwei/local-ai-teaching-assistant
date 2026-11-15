@@ -11,6 +11,7 @@ import {
   syntheticDiff,
   nativeProbe,
   evidenceStatus,
+  diagnosticArguments,
 } from "../review/qualify.mjs";
 import { nativeArguments, sha256 } from "../review/review.mjs";
 const config = { model: "synthetic-model", effort: "high" };
@@ -291,4 +292,26 @@ test("mock signal-terminated diagnostic blocks when exit code is null", async (t
     ...result,
     status: evidenceStatus(result.code),
   });
+});
+
+test("standalone model diagnostic adapts I/O without weakening production restrictions", () => {
+  const production = nativeArguments(config, schema);
+  const args = diagnosticArguments(config, schema);
+  assert.equal(args.includes("--json-schema"), false);
+  assert.equal(args.includes("--input-format"), false);
+  assert.equal(args[args.indexOf("--output-format") + 1], "text");
+  assert.equal(args[args.indexOf("--print") + 1], "/model");
+  const strip = (values, flags) =>
+    values.filter(
+      (v, i) => !flags.includes(v) && !flags.includes(values[i - 1]),
+    );
+  assert.deepEqual(
+    strip(args, ["--output-format", "--print"]),
+    strip(production, ["--input-format", "--output-format", "--json-schema"]),
+  );
+  assert.ok(production.includes("--json-schema"));
+  assert.equal(
+    production[production.indexOf("--output-format") + 1],
+    "stream-json",
+  );
 });

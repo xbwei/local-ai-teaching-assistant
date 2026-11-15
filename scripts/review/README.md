@@ -145,7 +145,11 @@ receipt records structured-result validation and whether the late marker was
 returned in a finding. Neither observation alone proves complete model coverage.
 
 `modelEffort` uses the documented CLI-native standalone `/model` report, with
-unchanged restrictions; invalid-parameter probes use that same diagnostic rather
+unchanged restrictions. It removes only the stream-input and schema-output flags,
+selects text output, and retains agent/model/effort, plan, sandbox, disabled slash
+expansion, settings and log-suppression flags. CLI 1.5.1 rejects `--json-schema`
+with text output; a standalone text diagnostic is not a schema-constrained review.
+Invalid-parameter probes use that same diagnostic rather
 than an inference prompt. Mentions of the requested model/effort are recorded as
 hints only. No report text is retained. The installed headless protocol documents
 model/agent selection and generic tool errors, but does not specify an
