@@ -463,6 +463,22 @@ export async function runReview(executable, config, binding, diff, policy) {
       // Do not allow unrelated warnings, errors or permission diagnostics.
       const literalNotice =
         "warning: slash commands are unavailable for this run; the prompt was sent without expansion.";
+      const diagnosticError = (value) => {
+        const vocabulary = new Set(
+          "warning slash commands are unavailable for this run the prompt was sent without expansion error invalid json schema type binding const required object properties string array model agent permission sandbox input output stream format message content user turn empty failed failure not supported unsupported option flag request response terminated cancelled cannot must only provider thinking effort quota resource exhausted limit denied tool call native arguments did timeout authentication expired available one exactly unknown too many bytes additional expected value configuration".split(
+            " ",
+          ),
+        );
+        const words = value.toLowerCase().match(/[a-z]+/g) || [];
+        return new Error(
+          "CLI_DIAGNOSTIC_REQUIRES_REVIEW_" +
+            words
+              .filter((word) => vocabulary.has(word))
+              .slice(0, 60)
+              .join("_")
+              .toUpperCase(),
+        );
+      };
       let diagnostic = "";
       child.stderr.setEncoding("utf8");
       child.stderr.on("data", (chunk) => {
@@ -472,14 +488,14 @@ export async function runReview(executable, config, binding, diff, policy) {
           const line = diagnostic.slice(0, newline).replace(/\r$/, "");
           diagnostic = diagnostic.slice(newline + 1);
           if (line.trim() && line !== literalNotice)
-            abort(new Error("CLI_DIAGNOSTIC_REQUIRES_REVIEW"));
+            abort(diagnosticError(line));
         }
         if (
           diagnostic.length > literalNotice.length + 1 ||
           (diagnostic.trim() &&
             !literalNotice.startsWith(diagnostic.replace(/\r$/, "")))
         )
-          abort(new Error("CLI_DIAGNOSTIC_REQUIRES_REVIEW"));
+          abort(diagnosticError(diagnostic));
       });
       child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk) => {
