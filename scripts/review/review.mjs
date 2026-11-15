@@ -322,7 +322,28 @@ export function streamValidator(config, binding, schema) {
         if (typeof value === "string") {
           try {
             decoded = JSON.parse(value);
-          } catch {
+          } catch (error) {
+            const kind = /Unexpected end|Unterminated string/.test(
+              error.message,
+            )
+              ? "TRUNCATED"
+              : /after JSON/.test(error.message)
+                ? "TRAILING"
+                : /property name|double-quoted property/.test(error.message)
+                  ? "PROPERTY"
+                  : /control character/.test(error.message)
+                    ? "CONTROL"
+                    : /escaped character/.test(error.message)
+                      ? "ESCAPE"
+                      : "SYNTAX";
+            const position = Number(error.message.match(/position (\d+)/)?.[1]);
+            const location = !Number.isFinite(position)
+              ? "UNKNOWN"
+              : position < 10
+                ? "START"
+                : position > value.length - 10
+                  ? "END"
+                  : "MIDDLE";
             const shape = (text) =>
               typeof text !== "string"
                 ? "ABSENT"
@@ -334,7 +355,7 @@ export function streamValidator(config, binding, schema) {
                       ? "OBJECT_PREFIX"
                       : "TEXT";
             fail(
-              `INVALID_JSON_${shape(value)}_RESPONSE_${shape(result.response)}`,
+              `INVALID_JSON_${kind}_${location}_${shape(value)}_RESPONSE_${shape(result.response)}`,
             );
           }
         }
