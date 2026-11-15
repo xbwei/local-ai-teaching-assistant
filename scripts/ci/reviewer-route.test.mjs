@@ -269,6 +269,31 @@ test("supported init/step/result accepts PASS and adverse results without extra 
   validator.accept(result);
   assert.equal(validator.finish().reported.effort, "high");
 });
+test("serialized native JSON results use the same schema and binding validation", () => {
+  for (const field of ["response", "structured_output"]) {
+    const { init, result, stream } = events({ files: ["synthetic.txt"] });
+    const payload = result.result.structured_output;
+    delete result.result.structured_output;
+    result.result[field] = JSON.stringify(payload);
+    const validator = stream();
+    validator.accept(init);
+    validator.accept(result);
+    assert.deepEqual(validator.finish().result, payload);
+    for (const value of [
+      "not JSON",
+      JSON.stringify({ ...payload, binding: { files: [] } }),
+    ]) {
+      const invalid = stream();
+      invalid.accept(init);
+      assert.throws(() =>
+        invalid.accept({
+          ...result,
+          result: { ...result.result, [field]: value },
+        }),
+      );
+    }
+  }
+});
 test("native turn counters do not replace exact input and result binding", () => {
   for (const num_turns of [0, 2, 17]) {
     const { init, result, stream } = events({ files: ["synthetic.txt"] });

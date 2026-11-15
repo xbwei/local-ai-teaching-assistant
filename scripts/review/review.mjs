@@ -318,7 +318,11 @@ export function streamValidator(config, binding, schema) {
           fail(`NATIVE_STATUS_${status}`);
         }
         equal(result.json_schema, schema, "SCHEMA_DRIFT");
-        output = validateResult(result.structured_output, binding);
+        const value = result.structured_output ?? result.response;
+        output = validateResult(
+          typeof value === "string" ? JSON.parse(value) : value,
+          binding,
+        );
       } else fail("UNKNOWN_EVENT");
     },
     finish() {
