@@ -516,7 +516,8 @@ emit(init);
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", chunk => { input += chunk; });
-process.stdin.on("end", () => {
+process.stdin.on("data", () => {
+  if (!input.endsWith(String.fromCharCode(10))) return;
   const lines = input.trim().split("\\n");
   const packet = JSON.parse(lines[0]);
   const prompt = JSON.parse(packet.message.content);
@@ -570,7 +571,7 @@ const notice = ${JSON.stringify(notice)};
 process.stderr.write(notice.slice(0, 20));
 setTimeout(() => {process.stderr.write(notice.slice(20)+String.fromCharCode(10)); emit(init);}, 10);
 process.stdin.resume();
-process.stdin.on("end", () => emit(result));`,
+process.stdin.once("data", () => emit(result));`,
   );
   assert.equal(
     (
@@ -627,19 +628,19 @@ test("transport aborts before input on observed startup failure and rejects inco
   }
   for (const [source, expected] of [
     [
-      'emit(init); process.stdin.resume(); process.stdin.on("end",()=>{});',
+      'emit(init); process.stdin.once("data",()=>process.stdin.destroy());',
       /TRUNCATED_REVIEW/,
     ],
     [
-      'emit(init); process.stdin.resume(); process.stdin.on("end",()=>{process.stdout.write(JSON.stringify(result));});',
+      'emit(init); process.stdin.once("data",()=>{process.stdout.write(JSON.stringify(result));process.stdin.destroy();});',
       /INCOMPLETE_REVIEW_STREAM/,
     ],
     [
-      'emit(init); process.stdin.resume(); process.stdin.on("end",()=>{process.exitCode=2;});',
+      'emit(init); process.stdin.once("data",()=>{process.exitCode=2;process.stdin.destroy();});',
       /INCOMPLETE_REVIEW_STREAM/,
     ],
     [
-      'emit(init); process.stdin.resume(); process.stdin.on("end",()=>emit({event:"step_update",step_update:{conversation_id:"synthetic",step_type:"tool",tool_name:"run_command"}}));',
+      'emit(init); process.stdin.once("data",()=>emit({event:"step_update",step_update:{conversation_id:"synthetic",step_type:"tool",tool_name:"run_command"}}));',
       /CAPABILITY_OR_PROTOCOL_VIOLATION/,
     ],
     [

@@ -319,10 +319,27 @@ export function streamValidator(config, binding, schema) {
         }
         equal(result.json_schema, schema, "SCHEMA_DRIFT");
         const value = result.structured_output ?? result.response;
-        output = validateResult(
-          typeof value === "string" ? JSON.parse(value) : value,
-          binding,
-        );
+        let decoded = value;
+        if (typeof value === "string") {
+          try {
+            decoded = JSON.parse(value);
+          } catch {
+            const shape = (text) =>
+              typeof text !== "string"
+                ? "ABSENT"
+                : !text.trim()
+                  ? "EMPTY"
+                  : text.trim().startsWith("```")
+                    ? "FENCED"
+                    : text.trim().startsWith("{")
+                      ? "OBJECT_PREFIX"
+                      : "TEXT";
+            fail(
+              `INVALID_JSON_${shape(value)}_RESPONSE_${shape(result.response)}`,
+            );
+          }
+        }
+        output = validateResult(decoded, binding);
       } else fail("UNKNOWN_EVENT");
     },
     finish() {
@@ -510,9 +527,10 @@ export async function runReview(executable, config, binding, diff, policy) {
             if (event.event === "result")
               requireThat(inputWritten, "RESULT_BEFORE_INPUT_WRITTEN");
             validator.accept(event);
+            if (event.event === "result") child.stdin.end();
             if (!sent) {
               sent = true;
-              child.stdin.end(
+              child.stdin.write(
                 `${JSON.stringify({ event: "user", message: { content: prompt } })}\n`,
                 () => {
                   inputWritten = true;
