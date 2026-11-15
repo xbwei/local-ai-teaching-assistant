@@ -409,13 +409,13 @@ test("native arguments retain restrictions, exact schema and one-stream transpor
     ["--model", config.model],
     ["--effort", config.effort],
     ["--agent", "laita-restricted-reviewer"],
-    ["--mode", "plan"],
     ["--input-format", "stream-json"],
     ["--output-format", "stream-json"],
     ["--json-schema", JSON.stringify(schema)],
     ["--log-file", os.devNull],
   ])
     assert.equal(args[args.indexOf(flag) + 1], value);
+  assert.ok(!args.includes("--mode")); // Plan is selected through settings, without slash-prefix injection.
   assert.ok(args.includes("--sandbox"));
   assert.ok(args.includes("--disable-slash-commands"));
   assert.ok(!args.includes("--dangerously-skip-permissions"));

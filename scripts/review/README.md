@@ -44,7 +44,10 @@ path filter. Empty, oversized or unsupported-encoding diffs block without
 truncation. Preparation does not invoke review or print the diff.
 
 `review` requests the repository-owned restricted agent, explicit model/effort,
-plan mode, sandbox, disabled slash expansion and deny-all settings. The agent
+plan mode through `settings.json`, sandbox, disabled slash expansion and deny-all
+settings. CLI 1.5.1 warns that the redundant `--mode plan` flag has no effect with
+slash expansion disabled, so the helper uses the supported `agentMode: "plan"`
+setting instead. The agent
 requests no tools, skills, plugins, MCP or delegation. Ambient customizations
 block; provider and credential environment overrides are excluded.
 
