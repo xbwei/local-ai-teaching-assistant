@@ -1,18 +1,12 @@
 # Public reviewer entrypoint
 
-Run from the public repository with the approved published Cloud environment.
-This tooling does not install or change Antigravity, handle credentials, assign
-review profiles, authorize merges, or substitute for repository policy.
-
-**Bootstrap state: UNQUALIFIED.** Issue #67's implementation tests are not runtime
-qualification. Production `review` blocks before inference while this marker is
-present. Two independent Public Cloud sessions must supply reviewed native evidence before
-the qualification record changes. The observation harness below never writes that
-record or enables production review.
+Run from this public repository and the approved published Cloud environment.
+This is a thin independent exact-diff review helper. It does not install or change
+Antigravity, handle credentials, assign review profiles, or authorize merges.
 
 ## Commands
 
-Before any manual Antigravity invocation, including environment initialization:
+Before any Antigravity invocation, including environment initialization:
 
 ```sh
 export AGY_CLI_DISABLE_AUTO_UPDATE=true
@@ -29,187 +23,93 @@ node scripts/review/review.mjs prepare "$BASE" "$HEAD" HIGH_ASSURANCE_ANTIGRAVIT
 node scripts/review/review.mjs review "$BASE" "$HEAD" HIGH_ASSURANCE_ANTIGRAVITY
 ```
 
-`inspect` prints only machine-independent executable/artifact hashes and requested
-model/effort, Node version and governing policy hash. It is not qualification.
-Discovery searches PATH, resolves symlinks,
-and recognizes only the published simple cache-setting forwarding shim. It hashes
-the canonical ELF before invoking `--version`; unknown shims and identity changes
-block. `AGY_EXECUTABLE` may name the canonical installed executable when PATH does
-not expose it. It cannot bypass the hash check. Never replace or repin the binary
-to satisfy this check.
+`inspect` prints machine-independent executable/artifact hashes, requested
+model/effort, Node version and policy hash. Discovery resolves symlinks and
+recognizes only the published simple forwarding shim. The canonical ELF hash and
+version must match `route.json`; unknown shims and CLI identity changes block.
+`AGY_EXECUTABLE` can locate the installed executable but cannot bypass that check.
+Never replace or repin the executable to satisfy a check.
+
+`route.json` contains invocation configuration and limits, not a qualification
+registry. The supported profile remains `HIGH_ASSURANCE_ANTIGRAVITY`, requesting
+`gemini-4-argon-high` / high under the published workspace instructions. Other
+profiles/routes are unsupported; there is no automatic fallback.
 
 `prepare` requires full commit IDs, a clean checkout including untracked files,
-HEAD equal to the supplied commit, and a base equal to both origin/main and the
-current remote main. The base must be an ancestor of HEAD. Its receipt binds both
-trees, changed paths, exact diff byte count and SHA-256. The diff includes binary
-patches and deletions, disables external diff/text conversion, and is not filtered
-by path. Empty, oversized, or unsupported-encoding inputs block rather than being
-truncated. `prepare` is not review. It deliberately does not print the raw diff.
+HEAD equal to the supplied commit, and a base equal to both origin/main and live
+remote main. The base must be an ancestor of HEAD. Its binding includes both
+trees, changed paths, complete diff byte count and SHA-256. The diff includes
+binary patches and deletions, disables external diff/text conversion, and has no
+path filter. Empty, oversized or unsupported-encoding diffs block without
+truncation. Preparation does not invoke review or print the diff.
 
-`review` additionally requires the same reviewed qualification record and reviewer
-implementation in the base and checkout. A candidate PR cannot qualify its own
-changed reviewer. The whole serialized diff, binding and effective base policy go
-in one stdin message only after stream initialization matches the qualified route.
-The schema fixes the expected binding. Unknown events, tool/delegation events
-(even denied attempts), nonempty diagnostics, protocol drift, timeouts, malformed
-or incomplete output fail closed. Base, HEAD, clean state and route are checked
-again before reporting the result. Non-PASS results exit 2.
+`review` requests the repository-owned restricted agent, explicit model/effort,
+plan mode through `settings.json`, sandbox, disabled slash expansion and deny-all
+settings. CLI 1.5.1 warns that the redundant `--mode plan` flag has no effect with
+slash expansion disabled, so the helper uses the supported `agentMode: "plan"`
+setting instead. The agent
+requests no tools, skills, plugins, MCP or delegation. Ambient customizations
+block; provider and credential environment overrides are excluded.
 
-No raw review output or native stderr is written by this wrapper. Only the bounded
-structured finding receipt is printed. The native CLI retains responsibility for
-its own authentication and native session storage. Do not publish that storage.
+The helper checks the native init's reported model, agent, strict permission mode
+and schema. It writes exactly one stdin user message containing the complete diff,
+schema, binding and effective base policy, waits for the result, then closes stdin.
+The native schema is loaded from a temporary file. Large payloads never become
+command-line arguments. Streaming JSON output preserves tool-event monitoring.
+Advertised tool inventory is not tool
+execution and is not compared to a stored or empty inventory. Supported
+user/agent/checkpoint steps must keep the same conversation. Tool/delegation
+steps, including denied attempts, unknown events, protocol/CLI failure, incomplete
+output, invalid results or observed route mismatches block. The CLI’s exact notice
+that slash commands were not expanded is expected; every other nonempty diagnostic
+blocks, including permission notices.
+The process is bounded by `route.json`'s ten-minute timeout.
 
-## Qualification boundary
+An explicitly present terminal `structured_output` is always parsed and validated,
+whether object or serialized JSON; invalid/adverse terminal output cannot be
+replaced by cached text. Conflicting complete structured responses block. Only
+when that field is absent may the helper use the final completed (`DONE`)
+`agent_response` step’s `text_delta` chunks, or the terminal JSON response when
+there is no streamed text. It records the selected `reported.resultSource`
+and validates the exact result schema and diff binding. PASS also
+requires complete coverage and no findings. Valid FINDINGS/BLOCKED results remain
+adverse results, not PASS. Before accepting the result, the helper rechecks fresh
+base, HEAD/clean state, diff and executable/artifact identity. PASS exits 0;
+adverse results and failures exit 2.
 
-The currently installed version/hash are an observed candidate identity, not an
-assertion of qualification. The initial route requests Argon High/high because
-the published workspace instructions explicitly require Argon High; the assigned
-profile remains HIGH_ASSURANCE. Repository policy's default for that profile is
-Argon Medium/medium. Resolve any change through Owner/ChatGPT authority, not an
-automatic model fallback. Other routes/profiles are currently unsupported.
+## Requested and reported information
 
-Independent fresh-session qualification must establish:
+The receipt distinguishes `requestedModel` / `requestedEffort` from `reported`
+native model, effort, agent and permission mode. The supported CLI
+[headless protocol](https://antigravity.google/docs/cli/headless/) reports model,
+agent and permission mode at init. It does not normally supply a separate effort
+field: `reported.effort` is then `null`, not an invented observation. If an effort
+value is reported and differs from the request, the review blocks.
 
-- Actual model/effort resolution and rejection of invalid model/effort requests.
-- Effective plan, sandbox/read-only and deny-all behavior, including attempted
-  file reads/writes, shell, URLs/network, MCP, skills and delegation.
-- Correct agent loading; an empty `agy agents` list is not proof of failure.
-- Complete-diff transport, including late content and binary/change coverage,
-  nontruncation, structured output and adverse-result handling.
-- Material CLI, agent, settings, schema, wrapper and tool-inventory drift rejection.
+Under the controlling [Issue #67](https://github.com/xbwei/local-ai-teaching-assistant/issues/67),
+missing unsupported effort/sandbox/no-tools attestation fields are not a reason
+to stop before sending input. This helper uses supported configuration and
+reported information, and blocks observed violations. Its result is a code
+review, not runtime certification. Stream rejection detects an event; it cannot
+undo a tool that already executed.
 
-The existing no-prompt diagnostics did not establish these properties. In
-particular, an advertised tool inventory is neither permission enforcement nor a
-bypass. Strict permissions and zero observed tool calls alone are insufficient.
-Stream rejection detects violations; it does not prevent an already executed
-tool. The qualified native route must enforce restrictions before any tool runs.
+No persistent qualification certificate, session registry or fresh-session probe
+ceremony is required. Historical NOT_ESTABLISHED evidence is not relabeled PASS.
+The wrapper saves no raw transcript or native stderr. It prints only the bounded
+structured review receipt or a fixed failure code. Native authentication and
+session storage remain the CLI's responsibility.
 
-The qualification record is a reviewed attestation, not self-authenticating proof.
-Its authority and two distinct session evidence references must point to public
-Issue/PR comments reviewed under existing policy. Each session must cover all ten
-categories enforced by `assertQualified`. The expected tool inventory is recorded
-only after actual negative-path qualification; it is not inferred from the
-current init event. Store no raw transcripts or machine paths in the record.
-
-There is deliberately no `--force`, automatic qualification, model fallback, or
-per-PR qualification command. A future reviewed record can enable only its exact
-route fingerprint. Unchanged qualified routes perform identity/binding checks and
-ordinary review without repeating full qualification. Changed routes fail closed
-and require separate qualification. If native protocol evidence cannot support
-the contract, keep the route unqualified and report the precise limitation.
-
-## Bounded qualification observations
-
-Issue #67's qualification-enablement follow-up adds `qualify.mjs`. This is an
-observation harness, **not a certification command**. It deliberately returns
-`NOT_ESTABLISHED`, or `BLOCKED` on an observed failure (exit 2), until
-authoritative native evidence can support each
-required property. Its receipts cannot be supplied to `assertQualified`.
-Production `review`, `assertQualified`, and base-record trust are unchanged.
-
-From a clean exact candidate or current-main checkout, after environment initialization with
-auto-update disabled, DOT may resume each existing independent session:
+## Verification
 
 ```sh
-git fetch origin main
-BASE=$(git rev-parse origin/main)
-HEAD=$(git rev-parse HEAD)
-node scripts/review/qualify.mjs modelEffort SESSION_ID "$BASE" "$HEAD"
-```
-
-On merged current main, `BASE` and `HEAD` are equal. Qualification binds that
-clean commit and tree directly; it does not require an artificial product diff.
-For a candidate branch where they differ, qualification retains complete nonempty
-diff binding. Both paths verify local `origin/main` and live remote main before
-and after the native invocation, reject moved HEAD or dirty/untracked state, and
-compare the full binding again. Production `prepare`/`review` still require a
-nonempty diff; no production gate changes. Receipt format 2 adds required
-`headTree` alongside base/HEAD and route/harness hashes. Older format-1 receipts
-do not satisfy the new validator and do not prove the corrected harness.
-
-Use the actual existing session ID. Run one selected probe at a time; inspect its
-receipt before continuing. There is no automatic suite or retry. Other probe names
-are `invalidModel`, `invalidEffort`, `agentLoading`, `fileRead`, `fileWrite`,
-`shell`, `network`, `mcp`, `skills`, `delegation`, and `completeDiff`. Stop on a
-capability event, side effect, diagnostic, timeout, protocol failure or drift;
-do not continue spending inference quota through an unresolved failure. Native
-probes are not CI tests. DOT coordinates the A/B runs; do not create duplicate
-sessions or publish raw native output.
-
-The harness shares production argument construction, executable identity checks,
-ambient-customization rejection, environment filtering, agent contents, settings,
-schema and strict stream validator. It binds the clean candidate base/HEAD,
-route fingerprint and harness hash before and after invocation. Changed shared
-reviewer code changes the route hash: earlier CLI identity observations remain
-useful, but do not qualify this changed route. Compare inventory digests between
-independent receipts; the first observed inventory is not a trusted inventory.
-
-Each probe gets a temporary synthetic workspace. File targets contain only random
-synthetic text; shell requests only print a fixed string; the URL is loopback port
-1; MCP, skill and agent targets deliberately do not exist. The latter probes
-cannot distinguish unavailable capabilities from native permission enforcement.
-No servers, skills or agents are enabled to make those tests succeed. The
-complete-diff probe supplies a large generated diff with addition, deletion,
-binary content and a late defect carrying an unpredictable marker. Its bounded
-receipt records structured-result validation and whether the late marker was
-returned in a finding. Neither observation alone proves complete model coverage.
-
-`modelEffort` uses the documented CLI-native standalone `/model` report, with
-unchanged restrictions. It removes only the stream-input and schema-output flags,
-selects text output, and retains agent/model/effort, plan, sandbox, disabled slash
-expansion, settings and log-suppression flags. CLI 1.5.1 rejects `--json-schema`
-with text output; a standalone text diagnostic is not a schema-constrained review.
-Invalid-parameter probes use that same diagnostic rather
-than an inference prompt. Mentions of the requested model/effort are recorded as
-hints only. The receipt separates stdout/stderr model and effort mentions, tab-row
-presence, and exact known schema-output and slash-literal warnings. These fixed
-booleans identify output-channel or protocol clues without emitting any row values.
-The exact known literal-prompt or schema/output warning aborts with a fixed
-`BLOCKED` code. Unknown stderr remains unclassified; tab-row shape alone does not identify a valid
-native report. No report text is logged or retained after the bounded invocation.
-Previously emitted receipts containing only `diagnosticPresent` cannot recover the
-discarded stderr or establish why no stdout hint matched. Do not infer a channel
-or slash-command behavior from those receipts. The installed headless protocol documents
-model/agent selection and generic tool errors, but does not specify an
-execution-bound actual-effort attestation or a typed, pre-execution permission
-denial proof. Generic process failure cannot prove invalid-parameter rejection;
-a model refusal, missing target, tool error, or zero tool calls cannot prove
-restrictions. All remain `NOT_ESTABLISHED`. Unknown diagnostics are not interpreted
-as quota exhaustion or permission denial. A nonzero diagnostic exit or signal
-termination is `BLOCKED / NATIVE_EXIT_FAILED`, even for invalid-parameter probes;
-failed diagnostics do not produce model/effort hints. Earlier specific failures
-remain the reported cause. Inference probes abort on any tool or
-delegation event, including an alleged denial; stream rejection is detection,
-not prevention of a native tool already executed.
-
-Only bounded booleans, counts, hashes, fixed codes and candidate/session identifiers
-are emitted. `validateEvidence` rejects arbitrary native fields and affirmative
-qualification claims. The CLI retains responsibility for its native session
-storage; the harness never reads or publishes it. No transcript, error message,
-account identifier, absolute path or model finding enters receipts.
-
-Remaining acceptance work is explicit: establish supported authoritative evidence
-for actual model/effort, agent loading and enforced negative paths; independently
-review both sessions' evidence and material drift; then review and commit the final
-qualification record under Issue #67 authority. If the native protocol cannot
-supply a property, preserve the blocker and seek the specific adjudication. Do not
-weaken a gate or expand permissions to manufacture evidence.
-
-## Deterministic verification
-
-```sh
-node --test scripts/ci/reviewer-route.test.mjs scripts/ci/reviewer-qualification.test.mjs
+node --test scripts/ci/reviewer-route.test.mjs
 npm run validate
 ```
 
-The Node test suite uses synthetic Git repositories, files and mocked protocol
-events. It does not invoke a model, prove independent sessions, exercise native
-permission denials, or establish actual model effort. Full validation and normal
-GitHub CI/Gemini remain separate required gates. Issue #67's scoped bootstrap
-exception is recorded as `NOT_RUN / OWNER_AUTHORIZED_EXCEPTION`, never PASS or
-SKIPPED, and does not qualify this route for ordinary PRs.
-
-References: [CLI headless protocol](https://antigravity.google/docs/cli/headless/),
-[CLI permissions](https://antigravity.google/docs/permissions?tab=cli),
-[agent discovery](https://antigravity.google/docs/customization-discovery/),
-[settings schema](https://antigravity.google/schemas/v1/settings.json).
+Deterministic tests cover successful and adverse streams, complete prompt
+transport, result/conversation binding, prohibited events, drift, truncation and
+CLI failures using synthetic repositories and child processes. They do not
+substitute for the real exact-diff review required by #67. For this reviewer-tooling
+transition, retain bounded functional verification, GitHub CI, exact-HEAD Gemini,
+DOT independent complete-diff review and ChatGPT/Owner review under current
+[AGENTS.md](../../AGENTS.md). Issue-level acceptance and closure remain with ChatGPT.

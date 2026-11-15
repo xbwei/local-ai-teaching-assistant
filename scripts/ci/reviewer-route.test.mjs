@@ -3,19 +3,20 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   sha256,
   routeFiles,
   identity,
   canonicalExecutable,
   bindDiff,
-  assertQualified,
   assertFreshBase,
   validateResult,
   streamValidator,
   assertNoCustomizations,
   reviewEnvironment,
+  nativeArguments,
+  runReview,
 } from "../review/review.mjs";
 
 function temporary(t) {
@@ -64,32 +65,6 @@ const config = {
 };
 const route = () =>
   identity(config, artifacts, config.cliSha256, config.cliVersion);
-function qualified() {
-  return {
-    format: 1,
-    status: "QUALIFIED",
-    routeSha256: route().routeSha256,
-    authority:
-      "https://github.com/xbwei/local-ai-teaching-assistant/issues/67#issuecomment-1",
-    sessions: [1, 2].map((n) => ({
-      id: `synthetic-session-${n}`,
-      evidence: `https://github.com/xbwei/local-ai-teaching-assistant/issues/67#issuecomment-${n + 1}`,
-      coverage: [
-        "fileRead",
-        "fileWrite",
-        "shell",
-        "network",
-        "mcp",
-        "skills",
-        "delegation",
-        "modelEffort",
-        "completeDiff",
-        "drift",
-      ],
-    })),
-    expectedTools: [],
-  };
-}
 test("canonical discovery resolves symlinks and only the known shim; never executes shims", (t) => {
   const root = temporary(t);
   const binary = path.join(root, "native");
@@ -171,36 +146,6 @@ test("fresh base must match local tracking ref and live remote main", (t) => {
   git(root, "branch", "-f", "main", head);
   assert.throws(() => assertFreshBase(root, base), /REMOTE_BASE_CHANGED/);
 });
-test("qualification is mandatory, route-bound, and requires two distinct complete session records", () => {
-  assertQualified(qualified(), route());
-  for (const mutate of [
-    (q) => {
-      q.status = "UNQUALIFIED";
-    },
-    (q) => {
-      q.routeSha256 = "0".repeat(64);
-    },
-    (q) => {
-      q.sessions.pop();
-    },
-    (q) => {
-      q.sessions[1].id = q.sessions[0].id;
-    },
-    (q) => {
-      q.sessions[1].evidence = q.sessions[0].evidence;
-    },
-    (q) => {
-      q.sessions[0].coverage.pop();
-    },
-    (q) => {
-      q.authority = "";
-    },
-  ]) {
-    const record = qualified();
-    mutate(record);
-    assert.throws(() => assertQualified(record, route()));
-  }
-});
 test("structured result rejects partial coverage, mismatched diff and unexpected fields", (t) => {
   const { root, base, head } = repo(t);
   const { binding } = bindDiff(root, base, head, 100000);
@@ -250,51 +195,465 @@ test("structured result rejects partial coverage, mismatched diff and unexpected
     /INVALID_FINDING/,
   );
 });
-test("mock stream rejects tools (including denied attempts), delegation, drift, duplicate or truncated output", () => {
-  const binding = { files: ["synthetic.txt"] };
-  const schema = { type: "object" };
-  const init = {
-    event: "init",
-    conversation_id: "synthetic",
+function events(binding, verdict = "PASS") {
+  const schema = JSON.parse(
+    fs.readFileSync(new URL("../review/result.schema.json", import.meta.url)),
+  );
+  schema.properties.binding = { const: binding };
+  return {
     init: {
-      model: config.model,
-      agent: "laita-restricted-reviewer",
-      permission_mode: "strict",
-      tools: [],
-      json_schema: schema,
-    },
-  };
-  const result = {
-    event: "result",
-    result: {
+      event: "init",
       conversation_id: "synthetic",
-      status: "SUCCESS",
-      num_turns: 1,
-      json_schema: schema,
-      structured_output: {
-        binding,
-        coverage: "complete",
-        verdict: "PASS",
-        findings: [],
+      init: {
+        model: config.model,
+        agent: "laita-restricted-reviewer",
+        permission_mode: "strict",
+        tools: ["view_file", "run_command"],
+        json_schema: schema,
       },
     },
+    result: {
+      event: "result",
+      result: {
+        conversation_id: "synthetic",
+        status: "SUCCESS",
+        num_turns: 1,
+        json_schema: schema,
+        structured_output: {
+          binding,
+          coverage: verdict === "BLOCKED" ? "incomplete" : "complete",
+          verdict,
+          findings:
+            verdict === "FINDINGS"
+              ? [
+                  {
+                    path: binding.files[0],
+                    severity: "medium",
+                    message: "Synthetic defect",
+                  },
+                ]
+              : [],
+        },
+      },
+    },
+    stream: () => streamValidator(config, binding, schema),
   };
-  const stream = () => streamValidator(config, qualified(), binding, schema);
-  let validator = stream();
+}
+test("supported init/step/result accepts PASS and adverse results without extra attestation fields", () => {
+  const binding = { files: ["synthetic.txt"] };
+  for (const verdict of ["PASS", "FINDINGS", "BLOCKED"]) {
+    const { init, result, stream } = events(binding, verdict);
+    const validator = stream();
+    validator.accept(init);
+    for (const step_type of ["user_input", "agent_response", "checkpoint"]) {
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type,
+          step_index: 1,
+          state: "DONE",
+        },
+      });
+    }
+    validator.accept(result);
+    assert.deepEqual(validator.finish(), {
+      result: result.result.structured_output,
+      reported: {
+        model: config.model,
+        effort: null,
+        agent: "laita-restricted-reviewer",
+        permissionMode: "strict",
+        resultSource: "structured_output",
+      },
+    });
+  }
+  const { init, result, stream } = events(binding);
+  init.init.effort = "high";
+  const validator = stream();
   validator.accept(init);
   validator.accept(result);
-  assert.equal(validator.finish().verdict, "PASS");
-  assert.throws(() => validator.accept(result), /EVENT_AFTER/);
+  assert.equal(validator.finish().reported.effort, "high");
+});
+test("serialized native JSON results use the same schema and binding validation", () => {
+  for (const field of ["response", "structured_output"]) {
+    const { init, result, stream } = events({ files: ["synthetic.txt"] });
+    const payload = result.result.structured_output;
+    delete result.result.structured_output;
+    result.result[field] = JSON.stringify(payload);
+    const validator = stream();
+    validator.accept(init);
+    validator.accept(result);
+    assert.deepEqual(validator.finish().result, payload);
+    for (const value of [
+      "not JSON",
+      JSON.stringify({ ...payload, binding: { files: [] } }),
+    ]) {
+      const invalid = stream();
+      invalid.accept(init);
+      assert.throws(() =>
+        invalid.accept({
+          ...result,
+          result: { ...result.result, [field]: value },
+        }),
+      );
+    }
+  }
+});
+test("the final streamed response is assembled by step and remains exactly bound", () => {
+  const { init, result, stream } = events({ files: ["synthetic.txt"] });
+  const payload = result.result.structured_output;
+  delete result.result.structured_output;
+  result.result.response = JSON.stringify(payload) + JSON.stringify(payload);
+  for (const output of [payload, { ...payload, binding: { files: [] } }]) {
+    const validator = stream();
+    validator.accept(init);
+    validator.accept({
+      event: "step_update",
+      step_update: {
+        conversation_id: "synthetic",
+        step_type: "agent_response",
+        step_index: 1,
+        state: "DONE",
+        text_delta: "Earlier analysis",
+      },
+    });
+    const json = JSON.stringify(output);
+    const half = Math.floor(json.length / 2);
+    for (const [state, text_delta] of [
+      ["ACTIVE", json.slice(0, half)],
+      ["DONE", json.slice(half)],
+    ]) {
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 3,
+          state,
+          text_delta,
+        },
+      });
+    }
+    if (output === payload) {
+      validator.accept(result);
+      assert.deepEqual(validator.finish().result, payload);
+      assert.equal(validator.finish().reported.resultSource, "agent_response");
+    } else
+      assert.throws(() => validator.accept(result), /DIFF_BINDING_MISMATCH/);
+  }
+});
+test("a complete DONE response is not appended twice and an invalid snapshot cannot PASS", () => {
+  const { init, result, stream } = events({ files: ["synthetic.txt"] });
+  const payload = result.result.structured_output;
+  delete result.result.structured_output;
+  result.result.response = JSON.stringify(payload) + JSON.stringify(payload);
+  for (const final of [payload, { ...payload, binding: { files: [] } }]) {
+    const validator = stream();
+    validator.accept(init);
+    for (const [state, text] of [
+      ["ACTIVE", payload],
+      ["DONE", final],
+    ]) {
+      const update = {
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 3,
+          state,
+          text_delta: JSON.stringify(text),
+        },
+      };
+      if (state === "DONE" && final !== payload)
+        assert.throws(() => validator.accept(update), /DIFF_BINDING_MISMATCH/);
+      else validator.accept(update);
+    }
+    if (final === payload) {
+      validator.accept(result);
+      assert.equal(validator.finish().result.verdict, "PASS");
+    } else assert.throws(() => validator.accept(result));
+  }
+});
+test("explicit terminal results cannot be masked by cached PASS text", () => {
+  const binding = { files: ["synthetic.txt"] };
+  const pass = events(binding).result.result.structured_output;
+  const findings = events(binding, "FINDINGS").result.result.structured_output;
+  const blocked = events(binding, "BLOCKED").result.result.structured_output;
+  for (const terminal of [
+    pass,
+    findings,
+    blocked,
+    { ...pass, binding: { files: [] } },
+  ]) {
+    for (const serialized of [false, true]) {
+      const { init, result, stream } = events(binding);
+      const validator = stream();
+      validator.accept(init);
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 1,
+          state: "DONE",
+          text_delta: JSON.stringify(pass),
+        },
+      });
+      result.result.structured_output = serialized
+        ? JSON.stringify(terminal)
+        : terminal;
+      if (terminal === pass) {
+        validator.accept(result);
+        assert.equal(validator.finish().result.verdict, "PASS");
+        assert.equal(
+          validator.finish().reported.resultSource,
+          "structured_output",
+        );
+      } else assert.throws(() => validator.accept(result));
+    }
+  }
+  for (const terminal of ["not JSON", null, undefined]) {
+    const { init, result, stream } = events(binding);
+    const validator = stream();
+    validator.accept(init);
+    validator.accept({
+      event: "step_update",
+      step_update: {
+        conversation_id: "synthetic",
+        step_type: "agent_response",
+        step_index: 1,
+        state: "DONE",
+        text_delta: JSON.stringify(pass),
+      },
+    });
+    result.result.structured_output = terminal;
+    assert.throws(() => validator.accept(result));
+  }
+  const { init, result, stream } = events(binding);
+  const validator = stream();
+  validator.accept(init);
+  validator.accept({
+    event: "step_update",
+    step_update: {
+      conversation_id: "synthetic",
+      step_type: "agent_response",
+      step_index: 1,
+      state: "DONE",
+      text_delta: JSON.stringify(findings),
+    },
+  });
+  result.result.structured_output = JSON.stringify(pass);
+  assert.throws(() => validator.accept(result), /CONTRADICTORY_REVIEW_RESULTS/);
+  assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
+});
+test("a complete terminal response cannot silently contradict the chosen result", () => {
+  const binding = { files: ["synthetic.txt"] };
+  const pass = events(binding).result.result.structured_output;
+  const findings = events(binding, "FINDINGS").result.result.structured_output;
+  const blocked = events(binding, "BLOCKED").result.result.structured_output;
+  for (const explicit of [false, true]) {
+    for (const terminal of [
+      pass,
+      findings,
+      blocked,
+      { ...pass, binding: { files: [] } },
+    ]) {
+      const { init, result, stream } = events(binding);
+      if (!explicit) delete result.result.structured_output;
+      result.result.response = JSON.stringify(terminal);
+      const validator = stream();
+      validator.accept(init);
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 1,
+          state: "DONE",
+          text_delta: JSON.stringify(pass),
+        },
+      });
+      if (terminal === pass) {
+        validator.accept(result);
+        assert.equal(validator.finish().result.verdict, "PASS");
+      } else {
+        assert.throws(() => validator.accept(result));
+        assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
+      }
+    }
+  }
+});
+test("stream fallback requires the final response step to complete", () => {
+  const binding = { files: ["synthetic.txt"] };
+  for (const laterActive of [false, true]) {
+    const { init, result, stream } = events(binding);
+    const json = JSON.stringify(result.result.structured_output);
+    delete result.result.structured_output;
+    const validator = stream();
+    validator.accept(init);
+    validator.accept({
+      event: "step_update",
+      step_update: {
+        conversation_id: "synthetic",
+        step_type: "agent_response",
+        step_index: 1,
+        state: laterActive ? "DONE" : "ACTIVE",
+        text_delta: json,
+      },
+    });
+    if (laterActive)
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 2,
+          state: "ACTIVE",
+          text_delta: json,
+        },
+      });
+    assert.throws(() => validator.accept(result), /INCOMPLETE_AGENT_RESPONSE/);
+  }
+});
+test("empty unfinished steps and invalid completed snapshots cannot hide behind terminal output", () => {
+  const binding = { files: ["synthetic.txt"] };
+  for (const explicit of [false, true]) {
+    for (const text_delta of [undefined, ""]) {
+      const { init, result, stream } = events(binding);
+      result.result.response = JSON.stringify(result.result.structured_output);
+      if (!explicit) delete result.result.structured_output;
+      const validator = stream();
+      validator.accept(init);
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 2,
+          state: "ACTIVE",
+          ...(text_delta === undefined ? {} : { text_delta }),
+        },
+      });
+      assert.throws(
+        () => validator.accept(result),
+        /INCOMPLETE_AGENT_RESPONSE/,
+      );
+      assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
+      const completed = stream();
+      completed.accept(init);
+      completed.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 2,
+          state: "DONE",
+          ...(text_delta === undefined ? {} : { text_delta }),
+        },
+      });
+      completed.accept(result);
+      assert.equal(completed.finish().result.verdict, "PASS");
+    }
+  }
+  const { init, result, stream } = events(binding);
+  const validator = stream();
+  validator.accept(init);
+  validator.accept({
+    event: "step_update",
+    step_update: {
+      conversation_id: "synthetic",
+      step_type: "agent_response",
+      step_index: 1,
+      state: "ACTIVE",
+      text_delta: JSON.stringify(result.result.structured_output),
+    },
+  });
+  assert.throws(
+    () =>
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 1,
+          state: "DONE",
+          text_delta: JSON.stringify({
+            ...result.result.structured_output,
+            binding: { files: [] },
+          }),
+        },
+      }),
+    /DIFF_BINDING_MISMATCH/,
+  );
+  assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
+});
+test("native turn counters do not replace exact input and result binding", () => {
+  for (const num_turns of [0, 2, 17]) {
+    const { init, result, stream } = events({ files: ["synthetic.txt"] });
+    result.result.num_turns = num_turns;
+    const validator = stream();
+    validator.accept(init);
+    validator.accept(result);
+    assert.equal(validator.finish().result.verdict, "PASS");
+  }
+});
+test("observed route drift, capabilities, denied attempts and conversation drift block", () => {
+  const { init, stream } = events({ files: ["synthetic.txt"] });
+  for (const [key, value] of [
+    ["model", "other"],
+    ["effort", "low"],
+    ["agent", "other"],
+    ["permission_mode", "always-proceed"],
+    ["json_schema", {}],
+  ]) {
+    assert.throws(() =>
+      stream().accept({ ...init, init: { ...init.init, [key]: value } }),
+    );
+  }
   for (const tool of [
     "view_file",
     "write_to_file",
     "run_command",
     "read_url_content",
     "call_mcp_tool",
+    "load_skill",
+    "invoke_plugin",
     "invoke_subagent",
+    "delegate",
     "run_workflow",
   ]) {
-    validator = stream();
+    for (const event of [
+      { event: tool },
+      {
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "tool",
+          tool_name: tool,
+          tool_info: { error: "denied" },
+        },
+      },
+      {
+        event: "step_update",
+        step_update: { conversation_id: "synthetic", step_type: tool },
+      },
+    ]) {
+      const validator = stream();
+      validator.accept(init);
+      assert.throws(
+        () => validator.accept(event),
+        /CAPABILITY_OR_PROTOCOL_VIOLATION|UNKNOWN_EVENT/,
+      );
+    }
+  }
+  for (const extra of [
+    { tool_info: null },
+    { tool_name: "" },
+    { subagent_info: {} },
+    { conversation_id: "other" },
+  ]) {
+    const validator = stream();
     validator.accept(init);
     assert.throws(
       () =>
@@ -302,31 +661,51 @@ test("mock stream rejects tools (including denied attempts), delegation, drift, 
           event: "step_update",
           step_update: {
             conversation_id: "synthetic",
-            step_type: "tool",
-            tool_name: tool,
-            tool_info: { error: "denied" },
+            step_type: "agent_response",
+            ...extra,
           },
         }),
-      /CAPABILITY/,
+      /CAPABILITY_OR_PROTOCOL_VIOLATION/,
     );
   }
-  for (const [key, value] of [
-    ["model", "other"],
-    ["agent", "other"],
-    ["permission_mode", "always-proceed"],
-    ["tools", ["view_file"]],
-    ["json_schema", {}],
-  ]) {
-    assert.throws(() =>
-      stream().accept({ ...init, init: { ...init.init, [key]: value } }),
-    );
-  }
+});
+test("truncated, duplicate, out-of-order and mismatched terminal results cannot PASS", () => {
+  const { init, result, stream } = events({ files: ["synthetic.txt"] });
+  assert.throws(() => stream().finish(), /TRUNCATED_REVIEW/);
+  assert.throws(() => stream().accept(result), /INIT_REQUIRED/);
+  let validator = stream();
+  validator.accept(init);
+  assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
+  assert.throws(() => validator.accept(init), /UNKNOWN_EVENT/);
   validator = stream();
   validator.accept(init);
-  assert.throws(() => validator.finish(), /TRUNCATED/);
-  assert.throws(() => stream().accept(result), /INIT_REQUIRED/);
-  assert.throws(() => validator.accept({ event: "unknown" }), /UNKNOWN_EVENT/);
+  validator.accept(result);
+  assert.throws(() => validator.accept(result), /EVENT_AFTER_RESULT/);
+  for (const change of [
+    { conversation_id: "other" },
+    { status: "ERROR" },
+    { json_schema: {} },
+    {
+      structured_output: {
+        ...result.result.structured_output,
+        binding: { files: [] },
+      },
+    },
+    {
+      structured_output: {
+        ...result.result.structured_output,
+        coverage: "incomplete",
+      },
+    },
+  ]) {
+    validator = stream();
+    validator.accept(init);
+    assert.throws(() =>
+      validator.accept({ ...result, result: { ...result.result, ...change } }),
+    );
+  }
 });
+
 test("ambient customizations and credential/provider environment injection fail closed", (t) => {
   const root = temporary(t);
   assertNoCustomizations(root);
@@ -351,10 +730,249 @@ test("ambient customizations and credential/provider environment injection fail 
     { HOME: "synthetic", AGY_CLI_DISABLE_AUTO_UPDATE: "true" },
   );
 });
-test("shipped bootstrap qualification cannot authorize a production review", () => {
-  const record = JSON.parse(
-    fs.readFileSync(new URL("../review/qualification.json", import.meta.url)),
+test("native arguments retain restrictions, exact schema and one-stream transport", () => {
+  const schemaPath = "synthetic.schema.json";
+  const args = nativeArguments(config, schemaPath);
+  for (const [flag, value] of [
+    ["--model", config.model],
+    ["--effort", config.effort],
+    ["--agent", "laita-restricted-reviewer"],
+    ["--input-format", "stream-json"],
+    ["--output-format", "stream-json"],
+    ["--json-schema", schemaPath],
+    ["--log-file", os.devNull],
+  ])
+    assert.equal(args[args.indexOf(flag) + 1], value);
+  assert.ok(!args.includes("--print"));
+  assert.ok(!args.includes("--mode")); // Plan is selected through settings, without slash-prefix injection.
+  assert.ok(args.includes("--sandbox"));
+  assert.ok(args.includes("--disable-slash-commands"));
+  assert.ok(!args.includes("--dangerously-skip-permissions"));
+  const settings = JSON.parse(
+    fs.readFileSync(new URL("../review/settings.json", import.meta.url)),
   );
-  assert.equal(record.status, "UNQUALIFIED");
-  assert.throws(() => assertQualified(record, route()), /ROUTE_UNQUALIFIED/);
+  assert.equal(settings.agentMode, "plan");
+  assert.equal(settings.toolPermission, "strict");
+  assert.equal(settings.enableTerminalSandbox, true);
+  assert.equal(settings.allowNonWorkspaceAccess, false);
+  assert.deepEqual(settings.permissions.allow, []);
+  assert.deepEqual(settings.permissions.ask, []);
+  for (const capability of [
+    "command",
+    "read_file",
+    "write_file",
+    "read_url",
+    "execute_url",
+    "mcp",
+    "unsandboxed",
+  ]) {
+    assert.ok(settings.permissions.deny.includes(`${capability}(*)`));
+  }
+});
+
+function fakeCli(t, source) {
+  const root = temporary(t);
+  t.mock.method(os, "homedir", () => root);
+  const executable = path.join(root, "synthetic-cli.mjs");
+  fs.writeFileSync(
+    executable,
+    `#!${process.execPath}
+import fs from "node:fs";
+import {createHash} from "node:crypto";
+const schema = JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf("--json-schema") + 1],"utf8"));
+const binding = schema.properties.binding.const;
+const readPrompt = callback => {
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", chunk => {
+    input += chunk;
+    if (!input.endsWith(String.fromCharCode(10))) return;
+    const lines = input.trimEnd().split(String.fromCharCode(10));
+    const packet = JSON.parse(lines[0]);
+    if (packet.event !== "user") throw new Error("Synthetic invalid input event");
+    callback(JSON.parse(packet.message.content), lines.length);
+  });
+};
+const init = {event:"init",conversation_id:"synthetic",init:{model:${JSON.stringify(config.model)},agent:"laita-restricted-reviewer",permission_mode:"strict",tools:["view_file"],json_schema:schema}};
+const result = {event:"result",result:{conversation_id:"synthetic",status:"SUCCESS",num_turns:1,json_schema:schema,structured_output:{binding,coverage:"complete",verdict:"PASS",findings:[]}}};
+const emit = event => process.stdout.write(JSON.stringify(event)+"\\n");
+${source}
+`,
+  );
+  fs.chmodSync(executable, 0o700);
+  return { root, executable };
+}
+function inputBinding(diff) {
+  return {
+    base: "a".repeat(40),
+    head: "b".repeat(40),
+    files: ["synthetic.txt"],
+    diffBytes: diff.length,
+    diffSha256: sha256(diff),
+  };
+}
+test("transport delivers one complete UTF-8 prompt and accepts its bound structured result", async (t) => {
+  const diff = Buffer.from(
+    "synthetic padding 💡\n".repeat(16000) + "late synthetic marker",
+  );
+  assert.ok(diff.length > 256 * 1024);
+  const binding = inputBinding(diff);
+  const { root, executable } = fakeCli(
+    t,
+    `
+emit(init);
+readPrompt((prompt,messages) => {
+  fs.writeFileSync("observed.json", JSON.stringify({messages,binding:prompt.binding,policy:prompt.policy,schema:prompt.schema,bytes:Buffer.byteLength(prompt.diff),sha256:createHash("sha256").update(prompt.diff).digest("hex"),late:prompt.diff.endsWith("late synthetic marker")}));
+  emit(result);
+});`,
+  );
+  const marker = path.join(root, "observed.json");
+  fs.writeFileSync(
+    executable,
+    fs
+      .readFileSync(executable, "utf8")
+      .replace('"observed.json"', JSON.stringify(marker)),
+  );
+  const completed = await runReview(
+    executable,
+    { ...config, timeoutMs: 3000 },
+    binding,
+    diff,
+    "synthetic policy",
+  );
+  assert.equal(completed.result.verdict, "PASS");
+  assert.deepEqual(JSON.parse(fs.readFileSync(marker)), {
+    messages: 1,
+    binding,
+    policy: "synthetic policy",
+    schema: events(binding).init.init.json_schema,
+    bytes: diff.length,
+    sha256: sha256(diff),
+    late: true,
+  });
+  await assert.rejects(
+    runReview(
+      executable,
+      config,
+      binding,
+      diff.subarray(1),
+      "synthetic policy",
+    ),
+    /INPUT_BINDING_MISMATCH/,
+  );
+});
+test("only the exact literal-input notice is accepted, including split stderr chunks", async (t) => {
+  const diff = Buffer.from("synthetic diff");
+  const binding = inputBinding(diff);
+  const notice =
+    "warning: slash commands are unavailable for this run; the prompt was sent without expansion.";
+  const { executable } = fakeCli(
+    t,
+    `
+const notice = ${JSON.stringify(notice)};
+process.stderr.write(notice.slice(0,20));
+setTimeout(()=>{process.stderr.write(notice.slice(20)+String.fromCharCode(10));emit(init);},10);
+readPrompt(()=>emit(result));`,
+  );
+  assert.equal(
+    (
+      await runReview(
+        executable,
+        { ...config, timeoutMs: 1000 },
+        binding,
+        diff,
+        "synthetic policy",
+      )
+    ).result.verdict,
+    "PASS",
+  );
+});
+test("a fast result waits for successful input delivery before final acceptance", async (t) => {
+  const diff = Buffer.from("synthetic diff");
+  const binding = inputBinding(diff);
+  for (const writeFails of [false, true]) {
+    const { executable } = fakeCli(
+      t,
+      `
+emit(init);
+readPrompt(() => { emit(result); setTimeout(()=>{},100); });`,
+    );
+    let sawResult = false;
+    const launch = (...args) => {
+      const child = spawn(...args);
+      const write = child.stdin.write.bind(child.stdin);
+      let release;
+      child.stdin.write = (packet, callback) =>
+        write(packet, (error) => {
+          release = () =>
+            callback(error || (writeFails ? new Error("synthetic") : null));
+          if (sawResult) setImmediate(release);
+        });
+      let output = "";
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+        if (!sawResult && output.includes('"event":"result"')) {
+          sawResult = true;
+          if (release) setImmediate(release);
+        }
+      });
+      return child;
+    };
+    const review = runReview(
+      executable,
+      { ...config, timeoutMs: 1000 },
+      binding,
+      diff,
+      "synthetic policy",
+      launch,
+    );
+    if (writeFails) await assert.rejects(review, /INPUT_TRANSPORT_FAILED/);
+    else assert.equal((await review).result.verdict, "PASS");
+    assert.equal(sawResult, true);
+  }
+});
+test("transport rejects CLI errors, incomplete output and prohibited events", async (t) => {
+  const diff = Buffer.from("synthetic diff");
+  const binding = inputBinding(diff);
+  for (const [source, expected] of [
+    [
+      'init.init.model="other";emit(init);setInterval(()=>{},1000);',
+      /RUNTIME_ROUTE_DRIFT/,
+    ],
+    [
+      `process.stdout.write(${JSON.stringify("not JSON\n")});setInterval(()=>{},1000);`,
+      SyntaxError,
+    ],
+    [
+      'emit({event:"tool",tool_name:"run_command"});setInterval(()=>{},1000);',
+      /INIT_REQUIRED/,
+    ],
+    [
+      'process.stderr.write("synthetic diagnostic");setInterval(()=>{},1000);',
+      /CLI_DIAGNOSTIC_REQUIRES_REVIEW/,
+    ],
+    ["setInterval(()=>{},1000);", /REVIEW_TIMEOUT/],
+    ["emit(init);readPrompt(()=>process.stdin.destroy());", /TRUNCATED_REVIEW/],
+    [
+      "emit(init);process.stdout.write(JSON.stringify(result));",
+      /INCOMPLETE_REVIEW_STREAM/,
+    ],
+    ["emit(init);process.exitCode=2;", /INCOMPLETE_REVIEW_STREAM/],
+    [
+      'emit(init);readPrompt(()=>emit({event:"step_update",step_update:{conversation_id:"synthetic",step_type:"tool",tool_name:"run_command"}}));',
+      /CAPABILITY_OR_PROTOCOL_VIOLATION/,
+    ],
+  ]) {
+    const { executable } = fakeCli(t, source);
+    await assert.rejects(
+      runReview(
+        executable,
+        { ...config, timeoutMs: 1000 },
+        binding,
+        diff,
+        "synthetic policy",
+      ),
+      expected,
+    );
+  }
 });
