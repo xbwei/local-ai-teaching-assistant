@@ -520,7 +520,7 @@ process.stdin.on("end", () => {
   const lines = input.trim().split("\\n");
   const packet = JSON.parse(lines[0]);
   const prompt = JSON.parse(packet.message.content);
-  fs.writeFileSync("observed.json", JSON.stringify({messages:lines.length,event:packet.event,binding:prompt.binding,policy:prompt.policy,bytes:Buffer.byteLength(prompt.diff),sha256:createHash("sha256").update(prompt.diff).digest("hex"),late:prompt.diff.endsWith("late synthetic marker")}));
+  fs.writeFileSync("observed.json", JSON.stringify({messages:lines.length,event:packet.event,binding:prompt.binding,policy:prompt.policy,schema:prompt.schema,bytes:Buffer.byteLength(prompt.diff),sha256:createHash("sha256").update(prompt.diff).digest("hex"),late:prompt.diff.endsWith("late synthetic marker")}));
   emit(result);
 });`,
   );
@@ -542,6 +542,7 @@ process.stdin.on("end", () => {
     event: "user",
     binding,
     policy: "synthetic policy",
+    schema: events(binding).init.init.json_schema,
     bytes: diff.length,
     sha256: sha256(diff),
     late: true,
