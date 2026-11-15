@@ -52,9 +52,11 @@ requests no tools, skills, plugins, MCP or delegation. Ambient customizations
 block; provider and credential environment overrides are excluded.
 
 The helper checks the native init's reported model, agent, strict permission mode
-and schema. It supplies one `--print` prompt containing the entire diff, schema, binding and
-effective base policy, while `--output-format stream-json` preserves tool-event
-monitoring. CLI/OS size errors block rather than truncate input. Advertised tool inventory is not tool
+and schema. It writes exactly one stdin user message containing the complete diff,
+schema, binding and effective base policy, waits for the result, then closes stdin.
+The native schema is loaded from a temporary file. Large payloads never become
+command-line arguments. Streaming JSON output preserves tool-event monitoring.
+Advertised tool inventory is not tool
 execution and is not compared to a stored or empty inventory. Supported
 user/agent/checkpoint steps must keep the same conversation. Tool/delegation
 steps, including denied attempts, unknown events, protocol/CLI failure, incomplete

@@ -439,6 +439,43 @@ test("explicit terminal results cannot be masked by cached PASS text", () => {
   assert.throws(() => validator.accept(result), /CONTRADICTORY_REVIEW_RESULTS/);
   assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
 });
+test("a complete terminal response cannot silently contradict the chosen result", () => {
+  const binding = { files: ["synthetic.txt"] };
+  const pass = events(binding).result.result.structured_output;
+  const findings = events(binding, "FINDINGS").result.result.structured_output;
+  const blocked = events(binding, "BLOCKED").result.result.structured_output;
+  for (const explicit of [false, true]) {
+    for (const terminal of [
+      pass,
+      findings,
+      blocked,
+      { ...pass, binding: { files: [] } },
+    ]) {
+      const { init, result, stream } = events(binding);
+      if (!explicit) delete result.result.structured_output;
+      result.result.response = JSON.stringify(terminal);
+      const validator = stream();
+      validator.accept(init);
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 1,
+          state: "DONE",
+          text_delta: JSON.stringify(pass),
+        },
+      });
+      if (terminal === pass) {
+        validator.accept(result);
+        assert.equal(validator.finish().result.verdict, "PASS");
+      } else {
+        assert.throws(() => validator.accept(result));
+        assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
+      }
+    }
+  }
+});
 test("stream fallback requires the final response step to complete", () => {
   const binding = { files: ["synthetic.txt"] };
   for (const laterActive of [false, true]) {
@@ -614,19 +651,19 @@ test("ambient customizations and credential/provider environment injection fail 
   );
 });
 test("native arguments retain restrictions, exact schema and one-stream transport", () => {
-  const schema = { type: "object" };
-  const args = nativeArguments(config, schema, "synthetic prompt");
+  const schemaPath = "synthetic.schema.json";
+  const args = nativeArguments(config, schemaPath);
   for (const [flag, value] of [
     ["--model", config.model],
     ["--effort", config.effort],
     ["--agent", "laita-restricted-reviewer"],
-    ["--print", "synthetic prompt"],
+    ["--input-format", "stream-json"],
     ["--output-format", "stream-json"],
-    ["--json-schema", JSON.stringify(schema)],
+    ["--json-schema", schemaPath],
     ["--log-file", os.devNull],
   ])
     assert.equal(args[args.indexOf(flag) + 1], value);
-  assert.ok(!args.includes("--input-format"));
+  assert.ok(!args.includes("--print"));
   assert.ok(!args.includes("--mode")); // Plan is selected through settings, without slash-prefix injection.
   assert.ok(args.includes("--sandbox"));
   assert.ok(args.includes("--disable-slash-commands"));
@@ -662,9 +699,20 @@ function fakeCli(t, source) {
     `#!${process.execPath}
 import fs from "node:fs";
 import {createHash} from "node:crypto";
-const schema = JSON.parse(process.argv[process.argv.indexOf("--json-schema") + 1]);
+const schema = JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf("--json-schema") + 1],"utf8"));
 const binding = schema.properties.binding.const;
-const prompt = JSON.parse(process.argv[process.argv.indexOf("--print") + 1]);
+const readPrompt = callback => {
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", chunk => {
+    input += chunk;
+    if (!input.endsWith(String.fromCharCode(10))) return;
+    const lines = input.trimEnd().split(String.fromCharCode(10));
+    const packet = JSON.parse(lines[0]);
+    if (packet.event !== "user") throw new Error("Synthetic invalid input event");
+    callback(JSON.parse(packet.message.content), lines.length);
+  });
+};
 const init = {event:"init",conversation_id:"synthetic",init:{model:${JSON.stringify(config.model)},agent:"laita-restricted-reviewer",permission_mode:"strict",tools:["view_file"],json_schema:schema}};
 const result = {event:"result",result:{conversation_id:"synthetic",status:"SUCCESS",num_turns:1,json_schema:schema,structured_output:{binding,coverage:"complete",verdict:"PASS",findings:[]}}};
 const emit = event => process.stdout.write(JSON.stringify(event)+"\\n");
@@ -685,15 +733,18 @@ function inputBinding(diff) {
 }
 test("transport delivers one complete UTF-8 prompt and accepts its bound structured result", async (t) => {
   const diff = Buffer.from(
-    "synthetic padding 💡\n".repeat(2000) + "late synthetic marker",
+    "synthetic padding 💡\n".repeat(16000) + "late synthetic marker",
   );
+  assert.ok(diff.length > 256 * 1024);
   const binding = inputBinding(diff);
   const { root, executable } = fakeCli(
     t,
     `
-fs.writeFileSync("observed.json", JSON.stringify({messages:process.argv.filter(v=>v==="--print").length,binding:prompt.binding,policy:prompt.policy,schema:prompt.schema,bytes:Buffer.byteLength(prompt.diff),sha256:createHash("sha256").update(prompt.diff).digest("hex"),late:prompt.diff.endsWith("late synthetic marker")}));
 emit(init);
-emit(result);`,
+readPrompt((prompt,messages) => {
+  fs.writeFileSync("observed.json", JSON.stringify({messages,binding:prompt.binding,policy:prompt.policy,schema:prompt.schema,bytes:Buffer.byteLength(prompt.diff),sha256:createHash("sha256").update(prompt.diff).digest("hex"),late:prompt.diff.endsWith("late synthetic marker")}));
+  emit(result);
+});`,
   );
   const marker = path.join(root, "observed.json");
   fs.writeFileSync(
@@ -740,7 +791,8 @@ test("only the exact literal-input notice is accepted, including split stderr ch
     `
 const notice = ${JSON.stringify(notice)};
 process.stderr.write(notice.slice(0,20));
-setTimeout(()=>{process.stderr.write(notice.slice(20)+String.fromCharCode(10));emit(init);emit(result);},10);`,
+setTimeout(()=>{process.stderr.write(notice.slice(20)+String.fromCharCode(10));emit(init);},10);
+readPrompt(()=>emit(result));`,
   );
   assert.equal(
     (
@@ -776,14 +828,14 @@ test("transport rejects CLI errors, incomplete output and prohibited events", as
       /CLI_DIAGNOSTIC_REQUIRES_REVIEW/,
     ],
     ["setInterval(()=>{},1000);", /REVIEW_TIMEOUT/],
-    ["emit(init);", /TRUNCATED_REVIEW/],
+    ["emit(init);readPrompt(()=>process.stdin.destroy());", /TRUNCATED_REVIEW/],
     [
       "emit(init);process.stdout.write(JSON.stringify(result));",
       /INCOMPLETE_REVIEW_STREAM/,
     ],
     ["emit(init);process.exitCode=2;", /INCOMPLETE_REVIEW_STREAM/],
     [
-      'emit(init);emit({event:"step_update",step_update:{conversation_id:"synthetic",step_type:"tool",tool_name:"run_command"}});',
+      'emit(init);readPrompt(()=>emit({event:"step_update",step_update:{conversation_id:"synthetic",step_type:"tool",tool_name:"run_command"}}));',
       /CAPABILITY_OR_PROTOCOL_VIOLATION/,
     ],
   ]) {
