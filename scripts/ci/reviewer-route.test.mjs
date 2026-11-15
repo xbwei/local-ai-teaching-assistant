@@ -269,6 +269,16 @@ test("supported init/step/result accepts PASS and adverse results without extra 
   validator.accept(result);
   assert.equal(validator.finish().reported.effort, "high");
 });
+test("native turn counters do not replace exact input and result binding", () => {
+  for (const num_turns of [0, 2, 17]) {
+    const { init, result, stream } = events({ files: ["synthetic.txt"] });
+    result.result.num_turns = num_turns;
+    const validator = stream();
+    validator.accept(init);
+    validator.accept(result);
+    assert.equal(validator.finish().result.verdict, "PASS");
+  }
+});
 test("observed route drift, capabilities, denied attempts and conversation drift block", () => {
   const { init, stream } = events({ files: ["synthetic.txt"] });
   for (const [key, value] of [
@@ -354,7 +364,6 @@ test("truncated, duplicate, out-of-order and mismatched terminal results cannot 
   assert.throws(() => validator.accept(result), /EVENT_AFTER_RESULT/);
   for (const change of [
     { conversation_id: "other" },
-    { num_turns: 2 },
     { status: "ERROR" },
     { json_schema: {} },
     {

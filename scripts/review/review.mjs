@@ -317,7 +317,6 @@ export function streamValidator(config, binding, schema) {
             : "UNKNOWN";
           fail(`NATIVE_STATUS_${status}`);
         }
-        requireThat(result.num_turns === 1, "INVALID_REVIEW_TURN_COUNT");
         equal(result.json_schema, schema, "SCHEMA_DRIFT");
         output = validateResult(result.structured_output, binding);
       } else fail("UNKNOWN_EVENT");
