@@ -63,9 +63,12 @@ that slash commands were not expanded is expected; every other nonempty diagnost
 blocks, including permission notices.
 The process is bounded by `route.json`'s ten-minute timeout.
 
-The helper accepts native parsed `structured_output`, or assembles the final
-`agent_response` step’s `text_delta` chunks; when no streamed text is present it
-decodes the terminal JSON response. It records the selected `reported.resultSource`
+An explicitly present terminal `structured_output` is always parsed and validated,
+whether object or serialized JSON; invalid/adverse terminal output cannot be
+replaced by cached text. Conflicting complete structured responses block. Only
+when that field is absent may the helper use the final completed (`DONE`)
+`agent_response` step’s `text_delta` chunks, or the terminal JSON response when
+there is no streamed text. It records the selected `reported.resultSource`
 and validates the exact result schema and diff binding. PASS also
 requires complete coverage and no findings. Valid FINDINGS/BLOCKED results remain
 adverse results, not PASS. Before accepting the result, the helper rechecks fresh

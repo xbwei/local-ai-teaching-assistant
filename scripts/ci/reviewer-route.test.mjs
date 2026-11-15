@@ -367,6 +367,110 @@ test("a complete DONE response is not appended twice and an invalid snapshot can
     } else assert.throws(() => validator.accept(result));
   }
 });
+test("explicit terminal results cannot be masked by cached PASS text", () => {
+  const binding = { files: ["synthetic.txt"] };
+  const pass = events(binding).result.result.structured_output;
+  const findings = events(binding, "FINDINGS").result.result.structured_output;
+  const blocked = events(binding, "BLOCKED").result.result.structured_output;
+  for (const terminal of [
+    pass,
+    findings,
+    blocked,
+    { ...pass, binding: { files: [] } },
+  ]) {
+    for (const serialized of [false, true]) {
+      const { init, result, stream } = events(binding);
+      const validator = stream();
+      validator.accept(init);
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 1,
+          state: "DONE",
+          text_delta: JSON.stringify(pass),
+        },
+      });
+      result.result.structured_output = serialized
+        ? JSON.stringify(terminal)
+        : terminal;
+      if (terminal === pass) {
+        validator.accept(result);
+        assert.equal(validator.finish().result.verdict, "PASS");
+        assert.equal(
+          validator.finish().reported.resultSource,
+          "structured_output",
+        );
+      } else assert.throws(() => validator.accept(result));
+    }
+  }
+  for (const terminal of ["not JSON", null, undefined]) {
+    const { init, result, stream } = events(binding);
+    const validator = stream();
+    validator.accept(init);
+    validator.accept({
+      event: "step_update",
+      step_update: {
+        conversation_id: "synthetic",
+        step_type: "agent_response",
+        step_index: 1,
+        state: "DONE",
+        text_delta: JSON.stringify(pass),
+      },
+    });
+    result.result.structured_output = terminal;
+    assert.throws(() => validator.accept(result));
+  }
+  const { init, result, stream } = events(binding);
+  const validator = stream();
+  validator.accept(init);
+  validator.accept({
+    event: "step_update",
+    step_update: {
+      conversation_id: "synthetic",
+      step_type: "agent_response",
+      step_index: 1,
+      state: "DONE",
+      text_delta: JSON.stringify(findings),
+    },
+  });
+  result.result.structured_output = JSON.stringify(pass);
+  assert.throws(() => validator.accept(result), /CONTRADICTORY_REVIEW_RESULTS/);
+  assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
+});
+test("stream fallback requires the final response step to complete", () => {
+  const binding = { files: ["synthetic.txt"] };
+  for (const laterActive of [false, true]) {
+    const { init, result, stream } = events(binding);
+    const json = JSON.stringify(result.result.structured_output);
+    delete result.result.structured_output;
+    const validator = stream();
+    validator.accept(init);
+    validator.accept({
+      event: "step_update",
+      step_update: {
+        conversation_id: "synthetic",
+        step_type: "agent_response",
+        step_index: 1,
+        state: laterActive ? "DONE" : "ACTIVE",
+        text_delta: json,
+      },
+    });
+    if (laterActive)
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 2,
+          state: "ACTIVE",
+          text_delta: json,
+        },
+      });
+    assert.throws(() => validator.accept(result), /INCOMPLETE_AGENT_RESPONSE/);
+  }
+});
 test("native turn counters do not replace exact input and result binding", () => {
   for (const num_turns of [0, 2, 17]) {
     const { init, result, stream } = events({ files: ["synthetic.txt"] });

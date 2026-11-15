@@ -250,6 +250,7 @@ export function streamValidator(config, binding, schema) {
   let reported;
   let responseStep;
   let response = "";
+  let responseDone = false;
   return {
     accept(event) {
       requireThat(!output, "EVENT_AFTER_RESULT");
@@ -301,6 +302,7 @@ export function streamValidator(config, binding, schema) {
         );
         if (step.step_type === "agent_response") {
           if (step.step_index !== responseStep) response = "";
+          responseDone = step.state === "DONE";
           responseStep = step.step_index;
           if (typeof step.text_delta === "string") response += step.text_delta;
           if (step.state === "DONE" && typeof step.text_delta === "string") {
@@ -333,59 +335,53 @@ export function streamValidator(config, binding, schema) {
           fail(`NATIVE_STATUS_${status}`);
         }
         equal(result.json_schema, schema, "SCHEMA_DRIFT");
-        let value = result.structured_output;
-        let resultSource = "structured_output";
-        if (value == null || typeof value === "string") {
-          if (response) {
-            value = response;
-            resultSource = "agent_response";
-          } else if (value == null) {
-            value = result.response;
-            resultSource = "response";
+        const decode = (value, code) => {
+          let decoded = value;
+          if (typeof value === "string") {
+            try {
+              decoded = JSON.parse(value);
+            } catch {
+              fail(code);
+            }
           }
-        }
-        let decoded = value;
-        if (typeof value === "string") {
-          try {
-            decoded = JSON.parse(value);
-          } catch (error) {
-            const kind = /Unexpected end|Unterminated string/.test(
-              error.message,
-            )
-              ? "TRUNCATED"
-              : /after JSON/.test(error.message)
-                ? "TRAILING"
-                : /property name|double-quoted property/.test(error.message)
-                  ? "PROPERTY"
-                  : /control character/.test(error.message)
-                    ? "CONTROL"
-                    : /escaped character/.test(error.message)
-                      ? "ESCAPE"
-                      : "SYNTAX";
-            const position = Number(error.message.match(/position (\d+)/)?.[1]);
-            const location = !Number.isFinite(position)
-              ? "UNKNOWN"
-              : position < 10
-                ? "START"
-                : position > value.length - 10
-                  ? "END"
-                  : "MIDDLE";
-            const shape = (text) =>
-              typeof text !== "string"
-                ? "ABSENT"
-                : !text.trim()
-                  ? "EMPTY"
-                  : text.trim().startsWith("```")
-                    ? "FENCED"
-                    : text.trim().startsWith("{")
-                      ? "OBJECT_PREFIX"
-                      : "TEXT";
-            fail(
-              `INVALID_JSON_${kind}_${location}_${shape(value)}_RESPONSE_${shape(result.response)}`,
-            );
+          return validateResult(decoded, binding);
+        };
+        const hasTerminal = Object.hasOwn(result, "structured_output");
+        let resultSource;
+        let acceptedResult;
+        if (hasTerminal) {
+          acceptedResult = decode(
+            result.structured_output,
+            "INVALID_TERMINAL_JSON",
+          );
+          resultSource = "structured_output";
+          if (responseDone && response) {
+            let cached;
+            try {
+              cached = JSON.parse(response);
+            } catch {
+              /* Not structured review text. */
+            }
+            if (
+              cached &&
+              typeof cached === "object" &&
+              ["binding", "coverage", "verdict", "findings"].every((key) =>
+                Object.hasOwn(cached, key),
+              )
+            ) {
+              validateResult(cached, binding);
+              equal(acceptedResult, cached, "CONTRADICTORY_REVIEW_RESULTS");
+            }
           }
+        } else if (response) {
+          requireThat(responseDone, "INCOMPLETE_AGENT_RESPONSE");
+          acceptedResult = decode(response, "INVALID_AGENT_RESPONSE_JSON");
+          resultSource = "agent_response";
+        } else {
+          acceptedResult = decode(result.response, "INVALID_RESPONSE_JSON");
+          resultSource = "response";
         }
-        output = validateResult(decoded, binding);
+        output = acceptedResult;
         reported.resultSource = resultSource;
       } else fail("UNKNOWN_EVENT");
     },
