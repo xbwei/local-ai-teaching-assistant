@@ -246,43 +246,74 @@ export function validateResult(result, binding) {
   return result;
 }
 export function streamValidator(config, binding, schema) {
+  let conversation;
+  let output;
+  let reported;
   return {
     accept(event) {
-      requireThat(
-        event?.event === "init" && event.init,
-        "CAPABILITY_OR_UNKNOWN_EVENT",
-      );
-      const init = event.init;
-      requireThat(
-        init.model === config.model &&
-          init.agent === "laita-restricted-reviewer" &&
-          init.permission_mode === "strict",
-        "RUNTIME_ROUTE_DRIFT",
-      );
-      // An advertised inventory is neither a prohibited tool event nor proof
-      // that permissions are effective. Do not certify or compare inventories.
-      equal(init.json_schema, schema, "SCHEMA_DRIFT");
-      equal(
-        schema.properties.binding,
-        { const: binding },
-        "DIFF_BINDING_MISMATCH",
-      );
-      requireThat(
-        typeof event.conversation_id === "string" &&
-          event.conversation_id.length > 0,
-        "CONVERSATION_REQUIRED",
-      );
-      // CLI 1.5.1 documents model/agent selection and permission_mode, but
-      // no execution-bound actual effort or effective plan/sandbox/no-tools
-      // evidence. Do not invent attestation fields, trust requested flags,
-      // or accept model-generated assertions. Block before sending input.
-      // A supported native evidence mechanism needs a separately reviewed
-      // implementation here; no certificate or session registry can supply it.
-      fail("RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED");
+      requireThat(!output, "EVENT_AFTER_RESULT");
+      requireThat(event && typeof event === "object", "INVALID_EVENT");
+      if (!conversation) {
+        requireThat(event.event === "init" && event.init, "INIT_REQUIRED");
+        const init = event.init;
+        requireThat(
+          init.model === config.model &&
+            init.agent === "laita-restricted-reviewer" &&
+            init.permission_mode === "strict" &&
+            (init.effort === undefined || init.effort === config.effort),
+          "RUNTIME_ROUTE_DRIFT",
+        );
+        // Inventory is not execution. Use supported reported fields without
+        // requiring invented effort, sandbox or no-tools attestation fields.
+        equal(init.json_schema, schema, "SCHEMA_DRIFT");
+        equal(
+          schema.properties.binding,
+          { const: binding },
+          "DIFF_BINDING_MISMATCH",
+        );
+        requireThat(
+          typeof event.conversation_id === "string" &&
+            event.conversation_id.length > 0,
+          "CONVERSATION_REQUIRED",
+        );
+        conversation = event.conversation_id;
+        reported = {
+          model: init.model,
+          effort: init.effort ?? null,
+          agent: init.agent,
+          permissionMode: init.permission_mode,
+        };
+        return;
+      }
+      if (event.event === "step_update") {
+        const step = event.step_update;
+        requireThat(
+          step &&
+            step.conversation_id === conversation &&
+            ["user_input", "agent_response", "checkpoint"].includes(
+              step.step_type,
+            ) &&
+            !["tool_info", "tool_name", "subagent_info"].some((key) =>
+              Object.hasOwn(step, key),
+            ),
+          "CAPABILITY_OR_PROTOCOL_VIOLATION",
+        );
+      } else if (event.event === "result") {
+        const result = event.result;
+        requireThat(
+          result &&
+            result.conversation_id === conversation &&
+            result.status === "SUCCESS" &&
+            result.num_turns === 1,
+          "INCOMPLETE_REVIEW",
+        );
+        equal(result.json_schema, schema, "SCHEMA_DRIFT");
+        output = validateResult(result.structured_output, binding);
+      } else fail("UNKNOWN_EVENT");
     },
     finish() {
-      // No native result may be accepted until invocation integrity is verified.
-      fail("RUNTIME_INTEGRITY_UNVERIFIED");
+      requireThat(output, "TRUNCATED_REVIEW");
+      return { result: output, reported };
     },
   };
 }
@@ -354,7 +385,7 @@ export function reviewEnvironment(source) {
     AGY_CLI_DISABLE_AUTO_UPDATE: "true",
   };
 }
-// Requested restrictions are not evidence that the native runtime enforced them.
+// Explicit restrictions for every invocation; observed violations block the result.
 export function nativeArguments(config, schema) {
   return [
     "--agent",
@@ -379,14 +410,13 @@ export function nativeArguments(config, schema) {
     os.devNull,
   ];
 }
-export async function runReview(
-  executable,
-  config,
-  binding,
-  diff,
-  policy,
-  smoke = false,
-) {
+export async function runReview(executable, config, binding, diff, policy) {
+  requireThat(
+    diff.length > 0 &&
+      diff.length === binding.diffBytes &&
+      sha256(diff) === binding.diffSha256,
+    "INPUT_BINDING_MISMATCH",
+  );
   assertNoCustomizations(os.homedir());
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "laita-review-"));
   try {
@@ -418,13 +448,14 @@ export async function runReview(
       let size = 0;
       let failed;
       let sent = false;
+      let inputWritten = false;
       const abort = (error) => {
         failed ||= error;
         child.kill("SIGKILL");
       };
       const timer = setTimeout(
         () => abort(new Error("REVIEW_TIMEOUT")),
-        smoke ? Math.min(config.timeoutMs, 15000) : config.timeoutMs,
+        config.timeoutMs,
       );
       child.on("error", () => abort(new Error("CLI_START_FAILED")));
       child.stdin.on("error", () => abort(new Error("INPUT_TRANSPORT_FAILED")));
@@ -447,12 +478,16 @@ export async function runReview(
             buffer = buffer.slice(newline + 1);
             requireThat(line.length > 0, "EMPTY_EVENT");
             const event = JSON.parse(line);
+            if (event.event === "result")
+              requireThat(inputWritten, "RESULT_BEFORE_INPUT_WRITTEN");
             validator.accept(event);
             if (!sent) {
-              requireThat(!smoke, "SMOKE_NOT_REVIEWED");
               sent = true;
               child.stdin.end(
                 `${JSON.stringify({ event: "user", message: { content: prompt } })}\n`,
+                () => {
+                  inputWritten = true;
+                },
               );
             }
           }
@@ -464,8 +499,11 @@ export async function runReview(
         clearTimeout(timer);
         try {
           if (failed) throw failed;
-          requireThat(code === 0 && buffer === "", "INCOMPLETE_REVIEW_STREAM");
-          resolve(validateResult(validator.finish(), binding));
+          requireThat(
+            code === 0 && buffer === "" && inputWritten,
+            "INCOMPLETE_REVIEW_STREAM",
+          );
+          resolve(validator.finish());
         } catch (error) {
           reject(error);
         }
@@ -479,8 +517,8 @@ export async function runReview(
 async function main() {
   const [mode, base, head, profile, ...extra] = process.argv.slice(2);
   requireThat(
-    ["inspect", "prepare", "smoke", "review"].includes(mode) && !extra.length,
-    "USAGE: inspect | prepare BASE HEAD PROFILE | smoke BASE HEAD PROFILE | review BASE HEAD PROFILE",
+    ["inspect", "prepare", "review"].includes(mode) && !extra.length,
+    "USAGE: inspect | prepare BASE HEAD PROFILE | review BASE HEAD PROFILE",
   );
   const route = inspect();
   if (mode === "inspect") {
@@ -513,13 +551,12 @@ async function main() {
     return;
   }
   const policy = git(root, ["show", `${base}:AGENTS.md`]).toString("utf8");
-  const result = await runReview(
+  const { result, reported } = await runReview(
     route.executable,
     route.config,
     snapshot.binding,
     snapshot.diff,
     policy,
-    mode === "smoke",
   );
   // Rebind everything after the subprocess; a moved base/HEAD or changed route
   // invalidates the result, including a nominal PASS from the model.
@@ -537,6 +574,7 @@ async function main() {
         routeSha256: route.identity.routeSha256,
         requestedModel: route.config.model,
         requestedEffort: route.config.effort,
+        reported,
         ...result,
       },
       null,

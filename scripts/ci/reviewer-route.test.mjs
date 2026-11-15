@@ -195,51 +195,85 @@ test("structured result rejects partial coverage, mismatched diff and unexpected
     /INVALID_FINDING/,
   );
 });
-test("native metadata cannot substitute requested flags or model assertions for runtime evidence", () => {
-  const binding = { files: ["synthetic.txt"] };
-  const schema = { properties: { binding: { const: binding } } };
-  const init = {
-    event: "init",
-    conversation_id: "synthetic",
+function events(binding, verdict = "PASS") {
+  const schema = JSON.parse(
+    fs.readFileSync(new URL("../review/result.schema.json", import.meta.url)),
+  );
+  schema.properties.binding = { const: binding };
+  return {
     init: {
-      model: config.model,
-      agent: "laita-restricted-reviewer",
-      permission_mode: "strict",
-      tools: [],
-      json_schema: schema,
+      event: "init",
+      conversation_id: "synthetic",
+      init: {
+        model: config.model,
+        agent: "laita-restricted-reviewer",
+        permission_mode: "strict",
+        tools: ["view_file", "run_command"],
+        json_schema: schema,
+      },
     },
+    result: {
+      event: "result",
+      result: {
+        conversation_id: "synthetic",
+        status: "SUCCESS",
+        num_turns: 1,
+        json_schema: schema,
+        structured_output: {
+          binding,
+          coverage: verdict === "BLOCKED" ? "incomplete" : "complete",
+          verdict,
+          findings:
+            verdict === "FINDINGS"
+              ? [
+                  {
+                    path: binding.files[0],
+                    severity: "medium",
+                    message: "Synthetic defect",
+                  },
+                ]
+              : [],
+        },
+      },
+    },
+    stream: () => streamValidator(config, binding, schema),
   };
-  const stream = () => streamValidator(config, binding, schema);
-  assert.throws(
-    () => stream().accept(init),
-    /RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED/,
-  );
-  assert.throws(() => stream().finish(), /RUNTIME_INTEGRITY_UNVERIFIED/);
-  // Invented fields must not establish an unsupported native attestation.
-  for (const [key, value] of [
-    ["effort", config.effort],
-    ["sandbox", true],
-    ["readOnly", true],
-    ["noTools", true],
-    ["tool_info", {}],
-    ["plugin", {}],
-  ]) {
-    assert.throws(
-      () => stream().accept({ ...init, init: { ...init.init, [key]: value } }),
-      /RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED/,
-    );
+}
+test("supported init/step/result accepts PASS and adverse results without extra attestation fields", () => {
+  const binding = { files: ["synthetic.txt"] };
+  for (const verdict of ["PASS", "FINDINGS", "BLOCKED"]) {
+    const { init, result, stream } = events(binding, verdict);
+    const validator = stream();
+    validator.accept(init);
+    for (const step_type of ["user_input", "agent_response", "checkpoint"]) {
+      validator.accept({
+        event: "step_update",
+        step_update: { conversation_id: "synthetic", step_type },
+      });
+    }
+    validator.accept(result);
+    assert.deepEqual(validator.finish(), {
+      result: result.result.structured_output,
+      reported: {
+        model: config.model,
+        effort: null,
+        agent: "laita-restricted-reviewer",
+        permissionMode: "strict",
+      },
+    });
   }
-  // Inventory discovery is not itself an invocation or an enforcement proof.
-  assert.throws(
-    () =>
-      stream().accept({
-        ...init,
-        init: { ...init.init, tools: ["view_file", "run_command"] },
-      }),
-    /RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED/,
-  );
+  const { init, result, stream } = events(binding);
+  init.init.effort = "high";
+  const validator = stream();
+  validator.accept(init);
+  validator.accept(result);
+  assert.equal(validator.finish().reported.effort, "high");
+});
+test("observed route drift, capabilities, denied attempts and conversation drift block", () => {
+  const { init, stream } = events({ files: ["synthetic.txt"] });
   for (const [key, value] of [
     ["model", "other"],
+    ["effort", "low"],
     ["agent", "other"],
     ["permission_mode", "always-proceed"],
     ["json_schema", {}],
@@ -265,6 +299,7 @@ test("native metadata cannot substitute requested flags or model assertions for 
       {
         event: "step_update",
         step_update: {
+          conversation_id: "synthetic",
           step_type: "tool",
           tool_name: tool,
           tool_info: { error: "denied" },
@@ -272,29 +307,75 @@ test("native metadata cannot substitute requested flags or model assertions for 
       },
       {
         event: "step_update",
-        step_update: { step_type: "agent_response", subagent_info: {} },
+        step_update: { conversation_id: "synthetic", step_type: tool },
       },
-    ])
+    ]) {
+      const validator = stream();
+      validator.accept(init);
       assert.throws(
-        () => stream().accept(event),
-        /CAPABILITY_OR_UNKNOWN_EVENT/,
+        () => validator.accept(event),
+        /CAPABILITY_OR_PROTOCOL_VIOLATION|UNKNOWN_EVENT/,
       );
+    }
   }
-  assert.throws(
-    () =>
-      stream().accept({
-        event: "result",
-        result: {
-          structured_output: {
-            binding,
-            coverage: "complete",
-            verdict: "PASS",
-            findings: [],
+  for (const extra of [
+    { tool_info: null },
+    { tool_name: "" },
+    { subagent_info: {} },
+    { conversation_id: "other" },
+  ]) {
+    const validator = stream();
+    validator.accept(init);
+    assert.throws(
+      () =>
+        validator.accept({
+          event: "step_update",
+          step_update: {
+            conversation_id: "synthetic",
+            step_type: "agent_response",
+            ...extra,
           },
-        },
-      }),
-    /CAPABILITY_OR_UNKNOWN_EVENT/,
-  );
+        }),
+      /CAPABILITY_OR_PROTOCOL_VIOLATION/,
+    );
+  }
+});
+test("truncated, duplicate, out-of-order and mismatched terminal results cannot PASS", () => {
+  const { init, result, stream } = events({ files: ["synthetic.txt"] });
+  assert.throws(() => stream().finish(), /TRUNCATED_REVIEW/);
+  assert.throws(() => stream().accept(result), /INIT_REQUIRED/);
+  let validator = stream();
+  validator.accept(init);
+  assert.throws(() => validator.finish(), /TRUNCATED_REVIEW/);
+  assert.throws(() => validator.accept(init), /UNKNOWN_EVENT/);
+  validator = stream();
+  validator.accept(init);
+  validator.accept(result);
+  assert.throws(() => validator.accept(result), /EVENT_AFTER_RESULT/);
+  for (const change of [
+    { conversation_id: "other" },
+    { num_turns: 2 },
+    { status: "ERROR" },
+    { json_schema: {} },
+    {
+      structured_output: {
+        ...result.result.structured_output,
+        binding: { files: [] },
+      },
+    },
+    {
+      structured_output: {
+        ...result.result.structured_output,
+        coverage: "incomplete",
+      },
+    },
+  ]) {
+    validator = stream();
+    validator.accept(init);
+    assert.throws(() =>
+      validator.accept({ ...result, result: { ...result.result, ...change } }),
+    );
+  }
 });
 
 test("ambient customizations and credential/provider environment injection fail closed", (t) => {
@@ -360,61 +441,160 @@ test("native arguments retain restrictions, exact schema and one-stream transpor
   }
 });
 
-test("transport aborts before stdin on unverified startup, diagnostics, capability or malformed events", async (t) => {
+function fakeCli(t, source) {
   const root = temporary(t);
   t.mock.method(os, "homedir", () => root);
-  const binding = { files: ["synthetic.txt"] };
-  const schema = JSON.parse(
-    fs.readFileSync(new URL("../review/result.schema.json", import.meta.url)),
+  const executable = path.join(root, "synthetic-cli.mjs");
+  fs.writeFileSync(
+    executable,
+    `#!${process.execPath}
+import fs from "node:fs";
+import {createHash} from "node:crypto";
+const schema = JSON.parse(process.argv[process.argv.indexOf("--json-schema") + 1]);
+const binding = schema.properties.binding.const;
+const init = {event:"init",conversation_id:"synthetic",init:{model:${JSON.stringify(config.model)},agent:"laita-restricted-reviewer",permission_mode:"strict",tools:["view_file"],json_schema:schema}};
+const result = {event:"result",result:{conversation_id:"synthetic",status:"SUCCESS",num_turns:1,json_schema:schema,structured_output:{binding,coverage:"complete",verdict:"PASS",findings:[]}}};
+const emit = event => process.stdout.write(JSON.stringify(event)+"\\n");
+${source}
+`,
   );
-  schema.properties.binding = { const: binding };
-  const init = {
-    event: "init",
-    conversation_id: "synthetic",
-    init: {
-      model: config.model,
-      agent: "laita-restricted-reviewer",
-      permission_mode: "strict",
-      tools: [],
-      json_schema: schema,
-    },
+  fs.chmodSync(executable, 0o700);
+  return { root, executable };
+}
+function inputBinding(diff) {
+  return {
+    base: "a".repeat(40),
+    head: "b".repeat(40),
+    files: ["synthetic.txt"],
+    diffBytes: diff.length,
+    diffSha256: sha256(diff),
   };
-  const marker = path.join(root, "input-received");
-  const fake = path.join(root, "synthetic-cli.mjs");
-  for (const smoke of [false, true]) {
-    for (const [output, expected] of [
-      [
-        `process.stdout.write(${JSON.stringify(JSON.stringify(init) + "\n")});`,
-        /RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED/,
-      ],
-      [`process.stdout.write(${JSON.stringify("not JSON\n")});`, SyntaxError],
-      [
-        `process.stdout.write(${JSON.stringify(JSON.stringify({ event: "tool", tool_name: "run_command" }) + "\n")});`,
-        /CAPABILITY_OR_UNKNOWN_EVENT/,
-      ],
-      [
-        'process.stderr.write("synthetic diagnostic");',
-        /CLI_DIAGNOSTIC_REQUIRES_REVIEW/,
-      ],
-      ["", /REVIEW_TIMEOUT/],
-    ]) {
-      fs.writeFileSync(
-        fake,
-        `#!${process.execPath}\nimport fs from "node:fs";\nprocess.stdin.on("data", () => fs.writeFileSync(${JSON.stringify(marker)}, "unexpected input"));\n${output}\nsetInterval(() => {}, 1000);\n`,
-      );
-      fs.chmodSync(fake, 0o700);
-      await assert.rejects(
-        runReview(
-          fake,
-          { ...config, timeoutMs: 1000 },
-          binding,
-          Buffer.from("synthetic diff"),
-          "synthetic policy",
-          smoke,
-        ),
-        expected,
-      );
-      assert.equal(fs.existsSync(marker), false);
-    }
+}
+test("transport submits one complete UTF-8 diff and accepts its bound structured result", async (t) => {
+  const diff = Buffer.from(
+    "synthetic padding 💡\n".repeat(16000) + "late synthetic marker",
+  );
+  const binding = inputBinding(diff);
+  const { root, executable } = fakeCli(
+    t,
+    `
+emit(init);
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", chunk => { input += chunk; });
+process.stdin.on("end", () => {
+  const lines = input.trim().split("\\n");
+  const packet = JSON.parse(lines[0]);
+  const prompt = JSON.parse(packet.message.content);
+  fs.writeFileSync("observed.json", JSON.stringify({messages:lines.length,event:packet.event,binding:prompt.binding,policy:prompt.policy,bytes:Buffer.byteLength(prompt.diff),sha256:createHash("sha256").update(prompt.diff).digest("hex"),late:prompt.diff.endsWith("late synthetic marker")}));
+  emit(result);
+});`,
+  );
+  // The transport runs in a temporary directory; return only bounded synthetic observations.
+  const marker = path.join(root, "observed.json");
+  let source = fs.readFileSync(executable, "utf8");
+  source = source.replace('"observed.json"', JSON.stringify(marker));
+  fs.writeFileSync(executable, source);
+  const completed = await runReview(
+    executable,
+    { ...config, timeoutMs: 3000 },
+    binding,
+    diff,
+    "synthetic policy",
+  );
+  assert.equal(completed.result.verdict, "PASS");
+  assert.deepEqual(JSON.parse(fs.readFileSync(marker)), {
+    messages: 1,
+    event: "user",
+    binding,
+    policy: "synthetic policy",
+    bytes: diff.length,
+    sha256: sha256(diff),
+    late: true,
+  });
+  await assert.rejects(
+    runReview(
+      executable,
+      config,
+      binding,
+      diff.subarray(1),
+      "synthetic policy",
+    ),
+    /INPUT_BINDING_MISMATCH/,
+  );
+});
+test("transport aborts before input on observed startup failure and rejects incomplete output", async (t) => {
+  const diff = Buffer.from("synthetic diff");
+  const binding = inputBinding(diff);
+  for (const [source, expected] of [
+    [
+      'init.init.model = "other"; emit(init); setInterval(()=>{},1000);',
+      /RUNTIME_ROUTE_DRIFT/,
+    ],
+    [
+      `process.stdout.write(${JSON.stringify("not JSON\n")}); setInterval(()=>{},1000);`,
+      SyntaxError,
+    ],
+    [
+      'emit({event:"tool",tool_name:"run_command"}); setInterval(()=>{},1000);',
+      /INIT_REQUIRED/,
+    ],
+    [
+      'process.stderr.write("synthetic diagnostic"); setInterval(()=>{},1000);',
+      /CLI_DIAGNOSTIC_REQUIRES_REVIEW/,
+    ],
+    ["setInterval(()=>{},1000);", /REVIEW_TIMEOUT/],
+  ]) {
+    const { root, executable } = fakeCli(t, source);
+    const marker = path.join(root, "input-received");
+    fs.appendFileSync(
+      executable,
+      `\nprocess.stdin.on("data", () => fs.writeFileSync(${JSON.stringify(marker)}, "unexpected"));`,
+    );
+    await assert.rejects(
+      runReview(
+        executable,
+        { ...config, timeoutMs: 1000 },
+        binding,
+        diff,
+        "synthetic policy",
+      ),
+      expected,
+    );
+    assert.equal(fs.existsSync(marker), false);
+  }
+  for (const [source, expected] of [
+    [
+      'emit(init); process.stdin.resume(); process.stdin.on("end",()=>{});',
+      /TRUNCATED_REVIEW/,
+    ],
+    [
+      'emit(init); process.stdin.resume(); process.stdin.on("end",()=>{process.stdout.write(JSON.stringify(result));});',
+      /INCOMPLETE_REVIEW_STREAM/,
+    ],
+    [
+      'emit(init); process.stdin.resume(); process.stdin.on("end",()=>{process.exitCode=2;});',
+      /INCOMPLETE_REVIEW_STREAM/,
+    ],
+    [
+      'emit(init); process.stdin.resume(); process.stdin.on("end",()=>emit({event:"step_update",step_update:{conversation_id:"synthetic",step_type:"tool",tool_name:"run_command"}}));',
+      /CAPABILITY_OR_PROTOCOL_VIOLATION/,
+    ],
+    [
+      "process.stdout.write(JSON.stringify(init)+String.fromCharCode(10)+JSON.stringify(result)+String.fromCharCode(10)); process.stdin.resume();",
+      /RESULT_BEFORE_INPUT_WRITTEN/,
+    ],
+  ]) {
+    const { executable } = fakeCli(t, source);
+    await assert.rejects(
+      runReview(
+        executable,
+        { ...config, timeoutMs: 1000 },
+        binding,
+        diff,
+        "synthetic policy",
+      ),
+      expected,
+    );
   }
 });
