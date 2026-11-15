@@ -6,8 +6,9 @@ review profiles, authorize merges, or substitute for repository policy.
 
 **Bootstrap state: UNQUALIFIED.** Issue #67's implementation tests are not runtime
 qualification. Production `review` blocks before inference while this marker is
-present. Two independent fresh Public Cloud sessions are deferred until after
-Owner-authorized merge of #67. Do not mark this route qualified in this PR.
+present. Two independent Public Cloud sessions must supply reviewed native evidence before
+the qualification record changes. The observation harness below never writes that
+record or enables production review.
 
 ## Commands
 
@@ -67,7 +68,7 @@ profile remains HIGH_ASSURANCE. Repository policy's default for that profile is
 Argon Medium/medium. Resolve any change through Owner/ChatGPT authority, not an
 automatic model fallback. Other routes/profiles are currently unsupported.
 
-After #67 merge, independent fresh-session qualification must establish:
+Independent fresh-session qualification must establish:
 
 - Actual model/effort resolution and rejection of invalid model/effort requests.
 - Effective plan, sandbox/read-only and deny-all behavior, including attempted
@@ -97,10 +98,82 @@ ordinary review without repeating full qualification. Changed routes fail closed
 and require separate qualification. If native protocol evidence cannot support
 the contract, keep the route unqualified and report the precise limitation.
 
+## Bounded qualification observations
+
+Issue #67's qualification-enablement follow-up adds `qualify.mjs`. This is an
+observation harness, **not a certification command**. It deliberately returns
+`NOT_ESTABLISHED`, or `BLOCKED` on an observed failure (exit 2), until
+authoritative native evidence can support each
+required property. Its receipts cannot be supplied to `assertQualified`.
+Production `review`, `assertQualified`, and base-record trust are unchanged.
+
+From a clean exact candidate checkout, after environment initialization with
+auto-update disabled, DOT may resume each existing independent session:
+
+```sh
+git fetch origin main
+BASE=$(git rev-parse origin/main)
+HEAD=$(git rev-parse HEAD)
+node scripts/review/qualify.mjs modelEffort SESSION_ID "$BASE" "$HEAD"
+```
+
+Use the actual existing session ID. Run one selected probe at a time; inspect its
+receipt before continuing. There is no automatic suite or retry. Other probe names
+are `invalidModel`, `invalidEffort`, `agentLoading`, `fileRead`, `fileWrite`,
+`shell`, `network`, `mcp`, `skills`, `delegation`, and `completeDiff`. Stop on a
+capability event, side effect, diagnostic, timeout, protocol failure or drift;
+do not continue spending inference quota through an unresolved failure. Native
+probes are not CI tests. DOT coordinates the A/B runs; do not create duplicate
+sessions or publish raw native output.
+
+The harness shares production argument construction, executable identity checks,
+ambient-customization rejection, environment filtering, agent contents, settings,
+schema and strict stream validator. It binds the clean candidate base/HEAD,
+route fingerprint and harness hash before and after invocation. Changed shared
+reviewer code changes the route hash: earlier CLI identity observations remain
+useful, but do not qualify this changed route. Compare inventory digests between
+independent receipts; the first observed inventory is not a trusted inventory.
+
+Each probe gets a temporary synthetic workspace. File targets contain only random
+synthetic text; shell requests only print a fixed string; the URL is loopback port
+1; MCP, skill and agent targets deliberately do not exist. The latter probes
+cannot distinguish unavailable capabilities from native permission enforcement.
+No servers, skills or agents are enabled to make those tests succeed. The
+complete-diff probe supplies a large generated diff with addition, deletion,
+binary content and a late defect carrying an unpredictable marker. Its bounded
+receipt records structured-result validation and whether the late marker was
+returned in a finding. Neither observation alone proves complete model coverage.
+
+`modelEffort` uses the documented CLI-native standalone `/model` report, with
+unchanged restrictions; invalid-parameter probes use that same diagnostic rather
+than an inference prompt. Mentions of the requested model/effort are recorded as
+hints only. No report text is retained. The installed headless protocol documents
+model/agent selection and generic tool errors, but does not specify an
+execution-bound actual-effort attestation or a typed, pre-execution permission
+denial proof. Generic process failure cannot prove invalid-parameter rejection;
+a model refusal, missing target, tool error, or zero tool calls cannot prove
+restrictions. All remain `NOT_ESTABLISHED`. Unknown diagnostics are not interpreted
+as quota exhaustion or permission denial. Inference probes abort on any tool or
+delegation event, including an alleged denial; stream rejection is detection,
+not prevention of a native tool already executed.
+
+Only bounded booleans, counts, hashes, fixed codes and candidate/session identifiers
+are emitted. `validateEvidence` rejects arbitrary native fields and affirmative
+qualification claims. The CLI retains responsibility for its native session
+storage; the harness never reads or publishes it. No transcript, error message,
+account identifier, absolute path or model finding enters receipts.
+
+Remaining acceptance work is explicit: establish supported authoritative evidence
+for actual model/effort, agent loading and enforced negative paths; independently
+review both sessions' evidence and material drift; then review and commit the final
+qualification record under Issue #67 authority. If the native protocol cannot
+supply a property, preserve the blocker and seek the specific adjudication. Do not
+weaken a gate or expand permissions to manufacture evidence.
+
 ## Deterministic verification
 
 ```sh
-node --test scripts/ci/reviewer-route.test.mjs
+node --test scripts/ci/reviewer-route.test.mjs scripts/ci/reviewer-qualification.test.mjs
 npm run validate
 ```
 
