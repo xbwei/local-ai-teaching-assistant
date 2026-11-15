@@ -259,6 +259,7 @@ test("supported init/step/result accepts PASS and adverse results without extra 
         effort: null,
         agent: "laita-restricted-reviewer",
         permissionMode: "strict",
+        resultSource: "structured_output",
       },
     });
   }
@@ -292,6 +293,78 @@ test("serialized native JSON results use the same schema and binding validation"
         }),
       );
     }
+  }
+});
+test("the final streamed response is assembled by step and remains exactly bound", () => {
+  const { init, result, stream } = events({ files: ["synthetic.txt"] });
+  const payload = result.result.structured_output;
+  delete result.result.structured_output;
+  result.result.response = JSON.stringify(payload) + JSON.stringify(payload);
+  for (const output of [payload, { ...payload, binding: { files: [] } }]) {
+    const validator = stream();
+    validator.accept(init);
+    validator.accept({
+      event: "step_update",
+      step_update: {
+        conversation_id: "synthetic",
+        step_type: "agent_response",
+        step_index: 1,
+        state: "DONE",
+        text_delta: "Earlier analysis",
+      },
+    });
+    const json = JSON.stringify(output);
+    const half = Math.floor(json.length / 2);
+    for (const [state, text_delta] of [
+      ["ACTIVE", json.slice(0, half)],
+      ["DONE", json.slice(half)],
+    ]) {
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 3,
+          state,
+          text_delta,
+        },
+      });
+    }
+    if (output === payload) {
+      validator.accept(result);
+      assert.deepEqual(validator.finish().result, payload);
+      assert.equal(validator.finish().reported.resultSource, "agent_response");
+    } else
+      assert.throws(() => validator.accept(result), /DIFF_BINDING_MISMATCH/);
+  }
+});
+test("a complete DONE response is not appended twice and an invalid snapshot cannot PASS", () => {
+  const { init, result, stream } = events({ files: ["synthetic.txt"] });
+  const payload = result.result.structured_output;
+  delete result.result.structured_output;
+  result.result.response = JSON.stringify(payload) + JSON.stringify(payload);
+  for (const final of [payload, { ...payload, binding: { files: [] } }]) {
+    const validator = stream();
+    validator.accept(init);
+    for (const [state, text] of [
+      ["ACTIVE", payload],
+      ["DONE", final],
+    ]) {
+      validator.accept({
+        event: "step_update",
+        step_update: {
+          conversation_id: "synthetic",
+          step_type: "agent_response",
+          step_index: 3,
+          state,
+          text_delta: JSON.stringify(text),
+        },
+      });
+    }
+    if (final === payload) {
+      validator.accept(result);
+      assert.equal(validator.finish().result.verdict, "PASS");
+    } else assert.throws(() => validator.accept(result));
   }
 });
 test("native turn counters do not replace exact input and result binding", () => {

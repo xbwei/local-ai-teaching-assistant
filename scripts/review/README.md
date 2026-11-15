@@ -63,8 +63,10 @@ that slash commands were not expanded is expected; every other nonempty diagnost
 blocks, including permission notices.
 The process is bounded by `route.json`'s ten-minute timeout.
 
-The helper accepts the native parsed `structured_output` or decodes a JSON
-`response`, then validates the exact result schema and diff binding. PASS also
+The helper accepts native parsed `structured_output`, or assembles the final
+`agent_response` step’s `text_delta` chunks; when no streamed text is present it
+decodes the terminal JSON response. It records the selected `reported.resultSource`
+and validates the exact result schema and diff binding. PASS also
 requires complete coverage and no findings. Valid FINDINGS/BLOCKED results remain
 adverse results, not PASS. Before accepting the result, the helper rechecks fresh
 base, HEAD/clean state, diff and executable/artifact identity. PASS exits 0;

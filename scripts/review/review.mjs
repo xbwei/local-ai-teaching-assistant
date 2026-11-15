@@ -248,6 +248,8 @@ export function streamValidator(config, binding, schema) {
   let conversation;
   let output;
   let reported;
+  let responseStep;
+  let response = "";
   return {
     accept(event) {
       requireThat(!output, "EVENT_AFTER_RESULT");
@@ -297,6 +299,20 @@ export function streamValidator(config, binding, schema) {
             ),
           "CAPABILITY_OR_PROTOCOL_VIOLATION",
         );
+        if (step.step_type === "agent_response") {
+          if (step.step_index !== responseStep) response = "";
+          responseStep = step.step_index;
+          if (typeof step.text_delta === "string") response += step.text_delta;
+          if (step.state === "DONE" && typeof step.text_delta === "string") {
+            try {
+              // Some completed steps carry the whole response, not a suffix.
+              validateResult(JSON.parse(step.text_delta), binding);
+              response = step.text_delta;
+            } catch {
+              /* Otherwise retain the incremental chunks. */
+            }
+          }
+        }
       } else if (event.event === "result") {
         const result = event.result;
         requireThat(
@@ -317,7 +333,17 @@ export function streamValidator(config, binding, schema) {
           fail(`NATIVE_STATUS_${status}`);
         }
         equal(result.json_schema, schema, "SCHEMA_DRIFT");
-        const value = result.structured_output ?? result.response;
+        let value = result.structured_output;
+        let resultSource = "structured_output";
+        if (value == null || typeof value === "string") {
+          if (response) {
+            value = response;
+            resultSource = "agent_response";
+          } else if (value == null) {
+            value = result.response;
+            resultSource = "response";
+          }
+        }
         let decoded = value;
         if (typeof value === "string") {
           try {
@@ -360,6 +386,7 @@ export function streamValidator(config, binding, schema) {
           }
         }
         output = validateResult(decoded, binding);
+        reported.resultSource = resultSource;
       } else fail("UNKNOWN_EVENT");
     },
     finish() {
