@@ -10,12 +10,13 @@ import {
   identity,
   canonicalExecutable,
   bindDiff,
-  assertQualified,
   assertFreshBase,
   validateResult,
   streamValidator,
   assertNoCustomizations,
   reviewEnvironment,
+  nativeArguments,
+  runReview,
 } from "../review/review.mjs";
 
 function temporary(t) {
@@ -64,32 +65,6 @@ const config = {
 };
 const route = () =>
   identity(config, artifacts, config.cliSha256, config.cliVersion);
-function qualified() {
-  return {
-    format: 1,
-    status: "QUALIFIED",
-    routeSha256: route().routeSha256,
-    authority:
-      "https://github.com/xbwei/local-ai-teaching-assistant/issues/67#issuecomment-1",
-    sessions: [1, 2].map((n) => ({
-      id: `synthetic-session-${n}`,
-      evidence: `https://github.com/xbwei/local-ai-teaching-assistant/issues/67#issuecomment-${n + 1}`,
-      coverage: [
-        "fileRead",
-        "fileWrite",
-        "shell",
-        "network",
-        "mcp",
-        "skills",
-        "delegation",
-        "modelEffort",
-        "completeDiff",
-        "drift",
-      ],
-    })),
-    expectedTools: [],
-  };
-}
 test("canonical discovery resolves symlinks and only the known shim; never executes shims", (t) => {
   const root = temporary(t);
   const binary = path.join(root, "native");
@@ -171,36 +146,6 @@ test("fresh base must match local tracking ref and live remote main", (t) => {
   git(root, "branch", "-f", "main", head);
   assert.throws(() => assertFreshBase(root, base), /REMOTE_BASE_CHANGED/);
 });
-test("qualification is mandatory, route-bound, and requires two distinct complete session records", () => {
-  assertQualified(qualified(), route());
-  for (const mutate of [
-    (q) => {
-      q.status = "UNQUALIFIED";
-    },
-    (q) => {
-      q.routeSha256 = "0".repeat(64);
-    },
-    (q) => {
-      q.sessions.pop();
-    },
-    (q) => {
-      q.sessions[1].id = q.sessions[0].id;
-    },
-    (q) => {
-      q.sessions[1].evidence = q.sessions[0].evidence;
-    },
-    (q) => {
-      q.sessions[0].coverage.pop();
-    },
-    (q) => {
-      q.authority = "";
-    },
-  ]) {
-    const record = qualified();
-    mutate(record);
-    assert.throws(() => assertQualified(record, route()));
-  }
-});
 test("structured result rejects partial coverage, mismatched diff and unexpected fields", (t) => {
   const { root, base, head } = repo(t);
   const { binding } = bindDiff(root, base, head, 100000);
@@ -250,9 +195,9 @@ test("structured result rejects partial coverage, mismatched diff and unexpected
     /INVALID_FINDING/,
   );
 });
-test("mock stream rejects tools (including denied attempts), delegation, drift, duplicate or truncated output", () => {
+test("native metadata cannot substitute requested flags or model assertions for runtime evidence", () => {
   const binding = { files: ["synthetic.txt"] };
-  const schema = { type: "object" };
+  const schema = { properties: { binding: { const: binding } } };
   const init = {
     event: "init",
     conversation_id: "synthetic",
@@ -264,50 +209,24 @@ test("mock stream rejects tools (including denied attempts), delegation, drift, 
       json_schema: schema,
     },
   };
-  const result = {
-    event: "result",
-    result: {
-      conversation_id: "synthetic",
-      status: "SUCCESS",
-      num_turns: 1,
-      json_schema: schema,
-      structured_output: {
-        binding,
-        coverage: "complete",
-        verdict: "PASS",
-        findings: [],
-      },
-    },
-  };
-  const stream = () => streamValidator(config, qualified(), binding, schema);
-  let validator = stream();
-  validator.accept(init);
-  validator.accept(result);
-  assert.equal(validator.finish().verdict, "PASS");
-  assert.throws(() => validator.accept(result), /EVENT_AFTER/);
-  for (const tool of [
-    "view_file",
-    "write_to_file",
-    "run_command",
-    "read_url_content",
-    "call_mcp_tool",
-    "invoke_subagent",
-    "run_workflow",
+  const stream = () => streamValidator(config, binding, schema);
+  assert.throws(
+    () => stream().accept(init),
+    /RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED/,
+  );
+  assert.throws(() => stream().finish(), /RUNTIME_INTEGRITY_UNVERIFIED/);
+  // Invented fields must not establish an unsupported native attestation.
+  for (const [key, value] of [
+    ["effort", config.effort],
+    ["sandbox", true],
+    ["readOnly", true],
+    ["noTools", true],
+    ["tool_info", {}],
+    ["plugin", {}],
   ]) {
-    validator = stream();
-    validator.accept(init);
     assert.throws(
-      () =>
-        validator.accept({
-          event: "step_update",
-          step_update: {
-            conversation_id: "synthetic",
-            step_type: "tool",
-            tool_name: tool,
-            tool_info: { error: "denied" },
-          },
-        }),
-      /CAPABILITY/,
+      () => stream().accept({ ...init, init: { ...init.init, [key]: value } }),
+      /UNKNOWN_RUNTIME_METADATA/,
     );
   }
   for (const [key, value] of [
@@ -315,18 +234,62 @@ test("mock stream rejects tools (including denied attempts), delegation, drift, 
     ["agent", "other"],
     ["permission_mode", "always-proceed"],
     ["tools", ["view_file"]],
+    ["tools", null],
     ["json_schema", {}],
   ]) {
     assert.throws(() =>
       stream().accept({ ...init, init: { ...init.init, [key]: value } }),
     );
   }
-  validator = stream();
-  validator.accept(init);
-  assert.throws(() => validator.finish(), /TRUNCATED/);
-  assert.throws(() => stream().accept(result), /INIT_REQUIRED/);
-  assert.throws(() => validator.accept({ event: "unknown" }), /UNKNOWN_EVENT/);
+  for (const tool of [
+    "view_file",
+    "write_to_file",
+    "run_command",
+    "read_url_content",
+    "call_mcp_tool",
+    "load_skill",
+    "invoke_plugin",
+    "invoke_subagent",
+    "delegate",
+    "run_workflow",
+  ]) {
+    for (const event of [
+      { event: tool },
+      {
+        event: "step_update",
+        step_update: {
+          step_type: "tool",
+          tool_name: tool,
+          tool_info: { error: "denied" },
+        },
+      },
+      {
+        event: "step_update",
+        step_update: { step_type: "agent_response", subagent_info: {} },
+      },
+    ])
+      assert.throws(
+        () => stream().accept(event),
+        /CAPABILITY_OR_UNKNOWN_EVENT/,
+      );
+  }
+  assert.throws(
+    () =>
+      stream().accept({
+        event: "result",
+        result: {
+          structured_output: {
+            binding,
+            coverage: "complete",
+            verdict: "PASS",
+            findings: [],
+          },
+        },
+      }),
+    /CAPABILITY_OR_UNKNOWN_EVENT/,
+  );
 });
+
 test("ambient customizations and credential/provider environment injection fail closed", (t) => {
   const root = temporary(t);
   assertNoCustomizations(root);
@@ -351,10 +314,100 @@ test("ambient customizations and credential/provider environment injection fail 
     { HOME: "synthetic", AGY_CLI_DISABLE_AUTO_UPDATE: "true" },
   );
 });
-test("shipped bootstrap qualification cannot authorize a production review", () => {
-  const record = JSON.parse(
-    fs.readFileSync(new URL("../review/qualification.json", import.meta.url)),
+test("native arguments retain restrictions, exact schema and one-stream transport", () => {
+  const schema = { type: "object" };
+  const args = nativeArguments(config, schema);
+  for (const [flag, value] of [
+    ["--model", config.model],
+    ["--effort", config.effort],
+    ["--agent", "laita-restricted-reviewer"],
+    ["--mode", "plan"],
+    ["--input-format", "stream-json"],
+    ["--output-format", "stream-json"],
+    ["--json-schema", JSON.stringify(schema)],
+    ["--log-file", os.devNull],
+  ])
+    assert.equal(args[args.indexOf(flag) + 1], value);
+  assert.ok(args.includes("--sandbox"));
+  assert.ok(args.includes("--disable-slash-commands"));
+  assert.ok(!args.includes("--dangerously-skip-permissions"));
+  const settings = JSON.parse(
+    fs.readFileSync(new URL("../review/settings.json", import.meta.url)),
   );
-  assert.equal(record.status, "UNQUALIFIED");
-  assert.throws(() => assertQualified(record, route()), /ROUTE_UNQUALIFIED/);
+  assert.equal(settings.agentMode, "plan");
+  assert.equal(settings.toolPermission, "strict");
+  assert.equal(settings.enableTerminalSandbox, true);
+  assert.equal(settings.allowNonWorkspaceAccess, false);
+  assert.deepEqual(settings.permissions.allow, []);
+  assert.deepEqual(settings.permissions.ask, []);
+  for (const capability of [
+    "command",
+    "read_file",
+    "write_file",
+    "read_url",
+    "execute_url",
+    "mcp",
+    "unsandboxed",
+  ]) {
+    assert.ok(settings.permissions.deny.includes(`${capability}(*)`));
+  }
+});
+
+test("transport aborts before stdin on unverified startup, diagnostics, capability or malformed events", async (t) => {
+  const root = temporary(t);
+  t.mock.method(os, "homedir", () => root);
+  const binding = { files: ["synthetic.txt"] };
+  const schema = JSON.parse(
+    fs.readFileSync(new URL("../review/result.schema.json", import.meta.url)),
+  );
+  schema.properties.binding = { const: binding };
+  const init = {
+    event: "init",
+    conversation_id: "synthetic",
+    init: {
+      model: config.model,
+      agent: "laita-restricted-reviewer",
+      permission_mode: "strict",
+      tools: [],
+      json_schema: schema,
+    },
+  };
+  const marker = path.join(root, "input-received");
+  const fake = path.join(root, "synthetic-cli.mjs");
+  for (const smoke of [false, true]) {
+    for (const [output, expected] of [
+      [
+        `process.stdout.write(${JSON.stringify(JSON.stringify(init) + "\n")});`,
+        /RUNTIME_EFFORT_AND_RESTRICTIONS_UNVERIFIED/,
+      ],
+      [`process.stdout.write(${JSON.stringify("not JSON\n")});`, SyntaxError],
+      [
+        `process.stdout.write(${JSON.stringify(JSON.stringify({ event: "tool", tool_name: "run_command" }) + "\n")});`,
+        /CAPABILITY_OR_UNKNOWN_EVENT/,
+      ],
+      [
+        'process.stderr.write("synthetic diagnostic");',
+        /CLI_DIAGNOSTIC_REQUIRES_REVIEW/,
+      ],
+      ["", /REVIEW_TIMEOUT/],
+    ]) {
+      fs.writeFileSync(
+        fake,
+        `#!${process.execPath}\nimport fs from "node:fs";\nprocess.stdin.on("data", () => fs.writeFileSync(${JSON.stringify(marker)}, "unexpected input"));\n${output}\nsetInterval(() => {}, 1000);\n`,
+      );
+      fs.chmodSync(fake, 0o700);
+      await assert.rejects(
+        runReview(
+          fake,
+          { ...config, timeoutMs: 1000 },
+          binding,
+          Buffer.from("synthetic diff"),
+          "synthetic policy",
+          smoke,
+        ),
+        expected,
+      );
+      assert.equal(fs.existsSync(marker), false);
+    }
+  }
 });
