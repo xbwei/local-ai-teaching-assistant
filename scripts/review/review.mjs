@@ -250,6 +250,7 @@ export function streamValidator(config, binding, schema) {
   let output;
   let reported;
   let responseStep;
+  let responseSeen = false;
   let response = "";
   let responseDone = false;
   return {
@@ -302,17 +303,23 @@ export function streamValidator(config, binding, schema) {
           "CAPABILITY_OR_PROTOCOL_VIOLATION",
         );
         if (step.step_type === "agent_response") {
+          responseSeen = true;
           if (step.step_index !== responseStep) response = "";
           responseDone = step.state === "DONE";
           responseStep = step.step_index;
           if (typeof step.text_delta === "string") response += step.text_delta;
           if (step.state === "DONE" && typeof step.text_delta === "string") {
+            let snapshot;
             try {
-              // Some completed steps carry the whole response, not a suffix.
-              validateResult(JSON.parse(step.text_delta), binding);
-              response = step.text_delta;
+              snapshot = JSON.parse(step.text_delta);
             } catch {
-              /* Otherwise retain the incremental chunks. */
+              /* A suffix is retained with the incremental chunks. */
+            }
+            // Some completed steps carry the whole response, not a suffix.
+            // Validate complete snapshots outside the parse fallback.
+            if (snapshot && typeof snapshot === "object") {
+              validateResult(snapshot, binding);
+              response = step.text_delta;
             }
           }
         }
@@ -347,6 +354,7 @@ export function streamValidator(config, binding, schema) {
           }
           return validateResult(decoded, binding);
         };
+        requireThat(!responseSeen || responseDone, "INCOMPLETE_AGENT_RESPONSE");
         const hasTerminal = Object.hasOwn(result, "structured_output");
         let resultSource;
         let acceptedResult;
@@ -357,7 +365,6 @@ export function streamValidator(config, binding, schema) {
           );
           resultSource = "structured_output";
         } else if (response) {
-          requireThat(responseDone, "INCOMPLETE_AGENT_RESPONSE");
           acceptedResult = decode(response, "INVALID_AGENT_RESPONSE_JSON");
           resultSource = "agent_response";
         } else {
