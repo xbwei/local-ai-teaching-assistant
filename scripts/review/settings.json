@@ -1,0 +1,26 @@
+{
+  "agentMode": "plan",
+  "toolPermission": "strict",
+  "enableTerminalSandbox": true,
+  "allowNonWorkspaceAccess": false,
+  "disableSlashCommands": true,
+  "useG1Credits": false,
+  "modelProvider": "",
+  "customModelsConfig": {},
+  "sandboxProxy": {},
+  "statusLine": { "enabled": false },
+  "title": { "enabled": false },
+  "permissions": {
+    "allow": [],
+    "ask": [],
+    "deny": [
+      "command(*)",
+      "read_file(*)",
+      "write_file(*)",
+      "read_url(*)",
+      "execute_url(*)",
+      "mcp(*)",
+      "unsandboxed(*)"
+    ]
+  }
+}
