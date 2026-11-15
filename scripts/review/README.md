@@ -151,7 +151,15 @@ expansion, settings and log-suppression flags. CLI 1.5.1 rejects `--json-schema`
 with text output; a standalone text diagnostic is not a schema-constrained review.
 Invalid-parameter probes use that same diagnostic rather
 than an inference prompt. Mentions of the requested model/effort are recorded as
-hints only. No report text is retained. The installed headless protocol documents
+hints only. The receipt separates stdout/stderr model and effort mentions, tab-row
+presence, and exact known schema-output and slash-literal warnings. These fixed
+booleans identify output-channel or protocol clues without emitting any row values.
+The exact known literal-prompt or schema/output warning aborts with a fixed
+`BLOCKED` code. Unknown stderr remains unclassified; tab-row shape alone does not identify a valid
+native report. No report text is logged or retained after the bounded invocation.
+Previously emitted receipts containing only `diagnosticPresent` cannot recover the
+discarded stderr or establish why no stdout hint matched. Do not infer a channel
+or slash-command behavior from those receipts. The installed headless protocol documents
 model/agent selection and generic tool errors, but does not specify an
 execution-bound actual-effort attestation or a typed, pre-execution permission
 denial proof. Generic process failure cannot prove invalid-parameter rejection;

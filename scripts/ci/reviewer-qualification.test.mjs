@@ -12,6 +12,7 @@ import {
   nativeProbe,
   evidenceStatus,
   diagnosticArguments,
+  diagnosticSignals,
 } from "../review/qualify.mjs";
 import { nativeArguments, sha256 } from "../review/review.mjs";
 const config = { model: "synthetic-model", effort: "high" };
@@ -313,5 +314,81 @@ test("standalone model diagnostic adapts I/O without weakening production restri
   assert.equal(
     production[production.indexOf("--output-format") + 1],
     "stream-json",
+  );
+});
+
+test("diagnostic signals distinguish channels and fixed warnings without retaining text", () => {
+  const native =
+    "model\tsynthetic-model\neffort\thigh\naccount\tDO_NOT_PUBLISH\n";
+  const output = diagnosticSignals("", native, config.model);
+  assert.equal(output.nativeModelMentioned, false);
+  assert.equal(output.stderrModelMentioned, true);
+  assert.equal(output.stderrEffortMentioned, true);
+  assert.equal(output.stderrTabRecords, true);
+  assert.equal(output.stdoutPresent, false);
+  assert.equal(JSON.stringify(output).includes("DO_NOT_PUBLISH"), false);
+  assert.ok(Object.values(output).every((v) => typeof v === "boolean"));
+  const warnings = diagnosticSignals(
+    "",
+    "warning: slash commands are unavailable for this run; the prompt was sent without expansion.\nError: --json-schema can only be used when --output-format is 'json' or 'stream-json'",
+    config.model,
+  );
+  assert.equal(warnings.stderrLiteralPromptWarning, true);
+  assert.equal(warnings.stderrSchemaOutputConflict, true);
+  assert.equal(
+    diagnosticSignals("", "unrecognized private diagnostic", config.model)
+      .stderrLiteralPromptWarning,
+    false,
+  );
+});
+test("mock stderr diagnostic report survives chunk boundaries only as bounded hints", async (t) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "laita-mock-report-"),
+  );
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const executable = path.join(directory, "mock-native");
+  fs.writeFileSync(
+    executable,
+    "#!/usr/bin/env node\nprocess.stderr.write('model\\tsynthetic-');\nsetTimeout(() => process.stderr.write('model\\neffort\\thigh\\nDO_NOT_PUBLISH'), 10);\n",
+  );
+  fs.chmodSync(executable, 0o700);
+  const result = await nativeProbe(
+    { executable, config: { ...config, timeoutMs: 1000 } },
+    "modelEffort",
+    directory,
+    { binding: { files: [] } },
+  );
+  assert.equal(result.code, "NATIVE_DIAGNOSTIC_NOT_ATTESTATION");
+  assert.equal(result.observations.stderrModelMentioned, true);
+  assert.equal(result.observations.stderrEffortMentioned, true);
+  assert.equal(result.observations.stderrTabRecords, true);
+  assert.equal(result.observations.nativeModelMentioned, false);
+  assert.equal(JSON.stringify(result).includes("DO_NOT_PUBLISH"), false);
+  validateEvidence({ ...evidence(), probe: "modelEffort", ...result });
+});
+
+test("mock native literal-prompt warning blocks even if the process would exit successfully", async (t) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "laita-mock-warning-"),
+  );
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const executable = path.join(directory, "mock-native");
+  fs.writeFileSync(
+    executable,
+    "#!/usr/bin/env node\nprocess.stderr.write('warning: slash commands are unavailable for this run; the prompt was sent without expansion.');\n",
+  );
+  fs.chmodSync(executable, 0o700);
+  const result = await nativeProbe(
+    { executable, config: { ...config, timeoutMs: 1000 } },
+    "modelEffort",
+    directory,
+    { binding: { files: [] } },
+  );
+  assert.equal(result.code, "NATIVE_LITERAL_PROMPT_WARNING");
+  assert.equal(result.observations.diagnosticPresent, true);
+  assert.equal(evidenceStatus(result.code), "BLOCKED");
+  assert.equal(
+    Object.hasOwn(result.observations, "nativeModelMentioned"),
+    false,
   );
 });

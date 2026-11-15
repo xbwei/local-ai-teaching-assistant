@@ -172,6 +172,13 @@ const observationFields = [
   "nativeModelMentioned",
   "nativeEffortMentioned",
   "lateContentObserved",
+  "stdoutPresent",
+  "stdoutTabRecords",
+  "stderrTabRecords",
+  "stderrModelMentioned",
+  "stderrEffortMentioned",
+  "stderrLiteralPromptWarning",
+  "stderrSchemaOutputConflict",
 ];
 const codes = [
   "NATIVE_ENFORCEMENT_NOT_ESTABLISHED",
@@ -187,6 +194,8 @@ const codes = [
   "NATIVE_TIMEOUT",
   "NATIVE_START_FAILED",
   "NATIVE_EXIT_FAILED",
+  "NATIVE_LITERAL_PROMPT_WARNING",
+  "NATIVE_SCHEMA_OUTPUT_CONFLICT",
   "NATIVE_INPUT_FAILED",
   "NATIVE_OUTPUT_LIMIT",
   "INCOMPLETE_NATIVE_STREAM",
@@ -196,6 +205,27 @@ const codes = [
 
 export function evidenceStatus(code) {
   return codes.slice(0, 3).includes(code) ? "NOT_ESTABLISHED" : "BLOCKED";
+}
+
+// Observability only: recognize fixed public CLI signals, never retain native text.
+export function diagnosticSignals(stdout, stderr, model) {
+  const hasRows = (value) =>
+    value.split("\n").some((line) => line.includes("\t"));
+  return {
+    stdoutPresent: stdout.trim().length > 0,
+    stdoutTabRecords: hasRows(stdout),
+    stderrTabRecords: hasRows(stderr),
+    nativeModelMentioned: stdout.includes(model),
+    nativeEffortMentioned: /effort[^\n]{0,40}\bhigh\b/i.test(stdout),
+    stderrModelMentioned: stderr.includes(model),
+    stderrEffortMentioned: /effort[^\n]{0,40}\bhigh\b/i.test(stderr),
+    stderrLiteralPromptWarning: stderr.includes(
+      "warning: slash commands are unavailable for this run; the prompt was sent without expansion.",
+    ),
+    stderrSchemaOutputConflict: stderr.includes(
+      "Error: --json-schema can only be used when --output-format is 'json' or 'stream-json'",
+    ),
+  };
 }
 
 // Native /model is a text diagnostic, not schema-constrained model output.
@@ -257,6 +287,7 @@ export async function nativeProbe(route, probe, directory, snapshot) {
       stdio: ["pipe", "pipe", "pipe"],
     });
     let buffer = "",
+      diagnosticBuffer = "",
       total = 0,
       failed = false,
       validator;
@@ -274,6 +305,19 @@ export async function nativeProbe(route, probe, directory, snapshot) {
     child.stderr.on("data", (c) => {
       total += c.length;
       if (total > 4 * 1024 * 1024) return abort("NATIVE_OUTPUT_LIMIT");
+      if (c.toString().trim()) observed.diagnosticPresent = true;
+      if (diagnostic) {
+        diagnosticBuffer += c.toString();
+        const signals = diagnosticSignals(
+          "",
+          diagnosticBuffer,
+          route.config.model,
+        );
+        if (signals.stderrLiteralPromptWarning)
+          return abort("NATIVE_LITERAL_PROMPT_WARNING");
+        if (signals.stderrSchemaOutputConflict)
+          return abort("NATIVE_SCHEMA_OUTPUT_CONFLICT");
+      }
       if (c.toString().trim()) {
         observed.diagnosticPresent = true;
         if (!diagnostic) abort("NATIVE_DIAGNOSTIC_REQUIRES_REVIEW");
@@ -341,10 +385,10 @@ export async function nativeProbe(route, probe, directory, snapshot) {
         failed = true;
       }
       if (!failed && diagnostic) {
-        // Bounded hints for independent review, never actual model/effort proof.
-        observed.nativeModelMentioned = buffer.includes(route.config.model);
-        observed.nativeEffortMentioned = /effort[^\n]{0,40}\bhigh\b/i.test(
-          buffer,
+        // Selection reports and warnings are hints, never execution-bound proof.
+        Object.assign(
+          observed,
+          diagnosticSignals(buffer, diagnosticBuffer, route.config.model),
         );
       } else if (!failed) {
         try {
