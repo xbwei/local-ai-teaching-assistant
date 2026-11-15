@@ -10,6 +10,7 @@ import {
   validateEvidence,
   syntheticDiff,
   nativeProbe,
+  evidenceStatus,
 } from "../review/qualify.mjs";
 import { nativeArguments, sha256 } from "../review/review.mjs";
 const config = { model: "synthetic-model", effort: "high" };
@@ -226,4 +227,68 @@ test("mock native unknown diagnostics abort without emitting raw errors or sendi
     JSON.stringify(result).includes("DO_NOT_PUBLISH_NATIVE_TEXT"),
     false,
   );
+});
+
+test("mock failed diagnostics block all diagnostic probes without identity hints", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "laita-mock-exit-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const executable = path.join(directory, "mock-native");
+  fs.writeFileSync(
+    executable,
+    "#!/usr/bin/env node\nprocess.stdout.write('synthetic-model effort high');\nprocess.exitCode = 2;\n",
+  );
+  fs.chmodSync(executable, 0o700);
+  for (const probe of ["modelEffort", "invalidModel", "invalidEffort"]) {
+    const result = await nativeProbe(
+      { executable, config: { ...config, timeoutMs: 1000 } },
+      probe,
+      directory,
+      { binding: { files: [] } },
+    );
+    assert.equal(result.observations.exitCode, 2);
+    assert.equal(result.code, "NATIVE_EXIT_FAILED");
+    assert.equal(evidenceStatus(result.code), "BLOCKED");
+    assert.equal(
+      Object.hasOwn(result.observations, "nativeModelMentioned"),
+      false,
+    );
+    assert.equal(
+      Object.hasOwn(result.observations, "nativeEffortMentioned"),
+      false,
+    );
+    assert.equal(result.observations.promptSent, false);
+    validateEvidence({
+      ...evidence(),
+      probe,
+      ...result,
+      status: evidenceStatus(result.code),
+    });
+  }
+});
+test("mock signal-terminated diagnostic blocks when exit code is null", async (t) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "laita-mock-signal-"),
+  );
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const executable = path.join(directory, "mock-native");
+  fs.writeFileSync(
+    executable,
+    "#!/usr/bin/env node\nprocess.kill(process.pid, 'SIGTERM');\n",
+  );
+  fs.chmodSync(executable, 0o700);
+  const result = await nativeProbe(
+    { executable, config: { ...config, timeoutMs: 1000 } },
+    "modelEffort",
+    directory,
+    { binding: { files: [] } },
+  );
+  assert.equal(result.observations.exitCode, null);
+  assert.equal(result.code, "NATIVE_EXIT_FAILED");
+  assert.equal(evidenceStatus(result.code), "BLOCKED");
+  validateEvidence({
+    ...evidence(),
+    probe: "modelEffort",
+    ...result,
+    status: evidenceStatus(result.code),
+  });
 });

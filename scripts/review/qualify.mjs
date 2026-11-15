@@ -186,6 +186,7 @@ const codes = [
   "NATIVE_DIAGNOSTIC_REQUIRES_REVIEW",
   "NATIVE_TIMEOUT",
   "NATIVE_START_FAILED",
+  "NATIVE_EXIT_FAILED",
   "NATIVE_INPUT_FAILED",
   "NATIVE_OUTPUT_LIMIT",
   "INCOMPLETE_NATIVE_STREAM",
@@ -311,6 +312,12 @@ export async function nativeProbe(route, probe, directory, snapshot) {
     child.on("close", (exitCode) => {
       clearTimeout(timer);
       observed.exitCode = exitCode;
+      if (!failed && diagnostic && exitCode !== 0) {
+        // A process failure is not proof of parameter rejection or identity.
+        // Preserve an earlier timeout/diagnostic/protocol failure if present.
+        code = "NATIVE_EXIT_FAILED";
+        failed = true;
+      }
       if (!failed && diagnostic) {
         // Bounded hints for independent review, never actual model/effort proof.
         observed.nativeModelMentioned = buffer.includes(route.config.model);

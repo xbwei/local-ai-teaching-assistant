@@ -153,7 +153,10 @@ execution-bound actual-effort attestation or a typed, pre-execution permission
 denial proof. Generic process failure cannot prove invalid-parameter rejection;
 a model refusal, missing target, tool error, or zero tool calls cannot prove
 restrictions. All remain `NOT_ESTABLISHED`. Unknown diagnostics are not interpreted
-as quota exhaustion or permission denial. Inference probes abort on any tool or
+as quota exhaustion or permission denial. A nonzero diagnostic exit or signal
+termination is `BLOCKED / NATIVE_EXIT_FAILED`, even for invalid-parameter probes;
+failed diagnostics do not produce model/effort hints. Earlier specific failures
+remain the reported cause. Inference probes abort on any tool or
 delegation event, including an alleged denial; stream rejection is detection,
 not prevention of a native tool already executed.
 
