@@ -104,7 +104,7 @@ export function identity(config, artifacts, executableHash, version) {
   };
   return { ...record, routeSha256: sha256(JSON.stringify(record)) };
 }
-function inspect() {
+export function inspect() {
   const config = readJson("route.json");
   const found = discover();
   // Hash before executing even --version. No unrecognized executable is run.
@@ -461,6 +461,31 @@ export function reviewEnvironment(source) {
     AGY_CLI_DISABLE_AUTO_UPDATE: "true",
   };
 }
+// Shared native flags keep qualification probes on the production restrictions.
+export function nativeArguments(config, schema) {
+  return [
+    "--agent",
+    "laita-restricted-reviewer",
+    "--model",
+    config.model,
+    "--effort",
+    config.effort,
+    "--mode",
+    "plan",
+    "--sandbox",
+    "--disable-slash-commands",
+    "--settings",
+    path.join(here, "settings.json"),
+    "--json-schema",
+    JSON.stringify(schema),
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
+    "--log-file",
+    os.devNull,
+  ];
+}
 async function runReview(
   executable,
   config,
@@ -491,36 +516,11 @@ async function runReview(
       diff: diff.toString("utf8"),
     });
     return await new Promise((resolve, reject) => {
-      const child = spawn(
-        executable,
-        [
-          "--agent",
-          "laita-restricted-reviewer",
-          "--model",
-          config.model,
-          "--effort",
-          config.effort,
-          "--mode",
-          "plan",
-          "--sandbox",
-          "--disable-slash-commands",
-          "--settings",
-          path.join(here, "settings.json"),
-          "--json-schema",
-          JSON.stringify(schema),
-          "--input-format",
-          "stream-json",
-          "--output-format",
-          "stream-json",
-          "--log-file",
-          os.devNull,
-        ],
-        {
-          cwd: directory,
-          env: reviewEnvironment(process.env),
-          stdio: ["pipe", "pipe", "pipe"],
-        },
-      );
+      const child = spawn(executable, nativeArguments(config, schema), {
+        cwd: directory,
+        env: reviewEnvironment(process.env),
+        stdio: ["pipe", "pipe", "pipe"],
+      });
       let buffer = "";
       let size = 0;
       let failed;
