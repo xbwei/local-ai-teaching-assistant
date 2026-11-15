@@ -462,8 +462,31 @@ export async function runReview(executable, config, binding, diff, policy) {
       child.stderr.on("data", (chunk) => {
         // Unknown warnings can indicate ignored settings or fallback. Do not
         // publish stderr, which may include native account or machine details.
-        if (chunk.toString().trim())
-          abort(new Error("CLI_DIAGNOSTIC_REQUIRES_REVIEW"));
+        if (chunk.toString().trim()) {
+          const hints = [
+            "auth",
+            "quota",
+            "schema",
+            "sandbox",
+            "permission",
+            "model",
+            "effort",
+            "slash",
+            "input",
+            "stream",
+            "tool",
+            "network",
+            "invalid",
+            "unsupported",
+            "expired",
+          ]
+            .filter((word) => chunk.toString().toLowerCase().includes(word))
+            .join("_")
+            .toUpperCase();
+          abort(
+            new Error(`CLI_DIAGNOSTIC_REQUIRES_REVIEW_${hints || "UNKNOWN"}`),
+          );
+        }
       });
       child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk) => {
