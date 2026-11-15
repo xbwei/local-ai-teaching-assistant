@@ -53,8 +53,10 @@ and schema. It then sends exactly one stdin message containing the entire diff,
 binding and effective base policy. Advertised tool inventory is not tool
 execution and is not compared to a stored or empty inventory. Supported
 user/agent/checkpoint steps must keep the same conversation. Tool/delegation
-steps, including denied attempts, unknown events, diagnostics, protocol/CLI
-failure, incomplete output, invalid results or observed route mismatches block.
+steps, including denied attempts, unknown events, protocol/CLI failure, incomplete
+output, invalid results or observed route mismatches block. The CLI’s exact notice
+that slash commands were not expanded is expected; every other nonempty diagnostic
+blocks, including permission notices.
 The process is bounded by `route.json`'s ten-minute timeout.
 
 A valid terminal result must match the exact schema and diff binding. PASS also

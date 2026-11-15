@@ -523,6 +523,33 @@ process.stdin.on("end", () => {
     /INPUT_BINDING_MISMATCH/,
   );
 });
+test("only the exact literal-input notice is accepted, including split stderr chunks", async (t) => {
+  const diff = Buffer.from("synthetic diff");
+  const binding = inputBinding(diff);
+  const notice =
+    "warning: slash commands are unavailable for this run; the prompt was sent without expansion.";
+  const { executable } = fakeCli(
+    t,
+    `
+const notice = ${JSON.stringify(notice)};
+process.stderr.write(notice.slice(0, 20));
+setTimeout(() => {process.stderr.write(notice.slice(20)+String.fromCharCode(10)); emit(init);}, 10);
+process.stdin.resume();
+process.stdin.on("end", () => emit(result));`,
+  );
+  assert.equal(
+    (
+      await runReview(
+        executable,
+        { ...config, timeoutMs: 1000 },
+        binding,
+        diff,
+        "synthetic policy",
+      )
+    ).result.verdict,
+    "PASS",
+  );
+});
 test("transport aborts before input on observed startup failure and rejects incomplete output", async (t) => {
   const diff = Buffer.from("synthetic diff");
   const binding = inputBinding(diff);

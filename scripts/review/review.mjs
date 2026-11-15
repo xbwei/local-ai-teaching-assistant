@@ -459,34 +459,27 @@ export async function runReview(executable, config, binding, diff, policy) {
       );
       child.on("error", () => abort(new Error("CLI_START_FAILED")));
       child.stdin.on("error", () => abort(new Error("INPUT_TRANSPORT_FAILED")));
+      // This exact notice confirms the requested literal-input behavior.
+      // Do not allow unrelated warnings, errors or permission diagnostics.
+      const literalNotice =
+        "warning: slash commands are unavailable for this run; the prompt was sent without expansion.";
+      let diagnostic = "";
+      child.stderr.setEncoding("utf8");
       child.stderr.on("data", (chunk) => {
-        // Unknown warnings can indicate ignored settings or fallback. Do not
-        // publish stderr, which may include native account or machine details.
-        if (chunk.toString().trim()) {
-          const hints = [
-            "auth",
-            "quota",
-            "schema",
-            "sandbox",
-            "permission",
-            "model",
-            "effort",
-            "slash",
-            "input",
-            "stream",
-            "tool",
-            "network",
-            "invalid",
-            "unsupported",
-            "expired",
-          ]
-            .filter((word) => chunk.toString().toLowerCase().includes(word))
-            .join("_")
-            .toUpperCase();
-          abort(
-            new Error(`CLI_DIAGNOSTIC_REQUIRES_REVIEW_${hints || "UNKNOWN"}`),
-          );
+        diagnostic += chunk;
+        let newline;
+        while ((newline = diagnostic.indexOf("\n")) >= 0) {
+          const line = diagnostic.slice(0, newline).replace(/\r$/, "");
+          diagnostic = diagnostic.slice(newline + 1);
+          if (line.trim() && line !== literalNotice)
+            abort(new Error("CLI_DIAGNOSTIC_REQUIRES_REVIEW"));
         }
+        if (
+          diagnostic.length > literalNotice.length + 1 ||
+          (diagnostic.trim() &&
+            !literalNotice.startsWith(diagnostic.replace(/\r$/, "")))
+        )
+          abort(new Error("CLI_DIAGNOSTIC_REQUIRES_REVIEW"));
       });
       child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk) => {
@@ -522,6 +515,12 @@ export async function runReview(executable, config, binding, diff, policy) {
         clearTimeout(timer);
         try {
           if (failed) throw failed;
+          requireThat(
+            !diagnostic.trim() ||
+              diagnostic === literalNotice ||
+              diagnostic === literalNotice + "\r",
+            "CLI_DIAGNOSTIC_REQUIRES_REVIEW",
+          );
           requireThat(
             code === 0 && buffer === "" && inputWritten,
             "INCOMPLETE_REVIEW_STREAM",
