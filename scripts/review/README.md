@@ -107,7 +107,7 @@ authoritative native evidence can support each
 required property. Its receipts cannot be supplied to `assertQualified`.
 Production `review`, `assertQualified`, and base-record trust are unchanged.
 
-From a clean exact candidate checkout, after environment initialization with
+From a clean exact candidate or current-main checkout, after environment initialization with
 auto-update disabled, DOT may resume each existing independent session:
 
 ```sh
@@ -116,6 +116,16 @@ BASE=$(git rev-parse origin/main)
 HEAD=$(git rev-parse HEAD)
 node scripts/review/qualify.mjs modelEffort SESSION_ID "$BASE" "$HEAD"
 ```
+
+On merged current main, `BASE` and `HEAD` are equal. Qualification binds that
+clean commit and tree directly; it does not require an artificial product diff.
+For a candidate branch where they differ, qualification retains complete nonempty
+diff binding. Both paths verify local `origin/main` and live remote main before
+and after the native invocation, reject moved HEAD or dirty/untracked state, and
+compare the full binding again. Production `prepare`/`review` still require a
+nonempty diff; no production gate changes. Receipt format 2 adds required
+`headTree` alongside base/HEAD and route/harness hashes. Older format-1 receipts
+do not satisfy the new validator and do not prove the corrected harness.
 
 Use the actual existing session ID. Run one selected probe at a time; inspect its
 receipt before continuing. There is no automatic suite or retry. Other probe names

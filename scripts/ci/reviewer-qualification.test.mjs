@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import {
   probes,
   probePrompt,
@@ -13,8 +14,9 @@ import {
   evidenceStatus,
   diagnosticArguments,
   diagnosticSignals,
+  bindQualification,
 } from "../review/qualify.mjs";
-import { nativeArguments, sha256 } from "../review/review.mjs";
+import { nativeArguments, sha256, bindDiff } from "../review/review.mjs";
 const config = { model: "synthetic-model", effort: "high" };
 const schema = { type: "object" };
 const init = {
@@ -29,12 +31,13 @@ const init = {
 };
 function evidence() {
   return {
-    format: 1,
+    format: 2,
     status: "NOT_ESTABLISHED",
     probe: "fileRead",
     session: "synthetic-session",
     head: "a".repeat(40),
     base: "b".repeat(40),
+    headTree: "e".repeat(40),
     routeSha256: "c".repeat(64),
     harnessSha256: "d".repeat(64),
     source: "native-cli",
@@ -142,6 +145,9 @@ test("bounded evidence cannot claim qualification or carry native text or unsafe
     (e) => (e.observations.exitCode = -1),
     (e) => (e.session = "/machine/path"),
     (e) => (e.harnessSha256 = "stale"),
+    (e) => delete e.headTree,
+    (e) => (e.headTree = "stale"),
+    (e) => (e.format = 1),
   ]) {
     const e = evidence();
     mutate(e);
@@ -390,5 +396,86 @@ test("mock native literal-prompt warning blocks even if the process would exit s
   assert.equal(
     Object.hasOwn(result.observations, "nativeModelMentioned"),
     false,
+  );
+});
+
+function fixtureGit(root, ...args) {
+  const r = spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: os.devNull,
+    },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  return r.stdout.trim();
+}
+function mainFixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "laita-main-binding-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { binding } = syntheticDiff(root, false);
+  fixtureGit(root, "remote", "add", "origin", root);
+  fixtureGit(root, "branch", "-f", "main", binding.head);
+  fixtureGit(root, "update-ref", "refs/remotes/origin/main", binding.head);
+  return { root, ...binding };
+}
+test("qualification binds clean current main HEAD/tree while production rejects empty diff", (t) => {
+  const { root, head, headTree } = mainFixture(t);
+  assert.deepEqual(bindQualification(root, head, head), {
+    base: head,
+    head,
+    baseTree: headTree,
+    headTree,
+  });
+  assert.throws(
+    () => bindDiff(root, head, head, 1048576),
+    /EMPTY_OR_OVERSIZE_DIFF/,
+  );
+  assert.throws(
+    () => bindQualification(root, "main", "main"),
+    /FULL_COMMIT_IDS_REQUIRED/,
+  );
+});
+test("qualification snapshot rejects untracked, unstaged, staged and moved HEAD state", (t) => {
+  const { root, head } = mainFixture(t);
+  fs.writeFileSync(path.join(root, "untracked.txt"), "synthetic");
+  assert.throws(() => bindQualification(root, head, head), /DIRTY_CHECKOUT/);
+  fs.unlinkSync(path.join(root, "untracked.txt"));
+  fs.appendFileSync(path.join(root, "z-late.txt"), "changed\n");
+  assert.throws(() => bindQualification(root, head, head), /DIRTY_CHECKOUT/);
+  fixtureGit(root, "add", "z-late.txt");
+  assert.throws(() => bindQualification(root, head, head), /DIRTY_CHECKOUT/);
+  fixtureGit(root, "commit", "-qm", "changed head");
+  assert.throws(() => bindQualification(root, head, head), /HEAD_MISMATCH/);
+});
+test("qualification snapshot rejects stale tracking refs and changed live remote main", (t) => {
+  const { root, base, head } = mainFixture(t);
+  fixtureGit(root, "update-ref", "refs/remotes/origin/main", base);
+  assert.throws(
+    () => bindQualification(root, head, head),
+    /BASE_NOT_ORIGIN_MAIN/,
+  );
+  fixtureGit(root, "update-ref", "refs/remotes/origin/main", head);
+  fixtureGit(root, "branch", "-f", "main", base);
+  assert.throws(
+    () => bindQualification(root, head, head),
+    /REMOTE_BASE_CHANGED/,
+  );
+});
+test("candidate qualification keeps complete nonempty diff binding and detects changed snapshots", (t) => {
+  const { root, base, head } = mainFixture(t);
+  const before = bindQualification(root, head, head);
+  fixtureGit(root, "branch", "-f", "main", base);
+  fixtureGit(root, "update-ref", "refs/remotes/origin/main", base);
+  assert.deepEqual(
+    bindQualification(root, base, head),
+    bindDiff(root, base, head, 1048576).binding,
+  );
+  assert.notDeepEqual(bindQualification(root, base, head), before);
+  assert.throws(
+    () => bindQualification(root, head, head),
+    /BASE_NOT_ORIGIN_MAIN/,
   );
 });
