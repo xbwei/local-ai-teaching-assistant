@@ -98,8 +98,7 @@ export function identity(config, artifacts, executableHash, version) {
     artifacts: Object.fromEntries(
       routeFiles.map((name) => [name, sha256(artifacts[name])]),
     ),
-    transport:
-      "one-stdin-user-event/stream-json/plan/strict/sandbox/no-slash/v1",
+    transport: "print-user-prompt/stream-json/plan/strict/sandbox/no-slash/v1",
   };
   return { ...record, routeSha256: sha256(JSON.stringify(record)) };
 }
@@ -417,7 +416,7 @@ export function reviewEnvironment(source) {
   };
 }
 // Explicit restrictions for every invocation; observed violations block the result.
-export function nativeArguments(config, schema) {
+export function nativeArguments(config, schema, prompt) {
   return [
     "--agent",
     "laita-restricted-reviewer",
@@ -431,8 +430,8 @@ export function nativeArguments(config, schema) {
     path.join(here, "settings.json"),
     "--json-schema",
     JSON.stringify(schema),
-    "--input-format",
-    "stream-json",
+    "--print",
+    prompt,
     "--output-format",
     "stream-json",
     "--log-file",
@@ -469,16 +468,14 @@ export async function runReview(executable, config, binding, diff, policy) {
       diff: diff.toString("utf8"),
     });
     return await new Promise((resolve, reject) => {
-      const child = spawn(executable, nativeArguments(config, schema), {
+      const child = spawn(executable, nativeArguments(config, schema, prompt), {
         cwd: directory,
         env: reviewEnvironment(process.env),
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe"],
       });
       let buffer = "";
       let size = 0;
       let failed;
-      let sent = false;
-      let inputWritten = false;
       const abort = (error) => {
         failed ||= error;
         child.kill("SIGKILL");
@@ -488,7 +485,6 @@ export async function runReview(executable, config, binding, diff, policy) {
         config.timeoutMs,
       );
       child.on("error", () => abort(new Error("CLI_START_FAILED")));
-      child.stdin.on("error", () => abort(new Error("INPUT_TRANSPORT_FAILED")));
       // This exact notice confirms the requested literal-input behavior.
       // Do not allow unrelated warnings, errors or permission diagnostics.
       const literalNotice =
@@ -524,19 +520,7 @@ export async function runReview(executable, config, binding, diff, policy) {
             buffer = buffer.slice(newline + 1);
             requireThat(line.length > 0, "EMPTY_EVENT");
             const event = JSON.parse(line);
-            if (event.event === "result")
-              requireThat(inputWritten, "RESULT_BEFORE_INPUT_WRITTEN");
             validator.accept(event);
-            if (event.event === "result") child.stdin.end();
-            if (!sent) {
-              sent = true;
-              child.stdin.write(
-                `${JSON.stringify({ event: "user", message: { content: prompt } })}\n`,
-                () => {
-                  inputWritten = true;
-                },
-              );
-            }
           }
         } catch (error) {
           abort(error);
@@ -552,10 +536,7 @@ export async function runReview(executable, config, binding, diff, policy) {
               diagnostic === literalNotice + "\r",
             "CLI_DIAGNOSTIC_REQUIRES_REVIEW",
           );
-          requireThat(
-            code === 0 && buffer === "" && inputWritten,
-            "INCOMPLETE_REVIEW_STREAM",
-          );
+          requireThat(code === 0 && buffer === "", "INCOMPLETE_REVIEW_STREAM");
           resolve(validator.finish());
         } catch (error) {
           reject(error);

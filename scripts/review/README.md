@@ -52,8 +52,9 @@ requests no tools, skills, plugins, MCP or delegation. Ambient customizations
 block; provider and credential environment overrides are excluded.
 
 The helper checks the native init's reported model, agent, strict permission mode
-and schema. It then sends exactly one stdin message containing the entire diff,
-binding and effective base policy. Advertised tool inventory is not tool
+and schema. It supplies one `--print` prompt containing the entire diff, schema, binding and
+effective base policy, while `--output-format stream-json` preserves tool-event
+monitoring. CLI/OS size errors block rather than truncate input. Advertised tool inventory is not tool
 execution and is not compared to a stored or empty inventory. Supported
 user/agent/checkpoint steps must keep the same conversation. Tool/delegation
 steps, including denied attempts, unknown events, protocol/CLI failure, incomplete
@@ -98,7 +99,7 @@ node --test scripts/ci/reviewer-route.test.mjs
 npm run validate
 ```
 
-Deterministic tests cover successful and adverse streams, complete stdin
+Deterministic tests cover successful and adverse streams, complete prompt
 transport, result/conversation binding, prohibited events, drift, truncation and
 CLI failures using synthetic repositories and child processes. They do not
 substitute for the real exact-diff review required by #67. For this reviewer-tooling

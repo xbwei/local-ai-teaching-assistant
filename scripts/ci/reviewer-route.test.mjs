@@ -438,17 +438,18 @@ test("ambient customizations and credential/provider environment injection fail 
 });
 test("native arguments retain restrictions, exact schema and one-stream transport", () => {
   const schema = { type: "object" };
-  const args = nativeArguments(config, schema);
+  const args = nativeArguments(config, schema, "synthetic prompt");
   for (const [flag, value] of [
     ["--model", config.model],
     ["--effort", config.effort],
     ["--agent", "laita-restricted-reviewer"],
-    ["--input-format", "stream-json"],
+    ["--print", "synthetic prompt"],
     ["--output-format", "stream-json"],
     ["--json-schema", JSON.stringify(schema)],
     ["--log-file", os.devNull],
   ])
     assert.equal(args[args.indexOf(flag) + 1], value);
+  assert.ok(!args.includes("--input-format"));
   assert.ok(!args.includes("--mode")); // Plan is selected through settings, without slash-prefix injection.
   assert.ok(args.includes("--sandbox"));
   assert.ok(args.includes("--disable-slash-commands"));
@@ -486,6 +487,7 @@ import fs from "node:fs";
 import {createHash} from "node:crypto";
 const schema = JSON.parse(process.argv[process.argv.indexOf("--json-schema") + 1]);
 const binding = schema.properties.binding.const;
+const prompt = JSON.parse(process.argv[process.argv.indexOf("--print") + 1]);
 const init = {event:"init",conversation_id:"synthetic",init:{model:${JSON.stringify(config.model)},agent:"laita-restricted-reviewer",permission_mode:"strict",tools:["view_file"],json_schema:schema}};
 const result = {event:"result",result:{conversation_id:"synthetic",status:"SUCCESS",num_turns:1,json_schema:schema,structured_output:{binding,coverage:"complete",verdict:"PASS",findings:[]}}};
 const emit = event => process.stdout.write(JSON.stringify(event)+"\\n");
@@ -504,32 +506,25 @@ function inputBinding(diff) {
     diffSha256: sha256(diff),
   };
 }
-test("transport submits one complete UTF-8 diff and accepts its bound structured result", async (t) => {
+test("transport delivers one complete UTF-8 prompt and accepts its bound structured result", async (t) => {
   const diff = Buffer.from(
-    "synthetic padding 💡\n".repeat(16000) + "late synthetic marker",
+    "synthetic padding 💡\n".repeat(2000) + "late synthetic marker",
   );
   const binding = inputBinding(diff);
   const { root, executable } = fakeCli(
     t,
     `
+fs.writeFileSync("observed.json", JSON.stringify({messages:process.argv.filter(v=>v==="--print").length,binding:prompt.binding,policy:prompt.policy,schema:prompt.schema,bytes:Buffer.byteLength(prompt.diff),sha256:createHash("sha256").update(prompt.diff).digest("hex"),late:prompt.diff.endsWith("late synthetic marker")}));
 emit(init);
-let input = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", chunk => { input += chunk; });
-process.stdin.on("data", () => {
-  if (!input.endsWith(String.fromCharCode(10))) return;
-  const lines = input.trim().split("\\n");
-  const packet = JSON.parse(lines[0]);
-  const prompt = JSON.parse(packet.message.content);
-  fs.writeFileSync("observed.json", JSON.stringify({messages:lines.length,event:packet.event,binding:prompt.binding,policy:prompt.policy,schema:prompt.schema,bytes:Buffer.byteLength(prompt.diff),sha256:createHash("sha256").update(prompt.diff).digest("hex"),late:prompt.diff.endsWith("late synthetic marker")}));
-  emit(result);
-});`,
+emit(result);`,
   );
-  // The transport runs in a temporary directory; return only bounded synthetic observations.
   const marker = path.join(root, "observed.json");
-  let source = fs.readFileSync(executable, "utf8");
-  source = source.replace('"observed.json"', JSON.stringify(marker));
-  fs.writeFileSync(executable, source);
+  fs.writeFileSync(
+    executable,
+    fs
+      .readFileSync(executable, "utf8")
+      .replace('"observed.json"', JSON.stringify(marker)),
+  );
   const completed = await runReview(
     executable,
     { ...config, timeoutMs: 3000 },
@@ -540,7 +535,6 @@ process.stdin.on("data", () => {
   assert.equal(completed.result.verdict, "PASS");
   assert.deepEqual(JSON.parse(fs.readFileSync(marker)), {
     messages: 1,
-    event: "user",
     binding,
     policy: "synthetic policy",
     schema: events(binding).init.init.json_schema,
@@ -568,10 +562,8 @@ test("only the exact literal-input notice is accepted, including split stderr ch
     t,
     `
 const notice = ${JSON.stringify(notice)};
-process.stderr.write(notice.slice(0, 20));
-setTimeout(() => {process.stderr.write(notice.slice(20)+String.fromCharCode(10)); emit(init);}, 10);
-process.stdin.resume();
-process.stdin.once("data", () => emit(result));`,
+process.stderr.write(notice.slice(0,20));
+setTimeout(()=>{process.stderr.write(notice.slice(20)+String.fromCharCode(10));emit(init);emit(result);},10);`,
   );
   assert.equal(
     (
@@ -586,66 +578,36 @@ process.stdin.once("data", () => emit(result));`,
     "PASS",
   );
 });
-test("transport aborts before input on observed startup failure and rejects incomplete output", async (t) => {
+test("transport rejects CLI errors, incomplete output and prohibited events", async (t) => {
   const diff = Buffer.from("synthetic diff");
   const binding = inputBinding(diff);
   for (const [source, expected] of [
     [
-      'init.init.model = "other"; emit(init); setInterval(()=>{},1000);',
+      'init.init.model="other";emit(init);setInterval(()=>{},1000);',
       /RUNTIME_ROUTE_DRIFT/,
     ],
     [
-      `process.stdout.write(${JSON.stringify("not JSON\n")}); setInterval(()=>{},1000);`,
+      `process.stdout.write(${JSON.stringify("not JSON\n")});setInterval(()=>{},1000);`,
       SyntaxError,
     ],
     [
-      'emit({event:"tool",tool_name:"run_command"}); setInterval(()=>{},1000);',
+      'emit({event:"tool",tool_name:"run_command"});setInterval(()=>{},1000);',
       /INIT_REQUIRED/,
     ],
     [
-      'process.stderr.write("synthetic diagnostic"); setInterval(()=>{},1000);',
+      'process.stderr.write("synthetic diagnostic");setInterval(()=>{},1000);',
       /CLI_DIAGNOSTIC_REQUIRES_REVIEW/,
     ],
     ["setInterval(()=>{},1000);", /REVIEW_TIMEOUT/],
-  ]) {
-    const { root, executable } = fakeCli(t, source);
-    const marker = path.join(root, "input-received");
-    fs.appendFileSync(
-      executable,
-      `\nprocess.stdin.on("data", () => fs.writeFileSync(${JSON.stringify(marker)}, "unexpected"));`,
-    );
-    await assert.rejects(
-      runReview(
-        executable,
-        { ...config, timeoutMs: 1000 },
-        binding,
-        diff,
-        "synthetic policy",
-      ),
-      expected,
-    );
-    assert.equal(fs.existsSync(marker), false);
-  }
-  for (const [source, expected] of [
+    ["emit(init);", /TRUNCATED_REVIEW/],
     [
-      'emit(init); process.stdin.once("data",()=>process.stdin.destroy());',
-      /TRUNCATED_REVIEW/,
-    ],
-    [
-      'emit(init); process.stdin.once("data",()=>{process.stdout.write(JSON.stringify(result));process.stdin.destroy();});',
+      "emit(init);process.stdout.write(JSON.stringify(result));",
       /INCOMPLETE_REVIEW_STREAM/,
     ],
+    ["emit(init);process.exitCode=2;", /INCOMPLETE_REVIEW_STREAM/],
     [
-      'emit(init); process.stdin.once("data",()=>{process.exitCode=2;process.stdin.destroy();});',
-      /INCOMPLETE_REVIEW_STREAM/,
-    ],
-    [
-      'emit(init); process.stdin.once("data",()=>emit({event:"step_update",step_update:{conversation_id:"synthetic",step_type:"tool",tool_name:"run_command"}}));',
+      'emit(init);emit({event:"step_update",step_update:{conversation_id:"synthetic",step_type:"tool",tool_name:"run_command"}});',
       /CAPABILITY_OR_PROTOCOL_VIOLATION/,
-    ],
-    [
-      "process.stdout.write(JSON.stringify(init)+String.fromCharCode(10)+JSON.stringify(result)+String.fromCharCode(10)); process.stdin.resume();",
-      /RESULT_BEFORE_INPUT_WRITTEN/,
     ],
   ]) {
     const { executable } = fakeCli(t, source);
