@@ -295,6 +295,35 @@ export function createHistoryRepository(
         "UPDATE history_turns SET suspected = 1, suspicion_reason = 'Existing input guard rejected excluded or invalid input; not a confirmed violation.', suspicion_source = 'SAFETY' WHERE id = ?",
       ).run(turn);
     },
+    sampleQuestions(since: string, until: string, includeText: boolean) {
+      const context = scope?.context;
+      if (
+        scope?.role !== "student" ||
+        !context ||
+        !/^[a-f0-9]{64}$/u.test(context)
+      )
+        throw new HistoryValidationError("Test Student sample unavailable");
+      const limit = includeText ? 12 : 1001;
+      const rows = db
+        .prepare(
+          `SELECT ${includeText ? "substr(t.text, 1, 2000)" : "NULL"} AS question
+           FROM history_turns t JOIN history_conversations c ON c.id = t.conversation
+           WHERE c.role = 'student' AND c.scope = ? AND t.created >= ? AND t.created <= ?
+             AND t.text IS NOT NULL AND t.recording = 'RECORDED'
+           ORDER BY t.ordinal DESC LIMIT ?`,
+        )
+        .all(context, since, until, limit);
+      // A summary only uses count to distinguish an empty window from rejected text.
+      return {
+        count: Math.min(rows.length, 1000),
+        partial: rows.length > 1000,
+        questions: includeText
+          ? rows.flatMap(({ question }) =>
+              typeof question === "string" ? [question] : [],
+            )
+          : [],
+      };
+    },
     list(filter: HistoryFilter): HistoryPage {
       const conditions = ["t.ordinal < ?"],
         args: SQLInputValue[] = [filter.before ?? Number.MAX_SAFE_INTEGER];

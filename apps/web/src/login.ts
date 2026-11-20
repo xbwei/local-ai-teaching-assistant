@@ -11,19 +11,27 @@ export async function requireOwnerSession(): Promise<boolean> {
       headers: body ? { "content-type": "application/json" } : {},
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-  let session: { role: string; source: string } | undefined;
+  let session: { role: string; source: string; sample?: true } | undefined;
   try {
     const response = await request("session");
     const value: unknown = response.ok ? await response.json() : undefined;
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const data = value as Record<string, unknown>;
       if (
-        Object.keys(data).sort().join(",") === "role,source" &&
+        (Object.keys(data).sort().join(",") === "role,source" ||
+          (Object.keys(data).sort().join(",") === "role,sample,source" &&
+            data.role === "student" &&
+            data.source === "local" &&
+            data.sample === true)) &&
         typeof data.role === "string" &&
         ["admin", "teacher", "student"].includes(data.role) &&
         (data.source === "local" || data.source === "canvas")
       )
-        session = { role: data.role, source: data.source };
+        session = {
+          role: data.role,
+          source: data.source,
+          ...(data.sample === true ? { sample: true } : {}),
+        };
     }
   } catch {
     /* Unavailable/malformed status returns to the local sign-in screen. */
@@ -33,7 +41,7 @@ export async function requireOwnerSession(): Promise<boolean> {
     bar.setAttribute("aria-label", "Owner role");
     bar.className = "owner-role";
     const label = document.createElement("span");
-    label.textContent = `Owner · ${session.role === "admin" ? "Admin" : session.role === "teacher" ? "Teacher" : "Student"}${session.source === "canvas" ? " · Canvas" : ""} `;
+    label.textContent = `Owner · ${session.role === "admin" ? "Admin" : session.role === "teacher" ? "Teacher" : "Student"}${session.source === "canvas" ? " · Canvas" : session.sample ? " · Test Student sample" : ""} `;
     const logout = document.createElement("button");
     logout.type = "button";
     logout.textContent = "Sign out / change role";
@@ -48,18 +56,27 @@ export async function requireOwnerSession(): Promise<boolean> {
         : document.querySelector<HTMLElement>(".app")!;
     target.prepend(bar);
     document.body.dataset.ownerRole = session.role;
+    document.body.dataset.ownerSource = session.source;
     return true;
   }
   document.querySelector<HTMLElement>(".app")!.hidden = true;
   const main = document.createElement("main");
   main.className = "owner-login";
   main.innerHTML =
-    '<h1>LAITA · Owner sign in</h1><p>One Owner operates all three local roles. These are not separate participant accounts.</p><form><label>Role <select name="role"><option value="teacher">Teacher</option><option value="student">Student</option><option value="admin">Admin</option></select></label><label>Owner passphrase <input name="passphrase" type="password" autocomplete="off" required maxlength="1024"></label><button type="submit">Sign in</button></form><p role="status"></p><p>First use or recovery: stop LAITA and run <code>npm run owner:setup</code> in your Terminal with the same operator configuration. No default password is installed.</p>';
+    '<h1>LAITA · Owner sign in</h1><p>One Owner operates all three local roles. These are not separate participant accounts.</p><form><label>Role <select name="role"><option value="teacher">Teacher</option><option value="student">Student</option><option value="admin">Admin</option></select></label><label id="sample-option" hidden><input name="sample" type="checkbox"> Test Student sample (if configured)</label><label>Owner passphrase <input name="passphrase" type="password" autocomplete="off" required maxlength="1024"></label><button type="submit">Sign in</button></form><p role="status"></p><p>First use or recovery: stop LAITA and run <code>npm run owner:setup</code> in your Terminal with the same operator configuration. No default password is installed.</p>';
   document.body.prepend(main);
   const form = main.querySelector("form")!,
     status = main.querySelector<HTMLElement>('[role="status"]')!,
     password = main.querySelector<HTMLInputElement>('[name="passphrase"]')!,
-    role = main.querySelector<HTMLSelectElement>('[name="role"]')!;
+    role = main.querySelector<HTMLSelectElement>('[name="role"]')!,
+    sample = main.querySelector<HTMLInputElement>('[name="sample"]')!,
+    sampleOption = main.querySelector<HTMLElement>("#sample-option")!;
+  const showSample = () => {
+    sampleOption.hidden = role.value !== "student";
+    if (sampleOption.hidden) sample.checked = false;
+  };
+  role.onchange = showSample;
+  showSample();
   form.onsubmit = async (event) => {
     event.preventDefault();
     const button = form.querySelector("button")!;
@@ -68,6 +85,7 @@ export async function requireOwnerSession(): Promise<boolean> {
       const pending = request("login", {
         role: role.value,
         passphrase: password.value,
+        ...(role.value === "student" && sample.checked ? { sample: true } : {}),
       });
       password.value = "";
       const result = await pending;
@@ -81,7 +99,9 @@ export async function requireOwnerSession(): Promise<boolean> {
             ? "Local credentials or configuration unavailable. Initialize credentials in Terminal."
             : result.status === 429
               ? "Too many attempts. Wait one minute and retry."
-              : "Sign in failed.";
+              : result.status === 400 && sample.checked
+                ? "The Test Student sample is unavailable. Check the local configuration or clear the sample option."
+                : "Sign in failed.";
     } catch {
       status.textContent =
         "Sign in unavailable. Check the configured HTTPS entry.";

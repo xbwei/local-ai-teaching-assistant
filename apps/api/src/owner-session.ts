@@ -23,6 +23,7 @@ export function createOwnerSessions(options: {
   access: AccessConfiguration;
   store?: OwnerAuthRepository;
   canvas?: () => CanvasConfiguration | undefined;
+  sampleHistoryContext?: string;
   now?: () => number;
 }) {
   const { access, store } = options;
@@ -148,11 +149,27 @@ export function createOwnerSessions(options: {
   }
   return {
     authorize,
+    isCurrent(req: Request, binding: string) {
+      try {
+        return transport(req) && lookup(req)?.binding === binding;
+      } catch {
+        return false;
+      }
+    },
     entryLimit,
     install(app: Express) {
       app.get("/api/v1/auth/session", entryLimit, (req, res) => {
         const s = authorize(req, res);
-        if (s) res.json({ role: s.role, source: s.source });
+        if (s)
+          res.json({
+            role: s.role,
+            source: s.source,
+            ...(s.role === "student" &&
+            s.context === options.sampleHistoryContext &&
+            options.sampleHistoryContext
+              ? { sample: true }
+              : {}),
+          });
       });
       const json = express.json({
         inflate: false,
@@ -182,10 +199,16 @@ export function createOwnerSessions(options: {
           });
         },
         async (req, res) => {
+          const keys = req.body && Object.keys(req.body).sort().join(",");
+          const sample =
+            keys === "passphrase,role,sample" &&
+            req.body.role === "student" &&
+            req.body.sample === true &&
+            options.sampleHistoryContext;
           if (
             !req.is("application/json") ||
             !req.body ||
-            Object.keys(req.body).sort().join(",") !== "passphrase,role" ||
+            (keys !== "passphrase,role" && !sample) ||
             !["admin", "teacher", "student"].includes(req.body.role) ||
             typeof req.body.passphrase !== "string" ||
             Buffer.byteLength(req.body.passphrase) > 1024
@@ -222,7 +245,13 @@ export function createOwnerSessions(options: {
               establish(
                 req,
                 res,
-                { role: req.body.role, source: "local" },
+                {
+                  role: req.body.role,
+                  source: "local",
+                  ...(req.body.role === "student"
+                    ? { context: sample || "" }
+                    : {}),
+                },
                 credential.revision,
               )
             )

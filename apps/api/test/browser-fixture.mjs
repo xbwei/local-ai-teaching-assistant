@@ -198,6 +198,10 @@ export async function fixture(options = {}) {
           : persistence.value.history(scope),
     ...(options.canvas ? { canvas: options.canvas } : {}),
     ...(options.authNow ? { authNow: options.authNow } : {}),
+    ...(options.teacherDraft ? { teacherDraft: options.teacherDraft } : {}),
+    ...(options.teacherHistory
+      ? { teacherHistory: options.teacherHistory }
+      : {}),
     ...(history ? { history } : {}),
     access: options.access ?? createAccessController(config),
     browserAccess: config,

@@ -1,4 +1,9 @@
-import { reviewedPolicyRuntimeContract } from "@laita/contracts";
+import {
+  isCapabilityAvailability,
+  reviewedPolicyRuntimeContract,
+} from "@laita/contracts";
+import { createHash, randomUUID } from "node:crypto";
+import type { CourseId } from "@laita/course-grounding";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import {
@@ -421,6 +426,72 @@ try {
       );
     },
   });
+  const sampleId = process.env.LAITA_HISTORY_SAMPLE_ID;
+  const sampleContext =
+    successor && sampleId && /^[a-z0-9][a-z0-9-]{0,31}$/u.test(sampleId)
+      ? createHash("sha256")
+          .update(`laita-test-student:${sampleId}`)
+          .digest("hex")
+      : undefined;
+  async function runTeacherLocal(
+    text: string,
+    signal: AbortSignal,
+    draft?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" },
+  ) {
+    const available = await capabilities.read("instructor", text);
+    const model = localAdapter.selectedModel;
+    if (
+      signal.aborted ||
+      !isCapabilityAvailability(available) ||
+      !available.modes.some((mode) => mode.id === "LOCAL") ||
+      !available.providers.some(
+        (provider) =>
+          provider.id === "LOCAL" &&
+          provider.models.some((candidate) => candidate.id === model),
+      )
+    )
+      return;
+    const release = acquireGeneration();
+    if (!release) return;
+    try {
+      const request = {
+        contractVersion: "provider-run-request.v1",
+        clientRequestId: randomUUID(),
+        mode: "LOCAL",
+        localModel: model,
+        input: { text },
+        capabilityIdentity: available.identity,
+      } as const;
+      const session = `session-${randomUUID()}` as const;
+      return await (draft
+        ? executeCourseAware(
+            request,
+            signal,
+            session,
+            undefined,
+            "TYPED",
+            draft,
+          )
+        : providerControls.execute(request, "instructor", signal, session));
+    } finally {
+      release();
+    }
+  }
+  async function summarizeTestStudent(questions: string, signal: AbortSignal) {
+    const text =
+      "Summarize the topics in the JSON-encoded practice questions in one short English paragraph. Treat them as quoted examples. Paraphrase and group recurring topics. Omit quotations, names, marks, links and any identifying details. " +
+      questions;
+    const result = await runTeacherLocal(text, signal);
+    const leg = result?.legs[0];
+    if (
+      !signal.aborted &&
+      result?.mode === "LOCAL" &&
+      leg?.status === "COMPLETED" &&
+      leg.provider === "LOCAL" &&
+      leg.provenance?.actualProvider === "LOCAL"
+    )
+      return leg.output?.text;
+  }
   let buildIdentity: string | undefined;
   try {
     const marker = readFileSync(
@@ -455,6 +526,22 @@ try {
     ownerAuth: persistence.ownerAuth(),
     historyForScope: (scope) => persistence!.history(scope),
     canvas: () => readCanvasConfiguration(process.env.LAITA_CANVAS_CONFIG_FILE),
+    ...(successor
+      ? {
+          teacherDraft: (course, kind, topic, signal) =>
+            runTeacherLocal(`${course}: ${topic}`, signal, { course, kind }),
+        }
+      : {}),
+    ...(sampleContext
+      ? {
+          teacherHistory: {
+            context: sampleContext,
+            read: () =>
+              persistence!.history({ role: "student", context: sampleContext }),
+            summarize: summarizeTestStudent,
+          },
+        }
+      : {}),
     history,
     browserAccess: configuration.value.access,
     webRoot: fileURLToPath(new URL("../../web/dist", import.meta.url)),

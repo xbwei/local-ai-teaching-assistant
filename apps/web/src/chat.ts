@@ -31,6 +31,16 @@ let rendered = "",
   choiceTimer: ReturnType<typeof setTimeout>;
 const api = new InputApi();
 const client = new LearningClient(render, api);
+if (
+  document.body.dataset.ownerRole === "teacher" &&
+  document.body.dataset.ownerSource === "local"
+) {
+  void import("./client/teacher-local.ts")
+    .then(({ mountTeacherLocal }) => mountTeacherLocal(api))
+    .catch(() => {
+      /* Unavailable Teacher tools leave standalone Chat usable. */
+    });
+}
 // Follow message lifetime without retaining old conversations or losing drafts on audio updates.
 const messageFeedback = new WeakMap<Message, HTMLElement>();
 get("usage-open").addEventListener("click", () =>

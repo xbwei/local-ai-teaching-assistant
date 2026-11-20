@@ -163,9 +163,28 @@ try {
     snapshot: { course: "IA340", commit: "c".repeat(40) },
   });
   seededHistory.outcome("e".repeat(64), "NO_ANSWER");
+  const sampleContext = "5".repeat(64);
   f = await fixture({
     history: persistence.history(),
     persistence,
+    teacherDraft: async (course, kind, topic) => {
+      assert.equal(course, "IA342");
+      assert.equal(kind, "ASSIGNMENT");
+      assert.equal(topic, "Lab 5");
+      return {
+        mode: "LOCAL",
+        grounding: { status: "GROUNDED", course: "IA342", sources: [{ course: "IA342", path: "docs/example.md", section: "Lab 5" }] },
+        legs: [{ provider: "LOCAL", provenance: { actualProvider: "LOCAL" }, status: "COMPLETED", output: { text: "## Practice task\nCompare two visual explanations." } }],
+      };
+    },
+    teacherHistory: {
+      context: sampleContext,
+      read: () => persistence.history({ role: "student", context: sampleContext }),
+      async summarize(questions) {
+        assert.deepEqual(JSON.parse(questions), ["How can I compare two visual explanations?"]);
+        return "The sample asks about comparing visual explanations.";
+      },
+    },
     answerText: (request) =>
       request.input.text === "Show a long English answer."
         ? longEnglishAnswer
@@ -212,6 +231,67 @@ try {
     ],
   });
   const results = [];
+  const { testPassphrase } = await import("../apps/api/test/owner-fixture.mjs");
+  for (const { name, width, height, mobile } of [
+    { name: "teacher-desktop", width: 1280, height: 800, mobile: false },
+    { name: "teacher-phone", width: 390, height: 844, mobile: true },
+  ]) {
+    const context = await browser.newContext({
+      viewport: { width, height },
+      isMobile: mobile,
+      hasTouch: mobile,
+      ignoreHTTPSErrors: true,
+    });
+    const page = await context.newPage();
+    const requests = [];
+    page.on("request", (request) => requests.push(request.url()));
+    await page.goto(f.origin);
+    const signIn = async (role, sample = false) => {
+      await page.locator('[name="role"]').selectOption(role);
+      if (sample) await page.getByLabel("Test Student sample (if configured)").check();
+      await page.locator('[name="passphrase"]').fill(testPassphrase);
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await page.locator(".owner-role").waitFor();
+    };
+    await signIn("student", true);
+    assert.match(await page.locator(".owner-role").innerText(), /Test Student sample/);
+    assert.equal(await page.getByText("History Chat plugin", { exact: true }).isVisible(), false);
+    if (!mobile) {
+      await page.locator("#question:not([disabled])").fill("How can I compare two visual explanations?");
+      await page.locator("#composer").getByRole("button", { name: "Send", exact: true }).click();
+      await page.locator("#messages article.answer").first().waitFor();
+    }
+    await page.getByRole("button", { name: "Sign out / change role" }).click();
+    await signIn("teacher");
+    await page.getByText("Local teaching drafts", { exact: true }).click();
+    await page.getByLabel("Course", { exact: true }).selectOption("IA342");
+    await page.getByLabel("Draft type").selectOption("ASSIGNMENT");
+    await page.getByLabel("Topic", { exact: true }).fill("Lab 5");
+    await page.getByRole("button", { name: "Generate with Local" }).click();
+    await page.getByText("Draft ready. Check the sources and edit before use.").waitFor();
+    const draft = page.getByLabel("Editable Markdown draft");
+    assert.match(await draft.inputValue(), /Compare two visual explanations/);
+    await page.getByText("docs/example.md · Lab 5", { exact: true }).waitFor();
+    await draft.fill("Teacher revision");
+    assert.equal(await draft.inputValue(), "Teacher revision");
+    await page.getByText("History Chat plugin", { exact: true }).click();
+    const historyQuestion = page.getByLabel("History question");
+    const ask = page.getByRole("button", { name: "Ask History" });
+    await historyQuestion.fill("How many questions in the last seven days?");
+    await ask.click();
+    await page.getByText(/^1 question recorded for the Test Student sample/).waitFor();
+    await historyQuestion.fill("Summarize recent questions.");
+    await ask.click();
+    await page.getByText("The sample asks about comparing visual explanations.", { exact: true }).waitFor();
+    const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    assert.ok(pageWidth <= width, `${name} layout overflowed its viewport`);
+    assert.ok(requests.every((request) => new URL(request).origin === f.origin));
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })));
+    assert.equal(await draft.inputValue(), "");
+    assert.equal(await historyQuestion.inputValue(), "");
+    results.push({ name, width, height, status: "PASS", requests: requests.length });
+    await context.close();
+  }
   for (const scenario of [
     { name: "phone", width: 390, height: 844 },
     { name: "tablet", width: 820, height: 1180 },
@@ -309,7 +389,6 @@ try {
     await page.goto(f.origin);
     await page.locator('[name="role"]').selectOption("admin");
     await context.unroute("**/api/v1/auth/session");
-    const {testPassphrase}=await import("../apps/api/test/owner-fixture.mjs");
     await page.locator('[name="passphrase"]').fill(testPassphrase);
     await page.getByRole("button",{name:"Sign in",exact:true}).click();
     await page

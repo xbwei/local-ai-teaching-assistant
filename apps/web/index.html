@@ -80,6 +80,71 @@
         </details>
         <span id="recording-status" role="status"></span>
       </aside>
+      <details id="teacher-local-draft" class="teacher-tool" hidden>
+        <summary>Local teaching drafts</summary>
+        <form id="teacher-draft-form">
+          <div class="teacher-field">
+            <label for="teacher-draft-course">Course</label>
+            <select id="teacher-draft-course">
+              <option value="IA340">IA340</option>
+              <option value="IA342">IA342</option>
+            </select>
+          </div>
+          <div class="teacher-field">
+            <label for="teacher-draft-kind">Draft type</label>
+            <select id="teacher-draft-kind">
+              <option value="PAGE">Lesson page</option>
+              <option value="ASSIGNMENT">Assignment instructions</option>
+            </select>
+          </div>
+          <div class="teacher-field">
+            <label for="teacher-draft-topic">Topic</label>
+            <input
+              id="teacher-draft-topic"
+              type="text"
+              required
+              maxlength="512"
+            />
+          </div>
+          <div>
+            <button type="submit">Generate with Local</button>
+            <button type="button" hidden>Cancel</button>
+          </div>
+        </form>
+        <p id="teacher-draft-status" role="status"></p>
+        <ul id="teacher-draft-sources" aria-label="Course sources"></ul>
+        <label
+          >Editable Markdown draft
+          <textarea
+            id="teacher-draft-output"
+            rows="6"
+            spellcheck="false"
+          ></textarea>
+        </label>
+      </details>
+      <details id="teacher-history-plugin" class="teacher-tool" hidden>
+        <summary>History Chat plugin</summary>
+        <p>
+          Ask about the local Test Student sample, for example “How many
+          questions this week?” or “Summarize recent questions.”
+        </p>
+        <form id="teacher-history-form">
+          <div class="teacher-field">
+            <label for="teacher-history-question">History question</label>
+            <input
+              id="teacher-history-question"
+              type="text"
+              maxlength="200"
+              required
+            />
+          </div>
+          <div>
+            <button type="submit">Ask History</button>
+            <button type="button" hidden>Cancel</button>
+          </div>
+        </form>
+        <p id="teacher-history-status" role="status"></p>
+      </details>
       <p id="connection-status" role="status" class="connection-status"></p>
       <main id="learning" hidden>
         <div class="dialogue">

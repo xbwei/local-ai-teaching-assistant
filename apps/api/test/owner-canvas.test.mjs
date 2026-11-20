@@ -831,3 +831,200 @@ test("proxy scheme/host casing is equivalent without accepting other authorities
     403,
   );
 });
+
+test("local Teacher History reads only the explicitly selected Test Student sample", async (t) => {
+  const context = "5".repeat(64);
+  const route = "/api/v1/teacher-tools/history";
+  let summaries = 0;
+  const f = await fixture({
+    autoLogin: false,
+    authNow: () => now,
+    canvas: () => canvas,
+    history: true,
+    teacherHistory: {
+      context,
+      read: () => f.persistence.history({ role: "student", context }),
+      async summarize(questions) {
+        summaries++;
+        assert.deepEqual(JSON.parse(questions), [
+          "How can two practice examples be compared?",
+        ]);
+        return "The main topic is comparing practice examples.";
+      },
+    },
+  });
+  t.after(() => f.close());
+  const ask = (sessionCookie, question, extra = {}) =>
+    f.request(route, {
+      method: "POST",
+      headers: authenticated(sessionCookie, {
+        "content-type": "application/json",
+        ...extra,
+      }),
+      body: JSON.stringify({ question }),
+    });
+  const local = cookie(await f.login("student"));
+  await draft(
+    f,
+    local,
+    await session(f, local),
+    "What is an ordinary practice question?",
+  );
+  const explicit = await f.request("/api/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: "" },
+    body: JSON.stringify({
+      role: "student",
+      passphrase: testPassphrase,
+      sample: true,
+    }),
+  });
+  assert.equal(explicit.status, 200);
+  const sample = cookie(explicit);
+  const info = await f.request("/api/v1/auth/session", {
+    headers: authenticated(sample),
+  });
+  assert.deepEqual(await info.json(), {
+    role: "student",
+    source: "local",
+    sample: true,
+  });
+  const sampleInput = await session(f, sample);
+  await draft(
+    f,
+    sample,
+    sampleInput,
+    "How can two practice examples be compared?",
+  );
+  await draft(f, sample, sampleInput, "What name is shown in this example?");
+  const other = f.persistence.history({
+    role: "student",
+    context: "6".repeat(64),
+  });
+  other.begin({
+    id: "7".repeat(64),
+    conversation: "8".repeat(64),
+    inputType: "TYPED",
+    text: "A separate sample question",
+    correlation: null,
+  });
+  const regular = JSON.stringify(await query(f, local));
+  assert.match(regular, /ordinary practice question/);
+  assert.doesNotMatch(regular, /practice examples|separate sample/);
+  const retainedSample = JSON.stringify(await query(f, sample));
+  assert.match(retainedSample, /practice examples/);
+  assert.doesNotMatch(retainedSample, /ordinary practice|separate sample/);
+  assert.equal((await ask(sample, "How many questions?")).status, 403);
+  assert.equal(
+    (await ask(cookie(await f.login("admin")), "How many questions?")).status,
+    403,
+  );
+  const canvasLogin = await launch(f);
+  assert.equal(canvasLogin.status, 303);
+  assert.equal(
+    (await ask(cookie(canvasLogin), "How many questions?")).status,
+    403,
+  );
+  const teacher = cookie(await f.login("teacher"));
+  assert.equal(
+    (
+      await ask(teacher, "How many questions?", {
+        origin: "https://foreign.example.test",
+      })
+    ).status,
+    403,
+  );
+  const count = await ask(
+    teacher,
+    "How many questions in the last seven days?",
+  );
+  assert.match((await count.json()).text, /^2 questions recorded/);
+  const unsupported = await ask(teacher, "Show all student questions");
+  assert.match((await unsupported.json()).text, /one local sample/);
+  assert.equal(summaries, 0);
+  const response = await ask(
+    teacher,
+    "What topics did the Test Student ask about?",
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    text: "The main topic is comparing practice examples.",
+  });
+  assert.equal(summaries, 1);
+  assert.doesNotMatch(
+    JSON.stringify(f.logs),
+    /practice examples|ordinary practice|separate sample/,
+  );
+});
+
+test("disabled Test Student setup has no plugin and rejects sample sign-in", async (t) => {
+  const f = await fixture({ autoLogin: false });
+  t.after(() => f.close());
+  const response = await f.request("/api/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      role: "student",
+      passphrase: testPassphrase,
+      sample: true,
+    }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(cookie(response), undefined);
+  await f.login("teacher");
+  assert.equal((await f.request("/api/v1/teacher-tools/history")).status, 404);
+});
+
+test("local drafting validates scope and rejects a result after sign-out", async (t) => {
+  let finish;
+  let entered;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const generated = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const f = await fixture({
+    autoLogin: false,
+    authNow: () => now,
+    canvas: () => canvas,
+    async teacherDraft(course, kind, topic) {
+      assert.deepEqual([course, kind, topic], ["IA342", "ASSIGNMENT", "Lab 5"]);
+      entered();
+      return generated;
+    },
+  });
+  t.after(() => f.close());
+  const send = (sessionCookie, patch = {}) =>
+    f.request("/api/v1/teacher-draft", {
+      method: "POST",
+      headers: authenticated(sessionCookie, {
+        "content-type": "application/json",
+      }),
+      body: JSON.stringify({
+        course: "IA342",
+        kind: "ASSIGNMENT",
+        topic: "Lab 5",
+        ...patch,
+      }),
+    });
+  assert.equal((await send("")).status, 401);
+  assert.equal((await send(cookie(await f.login("student")))).status, 403);
+  assert.equal((await send(cookie(await f.login("admin")))).status, 403);
+  const canvasLogin = await launch(f);
+  assert.equal(canvasLogin.status, 303);
+  assert.equal((await send(cookie(canvasLogin))).status, 403);
+  const teacher = cookie(await f.login("teacher"));
+  assert.equal((await send(teacher, { course: "OTHER" })).status, 400);
+  assert.equal((await send(teacher, { kind: "MODULE" })).status, 400);
+  assert.equal((await send(teacher, { topic: "é".repeat(257) })).status, 400);
+  const pending = send(teacher);
+  await started;
+  const loggedOut = await f.request("/api/v1/auth/logout", {
+    method: "POST",
+    headers: authenticated(teacher),
+  });
+  assert.equal(loggedOut.status, 200);
+  finish();
+  assert.equal((await pending).status, 401);
+});
