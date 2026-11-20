@@ -1,10 +1,7 @@
 import { createOwnerSessions } from "./owner-session.ts";
 import type { CanvasConfiguration } from "./canvas.ts";
-import { installTeacherDraft, type TeacherDraft } from "./teacher-draft.ts";
-import {
-  installTeacherHistory,
-  type TeacherHistoryOptions,
-} from "./teacher-history.ts";
+import type { TeacherDraft } from "./teacher-draft.ts";
+import type { TeacherHistoryOptions } from "./teacher-history.ts";
 import { installHistoryRoutes } from "./history.ts";
 import path from "node:path";
 import { createOwnerTransport } from "./browser.ts";
@@ -186,11 +183,7 @@ export function createApp(options: AppOptions = {}) {
     context.code = "OK";
     next();
   });
-  ownerSessions?.install(app);
-  if (ownerSessions && options.teacherDraft)
-    installTeacherDraft(app, ownerSessions, options.teacherDraft);
-  if (ownerSessions && options.teacherHistory)
-    installTeacherHistory(app, ownerSessions, options.teacherHistory);
+  ownerSessions?.install(app, options.teacherDraft, options.teacherHistory);
   if (ownerSessions)
     app.use(["/api/admin", "/api/instructor"], ownerSessions.entryLimit);
   function authorize(

@@ -1028,3 +1028,79 @@ test("local drafting validates scope and rejects a result after sign-out", async
   finish();
   assert.equal((await pending).status, 401);
 });
+
+test("Teacher routes share the Owner entry budget before parsing or work", async (t) => {
+  const context = "5".repeat(64);
+  let draftCalls = 0;
+  let historyReads = 0;
+  const f = await fixture({
+    autoLogin: false,
+    async teacherDraft() {
+      draftCalls++;
+    },
+    teacherHistory: {
+      context,
+      read() {
+        historyReads++;
+        return f.persistence.history({ role: "student", context });
+      },
+      async summarize() {
+        assert.fail("Count must not call the Local model");
+      },
+    },
+  });
+  t.after(() => f.close());
+  const draftPath = "/api/v1/teacher-draft";
+  const historyPath = "/api/v1/teacher-tools/history";
+  const post = (path, body) =>
+    f.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+  const sendDraft = () =>
+    post(
+      draftPath,
+      JSON.stringify({ course: "IA342", kind: "PAGE", topic: "Lab 5" }),
+    );
+  const count = () =>
+    post(historyPath, JSON.stringify({ question: "How many questions?" }));
+  const getHistory = () => f.request(historyPath);
+  const getAuth = () => f.request("/api/v1/auth/session");
+  const historySubpath = () => f.request(historyPath + "/unused");
+  const badDraft = () => post(draftPath, "{");
+  const badHistory = () => post(historyPath, "{");
+  const admitted = [
+    [getHistory, 200],
+    [count, 200],
+    [sendDraft, 200],
+    [badDraft, 400],
+    [badHistory, 400],
+    [getAuth, 200],
+    [historySubpath, 404],
+  ];
+
+  assert.equal((await f.login("teacher")).status, 200);
+  assert.equal((await f.request(draftPath)).status, 404);
+  assert.equal((await f.request("/health")).status, 200);
+  for (const [send, status] of admitted) {
+    const response = await send();
+    assert.equal(response.status, status);
+    await response.arrayBuffer();
+  }
+  // The sign-in and every admitted request count once against one budget.
+  for (let i = admitted.length + 1; i < 600; i++) {
+    const response = await getAuth();
+    assert.equal(response.status, 200);
+    await response.arrayBuffer();
+  }
+  for (const [send] of admitted) {
+    const response = await send();
+    assert.equal(response.status, 429);
+    assert.deepEqual(await response.json(), { code: "RATE_LIMITED" });
+  }
+  assert.equal(draftCalls, 1);
+  assert.equal(historyReads, 1);
+  assert.equal((await f.request(draftPath)).status, 404);
+  assert.equal((await f.request("/health")).status, 200);
+});

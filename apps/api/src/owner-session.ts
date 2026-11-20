@@ -5,6 +5,17 @@ import type { AccessConfiguration } from "@laita/contracts/server";
 import type { HistoryScope, OwnerAuthRepository } from "@laita/persistence";
 import { verifyOwnerCredential } from "./owner-credential.ts";
 import {
+  createTeacherDraftHandler,
+  createTeacherDraftParser,
+  type TeacherDraft,
+} from "./teacher-draft.ts";
+import {
+  createTeacherHistoryParser,
+  createTeacherHistoryQueryHandler,
+  createTeacherHistoryStatusHandler,
+  type TeacherHistoryOptions,
+} from "./teacher-history.ts";
+import {
   canvasContext,
   canvasFingerprint,
   type CanvasConfiguration,
@@ -147,17 +158,22 @@ export function createOwnerSessions(options: {
       return deny(res, 503);
     }
   }
+  function isCurrent(req: Request, binding: string) {
+    try {
+      return transport(req) && lookup(req)?.binding === binding;
+    } catch {
+      return false;
+    }
+  }
+  const authority = { authorize, isCurrent };
   return {
-    authorize,
-    isCurrent(req: Request, binding: string) {
-      try {
-        return transport(req) && lookup(req)?.binding === binding;
-      } catch {
-        return false;
-      }
-    },
+    ...authority,
     entryLimit,
-    install(app: Express) {
+    install(
+      app: Express,
+      teacherDraft?: TeacherDraft,
+      teacherHistory?: TeacherHistoryOptions,
+    ): void {
       app.get("/api/v1/auth/session", entryLimit, (req, res) => {
         const s = authorize(req, res);
         if (s)
@@ -363,6 +379,23 @@ export function createOwnerSessions(options: {
           }
         },
       );
+      if (teacherDraft)
+        app.post(
+          "/api/v1/teacher-draft",
+          entryLimit,
+          createTeacherDraftParser(),
+          createTeacherDraftHandler(authority, teacherDraft),
+        );
+      if (teacherHistory) {
+        const historyPath = "/api/v1/teacher-tools/history";
+        app.use(historyPath, entryLimit);
+        app.get(historyPath, createTeacherHistoryStatusHandler(authority));
+        app.post(
+          historyPath,
+          createTeacherHistoryParser(),
+          createTeacherHistoryQueryHandler(authority, teacherHistory),
+        );
+      }
     },
     close() {
       sessions.clear();

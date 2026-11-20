@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type RequestHandler } from "express";
 import { classifyInput } from "@laita/safety";
 import { courseIds, type CourseId } from "@laita/course-grounding";
 import type { ProviderRunResult } from "@laita/contracts";
@@ -11,94 +11,91 @@ export type TeacherDraft = (
   signal: AbortSignal,
 ) => Promise<ProviderRunResult | undefined>;
 
-export function installTeacherDraft(
-  app: Express,
-  sessions: OwnerSessions,
-  generate: TeacherDraft,
-) {
-  const route = "/api/v1/teacher-draft";
+export function createTeacherDraftParser(): RequestHandler {
   const parse = express.json({ limit: 2048, inflate: false, strict: true });
-  app.post(
-    route,
-    sessions.entryLimit,
-    (req, res, next) => {
-      parse(req, res, (error: unknown) => {
-        if (error) res.status(400).json({ code: "INVALID_REQUEST" });
-        else next();
-      });
-    },
-    async (req, res) => {
-      const actor = sessions.authorize(req, res);
-      if (!actor) return;
-      if (actor.role !== "teacher" || actor.source !== "local") {
-        res.status(403).json({ code: "FORBIDDEN" });
+  return (req, res, next) => {
+    parse(req, res, (error: unknown) => {
+      if (error) res.status(400).json({ code: "INVALID_REQUEST" });
+      else next();
+    });
+  };
+}
+
+export function createTeacherDraftHandler(
+  sessions: Pick<OwnerSessions, "authorize" | "isCurrent">,
+  generate: TeacherDraft,
+): RequestHandler {
+  return async (req, res) => {
+    const actor = sessions.authorize(req, res);
+    if (!actor) return;
+    if (actor.role !== "teacher" || actor.source !== "local") {
+      res.status(403).json({ code: "FORBIDDEN" });
+      return;
+    }
+    const value = req.body;
+    if (
+      !req.is("json") ||
+      !value ||
+      Object.keys(value).sort().join(",") !== "course,kind,topic" ||
+      !courseIds.includes(value.course) ||
+      (value.kind !== "PAGE" && value.kind !== "ASSIGNMENT") ||
+      typeof value.topic !== "string" ||
+      Buffer.byteLength(value.topic) > 512 ||
+      !classifyInput(value.topic)
+    ) {
+      res.status(400).json({ code: "INVALID_REQUEST" });
+      return;
+    }
+    const controller = new AbortController();
+    const disconnect = () => controller.abort();
+    res.once("close", disconnect);
+    try {
+      const result = await generate(
+        value.course,
+        value.kind,
+        value.topic,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      if (!sessions.isCurrent(req, actor.binding)) {
+        res.status(401).json({ code: "UNAUTHENTICATED" });
         return;
       }
-      const value = req.body;
+      const leg = result?.legs[0];
       if (
-        !req.is("json") ||
-        !value ||
-        Object.keys(value).sort().join(",") !== "course,kind,topic" ||
-        !courseIds.includes(value.course) ||
-        (value.kind !== "PAGE" && value.kind !== "ASSIGNMENT") ||
-        typeof value.topic !== "string" ||
-        Buffer.byteLength(value.topic) > 512 ||
-        !classifyInput(value.topic)
+        result?.mode === "LOCAL" &&
+        result.grounding?.status === "GROUNDED" &&
+        result.grounding.course === value.course &&
+        result.grounding.sources.length > 0 &&
+        result.grounding.sources.every(
+          ({ course }) => course === value.course,
+        ) &&
+        leg?.status === "COMPLETED" &&
+        leg.provider === "LOCAL" &&
+        leg.provenance?.actualProvider === "LOCAL" &&
+        leg.output?.text.trim()
       ) {
-        res.status(400).json({ code: "INVALID_REQUEST" });
+        res.json({
+          text: leg.output.text,
+          sources: result.grounding.sources.map(({ path, section, url }) => ({
+            path,
+            section,
+            url,
+          })),
+        });
         return;
       }
-      const controller = new AbortController();
-      const disconnect = () => controller.abort();
-      res.once("close", disconnect);
-      try {
-        const result = await generate(
-          value.course,
-          value.kind,
-          value.topic,
-          controller.signal,
-        );
-        if (controller.signal.aborted) return;
-        if (!sessions.isCurrent(req, actor.binding)) {
-          res.status(401).json({ code: "UNAUTHENTICATED" });
-          return;
-        }
-        const leg = result?.legs[0];
-        if (
-          result?.mode === "LOCAL" &&
-          result.grounding?.status === "GROUNDED" &&
-          result.grounding.course === value.course &&
-          result.grounding.sources.length > 0 &&
-          result.grounding.sources.every(
-            ({ course }) => course === value.course,
-          ) &&
-          leg?.status === "COMPLETED" &&
-          leg.provider === "LOCAL" &&
-          leg.provenance?.actualProvider === "LOCAL" &&
-          leg.output?.text.trim()
-        ) {
-          res.json({
-            text: leg.output.text,
-            sources: result.grounding.sources.map(({ path, section, url }) => ({
-              path,
-              section,
-              url,
-            })),
-          });
-          return;
-        }
-        res.json({
-          code:
-            result?.grounding?.status === "GROUNDED"
-              ? "LOCAL_UNAVAILABLE"
-              : (result?.grounding?.status ?? "LOCAL_UNAVAILABLE"),
-        });
-      } catch {
-        if (!controller.signal.aborted)
-          res.status(503).json({ code: "DRAFT_UNAVAILABLE" });
-      } finally {
-        res.off("close", disconnect);
-      }
-    },
-  );
+      res.json({
+        code:
+          result?.grounding?.status === "GROUNDED"
+            ? "LOCAL_UNAVAILABLE"
+            : (result?.grounding?.status ?? "LOCAL_UNAVAILABLE"),
+      });
+    } catch {
+      if (!controller.signal.aborted)
+        res.status(503).json({ code: "DRAFT_UNAVAILABLE" });
+    } finally {
+      res.off("close", disconnect);
+    }
+  };
 }
