@@ -1,4 +1,12 @@
 import {
+  canvasPageId,
+  canvasPagePlanId,
+  canvasPageTitle,
+  readCanvasPageDraft,
+  sameCanvasPageDraft,
+  type CanvasPageDraft,
+  type CanvasPagePreview,
+  type CanvasPageResult,
   isInputBuild,
   isLocalSelection,
   isInputChoices,
@@ -10,6 +18,11 @@ import {
   type InputSubmission,
   type TtsSynthesisRequest,
 } from "@laita/contracts/browser";
+const responseRecord = (value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
 export class ClientError extends Error {
   history?: import("@laita/contracts/browser").HistoryRef;
   status: number;
@@ -141,6 +154,70 @@ export class InputApi {
           sources: value.sources as { path: string; section: string }[],
         };
     }
+    throw new ClientError();
+  }
+  async canvasPagesEnabled() {
+    const value = await this.request("/api/v1/canvas/pages", "GET");
+    return responseRecord(value)?.enabled === true;
+  }
+  async previewCanvasPage(
+    draft: CanvasPageDraft,
+    signal: AbortSignal,
+  ): Promise<CanvasPagePreview> {
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/pages/preview",
+        "POST",
+        JSON.stringify({ draft }),
+        signal,
+      ),
+    );
+    const target = responseRecord(value?.target);
+    const returnedDraft = responseRecord(value?.draft);
+    if (
+      !canvasPagePlanId(value?.planId) ||
+      !target ||
+      typeof target.origin !== "string" ||
+      target.origin.length > 512 ||
+      new URL(target.origin).origin !== target.origin ||
+      !target.origin.startsWith("https://") ||
+      !canvasPageId(target.courseId) ||
+      !canvasPageId(target.teacherId) ||
+      !canvasPageTitle(target.courseName) ||
+      !sameCanvasPageDraft(readCanvasPageDraft(returnedDraft), draft) ||
+      returnedDraft?.body !== draft.body
+    )
+      throw new ClientError();
+    return {
+      planId: value.planId,
+      target: {
+        origin: target.origin,
+        courseId: target.courseId,
+        teacherId: target.teacherId,
+        courseName: target.courseName,
+      },
+      draft,
+    };
+  }
+  async createCanvasPage(
+    preview: CanvasPagePreview,
+    signal: AbortSignal,
+  ): Promise<CanvasPageResult> {
+    const { planId, draft } = preview;
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/pages/create",
+        "POST",
+        JSON.stringify({ confirm: true, planId, draft }),
+        signal,
+      ),
+    );
+    if (value?.status === "UNCERTAIN") return { status: "UNCERTAIN" };
+    if (
+      (value?.status === "VERIFIED" || value?.status === "UNVERIFIED") &&
+      canvasPageId(value.pageId)
+    )
+      return { status: value.status, pageId: value.pageId };
     throw new ClientError();
   }
   async teacherHistoryEnabled() {

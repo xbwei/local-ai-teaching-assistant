@@ -1,6 +1,6 @@
-# Optional Canvas course App — v0.2.0
+# Optional Canvas course App
 
-This early-adopter reference connects **one Owner, one Canvas course and one Instructor identity** to the existing local Teacher role. Admin, Teacher and Student are three views operated by that same Owner, not three real people. Canvas is an authentication/context entry point into the same API, chat, grounding, SQLite and History. It does not fetch Canvas content or provision accounts or memberships.
+This early-adopter reference connects **one Owner, one Canvas course and one Instructor identity** to the existing local Teacher role. Admin, Teacher and Student are three views operated by that same Owner, not three real people. The signed launch enters the same local API, Chat, course grounding, SQLite and History. A separate optional REST configuration lets that Canvas Teacher create unpublished Pages. The integration does not provision Canvas accounts or memberships.
 
 ## 1. Install and initialize standalone access
 
@@ -32,7 +32,7 @@ Your Canvas permissions must allow **course-level external Apps installed with P
 
 The Owner's browser must reach both Canvas and the configured LAITA HTTPS origin. For an instructor working on the same Mac, the existing trusted `https://localhost:3443` entry can be used; the browser posts the launch form to localhost. Canvas servers do not need to call the LAITA API. Browser private-network/loopback policies or institution policy may block this. Confirm on your own authorized setup. The supplied Caddyfile stays loopback-only. A remote browser requires a separately configured, independently protected Owner entry with the exact public origin and fixed forwarding headers; it is outside this reference setup. Do not open the loopback API or expose this reference as a hosted service.
 
-Identify your own numeric Canvas **course ID** and **user ID** using your authorized Canvas UI/course profile or your Canvas administrator. The LTI `context_id` and opaque `user_id` are not substitutes for these numeric Canvas values. No Canvas REST API or API token is used. There is no roster, grade, submission or Canvas course-content ingestion. Generic examples are `https://canvas.example.test`, course `42001`, user `73001`; these are synthetic and will not connect to a service.
+Identify your own numeric Canvas **course ID** and **user ID** using your authorized Canvas UI/course profile or your Canvas administrator. The LTI `context_id` and opaque `user_id` are not substitutes for these numeric Canvas values. The signed launch by itself makes no Canvas REST calls. The integration does not ingest rosters, grades, submissions or Canvas course material for Chat. Generic examples are `https://canvas.example.test`, course `42001`, user `73001`; these are synthetic and will not connect to a service.
 
 Generate a new random consumer key (at least 16 characters) and shared secret (at least 32 random characters, ideally 256 bits) in your password manager. Store them privately there for transfer into the Canvas App settings and the next hidden Terminal prompts. These are launch credentials, not a Canvas password or Canvas REST API token. Do not use institutional login credentials. Do not put secrets into shell commands/history, Git, issue reports, screenshots, application JSON or browser local/session storage.
 
@@ -71,7 +71,50 @@ Reload the course navigation and launch LAITA as the configured Instructor in a 
 
 The verifier requires the exact HTTP Canvas Origin, signed `$Canvas.api.domain` host (including any configured port), signed numeric course/user substitutions, an Instructor role, OAuth consumer key/version/HMAC-SHA1 signature, timestamp within ±300 seconds, and a previously unused nonce. The signature URL is the configured canonical HTTPS launch URL, never an untrusted Host or forwarded URL. Query strings, duplicate form parameters, OAuth tokens and alternate signature methods are rejected. Only after these checks and atomic persistent nonce consumption does the API issue a Teacher cookie. Extra signed values cannot grant Admin or create users/memberships. Other public grounding sources remain the existing fixed public-source demonstrations, not Canvas course content or enrollments.
 
-## 5. Disable, remove, rotate or recover
+## 5. Set up optional Page creation
+
+Finish the signed launch setup first. From your own authorized Canvas environment, obtain a short-lived REST token for the **same Instructor identity**, with permission to create unpublished Pages in the one configured course. Prefer a token with scopes for the current user, the configured course, Page creation and single-Page readback, when supported by your Canvas setup. Use a separate REST token alongside the LTI consumer key and shared secret.
+
+The backend uses these Canvas REST operations:
+
+| Method | Endpoint                                        | Use                                                                             |
+| ------ | ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| GET    | `/api/v1/users/self`                            | Match the token holder to the signed Instructor's numeric ID                    |
+| GET    | `/api/v1/courses/:course_id`                    | Check the exact available course and the Instructor's active Teacher enrollment |
+| POST   | `/api/v1/courses/:course_id/pages`              | Create one unpublished Page after confirmation                                  |
+| GET    | `/api/v1/courses/:course_id/pages/page_id:<id>` | Verify the created Page by numeric ID                                           |
+
+Create a separate JSON file in the protected configuration directory from step 2. Use a private editor and the same OS account that runs LAITA. Set the file to mode `0600` and keep the directory at `0700`, outside Git and without symlinks. The JSON object must contain exactly these five string fields:
+
+| Field         | Value                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| `origin`      | The same canonical HTTPS Canvas origin as `canvasOrigin` in your signed launch configuration   |
+| `courseId`    | The same Canvas course ID, 1–15 decimal digits with no leading zero                            |
+| `teacherId`   | The same Canvas user ID as `userId`, 1–15 decimal digits with no leading zero                  |
+| `expiresAt`   | The token's expiry in UTC ISO format with milliseconds, for example `YYYY-MM-DDTHH:mm:ss.sssZ` |
+| `canvasToken` | Your own Canvas REST bearer token, entered only in this protected local file                   |
+
+With the regular Canvas launch and application settings still exported, start the foreground API as in [Getting started](GETTING-STARTED.md):
+
+```bash
+export LAITA_CANVAS_REST_FILE="$HOME/.local/share/laita/config/canvas-rest.json"
+npm start
+```
+
+Export the file path only. Avoid putting the token in environment variables, shell commands, exported logs, screenshots or browser storage. Removing the REST file stops Page operations at the next check. Restart without the variable to remove the feature's API routes. To rotate the token, replace its protected file with a matching current expiry and obtain a fresh preview. The optional REST setup uses the current Public v4 operator profile.
+
+## 6. Preview and create a Page
+
+1. Open the signed Canvas Teacher launch. Expand **Create a Canvas Page** and enter a title and your edited Markdown. For a synthetic example, use the title “Compare two maps” and the body `## Studio exercise` followed by a blank line and `Explain **one** difference between two maps.`
+2. Choose **Preview Canvas Page**. Review the displayed Canvas origin, course, numeric Teacher ID, title and body. **Exact HTML sent to Canvas** shows the canonical content. Preview makes only identity and course reads. The current preview expires in five minutes. Editing the fields calls for a new preview.
+3. Choose **Create unpublished page** to send that content once. LAITA rechecks the current session, connection, token identity and course before dispatch. It requests Teacher editing and disables update notifications in the creation payload.
+4. A verified result means Canvas returned the created Page by ID with matching title, canonical body, unpublished state and Teacher editing. If the result is unverified, uncertain or interrupted, inspect your course's Pages in Canvas before taking another action. LAITA does not retry a write. A local backup or rollback cannot undo a Page already created in Canvas.
+
+The Page panel accepts a title up to 250 UTF-16 code units and Markdown up to 12,000 in the editor, subject to a 16,000 UTF-8 byte limit on canonical HTML. It supports headings, paragraphs, lists, emphasis and code. Links, images and raw HTML are rendered as text. Use non-sensitive, operator-authored content. The preview is kept in transient memory and does not create a History record. The only write in this panel is unpublished Page creation. Existing Page edits, assignments, modules, feedback, publishing and participant administration are outside this workflow.
+
+## 7. Disable, remove, rotate or recover
+
+For Page creation only, remove the REST file and revoke the token through your authorized Canvas setup. The steps below disable the signed launch itself.
 
 ```bash
 # Removes only the configured private Canvas file, not credentials or History.
@@ -102,4 +145,4 @@ Public failure responses deliberately omit submitted identifiers and signatures.
 | Empty/denied History                                     | Check current role and Canvas context. Student/Teacher cannot read another role's records; Canvas sees only its configured context. Admin can inspect older retained records.                                                                                                                  |
 | No new tab / certificate / browser private-network block | Trust only your own local HTTPS CA, confirm new-window App configuration and browser/institution policy. Use standalone while resolving the environment; never disable TLS, Origin checks or framing/cookie protections.                                                                       |
 
-Deterministic tests use generic/synthetic state. Real Canvas installation/substitution/origin/new-window behavior and real browser-to-loopback/private-network behavior require Owner checks and are **NOT_RUN** unless explicitly recorded for this Public revision. The Owner-authorized sandbox demo is documented in [media provenance](SCREENSHOTS.md); it does not establish interoperability for every environment. Do not publish captures from a private deployment.
+Deterministic launch and Page workflow tests use synthetic state. Preview, explicit creation and readback have synthetic desktop and mobile browser coverage. Real Canvas installation/substitution/origin/new-window behavior and real browser-to-loopback/private-network behavior require Owner checks and are **NOT_RUN** unless explicitly recorded for this Public revision. The Owner-authorized sandbox demo is documented in [media provenance](SCREENSHOTS.md); it does not establish interoperability for every environment. Do not publish captures from a private deployment.

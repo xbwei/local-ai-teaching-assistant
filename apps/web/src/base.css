@@ -645,3 +645,10 @@ html[data-touch-capable][data-virtual-keyboard] .owner-role {
 .teacher-tool ul:empty {
   display: none;
 }
+
+.teacher-tool .canvas-page-body {
+  flex-basis: 100%;
+}
+#canvas-page-preview pre {
+  white-space: pre-wrap;
+}

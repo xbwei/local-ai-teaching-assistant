@@ -16,6 +16,11 @@ import {
   type TeacherHistoryOptions,
 } from "./teacher-history.ts";
 import {
+  createCanvasPageHandlers,
+  createCanvasPageParser,
+  type CanvasPageOptions,
+} from "./canvas-pages.ts";
+import {
   canvasContext,
   canvasFingerprint,
   type CanvasConfiguration,
@@ -35,6 +40,7 @@ export function createOwnerSessions(options: {
   store?: OwnerAuthRepository;
   canvas?: () => CanvasConfiguration | undefined;
   sampleHistoryContext?: string;
+  canvasPages?: CanvasPageOptions;
   now?: () => number;
 }) {
   const { access, store } = options;
@@ -166,6 +172,15 @@ export function createOwnerSessions(options: {
     }
   }
   const authority = { authorize, isCurrent };
+  const pages =
+    options.canvasPages && options.canvas
+      ? createCanvasPageHandlers(
+          authority,
+          options.canvasPages,
+          options.canvas,
+          now,
+        )
+      : undefined;
   return {
     ...authority,
     entryLimit,
@@ -379,6 +394,14 @@ export function createOwnerSessions(options: {
           }
         },
       );
+      if (pages) {
+        const parser = createCanvasPageParser();
+        const pagesPath = "/api/v1/canvas/pages";
+        app.use(pagesPath, entryLimit);
+        app.get(pagesPath, pages.status);
+        app.post(pagesPath + "/preview", parser, pages.preview);
+        app.post(pagesPath + "/create", parser, pages.create);
+      }
       if (teacherDraft)
         app.post(
           "/api/v1/teacher-draft",
@@ -398,6 +421,7 @@ export function createOwnerSessions(options: {
       }
     },
     close() {
+      pages?.close();
       sessions.clear();
       entryStore.shutdown();
     },

@@ -25,13 +25,13 @@ Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teac
 - **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review.
 - **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.
 - **Use local roles:** Owner Admin / Teacher / Student views with scoped History, all operated by the same Owner.
-- **Launch from Canvas optionally:** enter the local Teacher view from one configured course; standalone use remains independent of Canvas.
+- **Optional Canvas Teacher entry and Pages:** launch from one configured course. With separate REST access, preview and explicitly create an unpublished Page, then verify it by ID.
 
 ## Optional Canvas course launch
 
 Canvas is optional. Installation requires permission in your own Canvas environment to add a **course-level External App / Paste XML**; actual account and institution policies still apply. You provide the Canvas HTTPS origin, numeric course ID, numeric Canvas Owner user ID, generated consumer key, generated shared secret and exact LAITA HTTPS origin.
 
-The consumer key/shared secret are launch credentials, not your Canvas password or a Canvas REST API token. This launch requires **no Canvas REST API token** and fetches no roster, grades, submissions or Canvas course content. Follow the full [Canvas installation guide](docs/CANVAS.md).
+The consumer key/shared secret are launch credentials, not your Canvas password or a Canvas REST API token. The signed launch requires **no Canvas REST API token**. The optional Page panel uses its own backend token for the same Instructor and course. It rechecks the target before an explicit create action and reports the Page readback result. Standalone use needs neither configuration. [Canvas installation and Page creation](docs/CANVAS.md)
 
 ## Public course sources
 
@@ -41,14 +41,14 @@ Course grounding is separate from Canvas credentials. It uses explicitly support
 
 Follow [Getting started](docs/GETTING-STARTED.md) for prerequisites, installation, configuration, model setup and the first conversation. The reference deployment uses an Apple Silicon Mac, Ollama, Node 24 and an operator-controlled HTTPS entry on loopback. OpenAI is optional.
 
-| Guide                                                          | What it covers                                                                                            |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| [Local roles and optional Canvas course App](docs/CANVAS.md)   | Hidden Terminal credential setup, standalone roles, signed Instructor launch, removal and troubleshooting |
-| [Demo courses / Course-grounded Q&A](docs/COURSE-GROUNDING.md) | Source refresh, visible citations, evidence refusal and substituting supported public course material     |
-| [OpenAI / Compare](docs/OPENAI.md)                             | Cloud data flow, interactive Keychain setup, enabling, missing credentials, rotation and deletion         |
-| [History & Review](docs/HISTORY.md)                            | Retained records, feedback, operator review and access limitations                                        |
-| [Speech and Pi client](docs/SPEECH.md)                         | English/Chinese reference support, local adapters and hardware acceptance                                 |
-| [Deployment](docs/DEPLOYMENT.md)                               | Operator-owned macOS lifecycle, hardware photos, HTTPS and recovery                                       |
+| Guide                                                          | What it covers                                                                                                               |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| [Local roles and optional Canvas course App](docs/CANVAS.md)   | Hidden Terminal credential setup, standalone roles, signed Instructor launch, unpublished Pages, removal and troubleshooting |
+| [Demo courses / Course-grounded Q&A](docs/COURSE-GROUNDING.md) | Source refresh, visible citations, evidence refusal and substituting supported public course material                        |
+| [OpenAI / Compare](docs/OPENAI.md)                             | Cloud data flow, interactive Keychain setup, enabling, missing credentials, rotation and deletion                            |
+| [History & Review](docs/HISTORY.md)                            | Retained records, feedback, operator review and access limitations                                                           |
+| [Speech and Pi client](docs/SPEECH.md)                         | English/Chinese reference support, local adapters and hardware acceptance                                                    |
+| [Deployment](docs/DEPLOYMENT.md)                               | Operator-owned macOS lifecycle, hardware photos, HTTPS and recovery                                                          |
 
 ## Privacy and current limits
 

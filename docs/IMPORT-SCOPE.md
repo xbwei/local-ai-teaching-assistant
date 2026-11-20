@@ -13,8 +13,8 @@ The five Owner-authorized real image derivatives and demo video/GIF are separate
 
 The online home-screen icons and phone captures are RECREATE. The icons render the existing LAITA wordmark. The browser captures use synthetic state only. [Media provenance](SCREENSHOTS.md)
 
-The public Teacher tools provide Local course-grounded drafts and an opt-in History sample. The accepted product retains Local default, both explicit Local models, optional OpenAI/Compare without fallback, multi-turn context, supported local bilingual speech, bounded public-course evidence/refusal and single-operator History & Review. Local service packaging and database-safe rollback remain generic operator tools; no real deployment was performed.
+The public Teacher tools provide Local course-grounded drafts, an opt-in History sample and signed Canvas Teacher creation of unpublished Pages with a separate operator-owned REST credential. The accepted product retains Local default, both explicit Local models, optional OpenAI/Compare without fallback, multi-turn context, supported local bilingual speech, bounded public-course evidence/refusal and single-operator History & Review. Local service packaging and database-safe rollback remain generic operator tools; no real deployment was performed.
 
 Inventory classification is an import decision, not a claim that external content is MIT-licensed. See [third-party boundaries](../THIRD_PARTY.md).
 
-Delivered-file classification before these two inventory documents: 102 COPY, 148 GENERICIZE, 44 RECREATE.
+Delivered-file classification before these two inventory documents: 99 COPY, 156 GENERICIZE, 46 RECREATE.

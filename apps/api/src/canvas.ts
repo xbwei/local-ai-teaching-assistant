@@ -4,7 +4,7 @@ import {
   closeSync,
   fstatSync,
   openSync,
-  readFileSync,
+  readSync,
   lstatSync,
   realpathSync,
 } from "node:fs";
@@ -97,6 +97,18 @@ export function assertCanvasDirectory(file: string): void {
 export function readCanvasConfiguration(
   file: string | undefined,
 ): CanvasConfiguration | undefined {
+  try {
+    const value = readProtectedOwnerJson(file, 4096);
+    return value === undefined ? undefined : validateCanvasConfiguration(value);
+  } catch {
+    return;
+  }
+}
+
+export function readProtectedOwnerJson(
+  file: string | undefined,
+  maxBytes: number,
+): unknown {
   if (!file) return;
   let fd: number | undefined;
   try {
@@ -109,12 +121,18 @@ export function readCanvasConfiguration(
     if (
       !st.isFile() ||
       st.nlink !== 1 ||
-      st.size > 4096 ||
+      st.size > maxBytes ||
       st.uid !== process.getuid?.() ||
       (st.mode & 0o077) !== 0
     )
       return;
-    return validateCanvasConfiguration(JSON.parse(readFileSync(fd, "utf8")));
+    // Detect a concurrent size change without retaining or parsing a larger file.
+    const raw = Buffer.alloc(maxBytes + 1);
+    const count = readSync(fd, raw);
+    if (count !== st.size || count > maxBytes) return;
+    return JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(raw.subarray(0, count)),
+    );
   } catch {
     return;
   } finally {
