@@ -362,7 +362,7 @@ test("standalone assignment phrasing preserves the explicit course and locator",
   );
 });
 
-test("compound and shared-label assignment numbers require clarification", async (t) => {
+test("ambiguous single-label and plural assignment locators require clarification", async (t) => {
   const { grounder } = await refreshed(t);
   const signal = new AbortController().signal;
   const cases = [
@@ -377,6 +377,14 @@ test("compound and shared-label assignment numbers require clarification", async
     "作业5到7",
     "作业5至7",
     "Lab 5/6 in Week 5",
+    "first and second assignment",
+    "first or second lab",
+    "fifth assignment and 6",
+    "fifth assignment or sixth",
+    "labs 5 and 6 in Week 5",
+    "assignments 5.1 in Week 5",
+    "lab 5 and assignments 6, 7",
+    "fifth assignments in Week 5",
   ];
   const results = [];
   for (const reference of cases) {

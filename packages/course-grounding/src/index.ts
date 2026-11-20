@@ -1018,31 +1018,48 @@ const labOrdinals = [
   "ninth",
   "tenth",
 ] as const;
-const labOrdinal =
-  /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:lab|assignment)\b/gu;
-const labNumberContinuation =
-  /^\s*(?:[-_\/&–—]|(?:and|or|to|through)\b|,\s*(?:(?:and|or)\b)?|[、和或到至])\s*[0-9零〇一二三四五六七八九十百千万两]/u;
+const labOrdinalWords = labOrdinals.join("|");
+const labOrdinal = new RegExp(
+  String.raw`\b(${labOrdinalWords})\s+(labs?|assignments?)\b`,
+  "gu",
+);
+const labSeparator = String.raw`(?:[-_/&–—]|(?:and|or|to|through)\b|,\s*(?:(?:and|or)\b)?|[、和或到至])`;
+const labContinuation = new RegExp(
+  String.raw`^\s*${labSeparator}\s*(?:[0-9零〇一二三四五六七八九十百千万两]|\b(?:${labOrdinalWords})\b)`,
+  "u",
+);
+const labOrdinalPrefix = new RegExp(
+  String.raw`\b(?:${labOrdinalWords})\s*${labSeparator}\s*$`,
+  "u",
+);
 function ordinalNumber(word: string) {
   return labOrdinals.findIndex((ordinal) => ordinal === word) + 1;
 }
 function labNumber(value: string) {
   const numeric = value.matchAll(
-    /(?:\b(?:lab|assignment)|实验|作业)\s*[-:#]?\s*([0-9零〇一二三四五六七八九十百千万两]+(?:\.[0-9]+|[a-z]+[0-9]*)?)/gu,
+    /(\b(?:labs?|assignments?)|实验|作业)\s*[-:#]?\s*([0-9零〇一二三四五六七八九十百千万两]+(?:\.[0-9]+|[a-z]+[0-9]*)?)/gu,
   );
-  const references = new Set([
-    ...Array.from(numeric, (match) => {
-      // A compound suffix, range, or shared-label list does not name a single lab.
-      const rest = value.slice(match.index + match[0].length);
-      return labNumberContinuation.test(rest)
-        ? undefined
-        : boundedNumber(match[1]!);
-    }),
-    ...Array.from(value.matchAll(labOrdinal), (match) =>
-      ordinalNumber(match[1]!),
-    ),
-  ]);
+  const references = new Set<number>();
   // Null marks a malformed or conflicting reference, even if a week is named.
-  if (references.has(undefined) || references.size > 1) return null;
+  for (const match of numeric) {
+    const number = boundedNumber(match[2]!);
+    const rest = value.slice(match.index + match[0].length);
+    if (!number || match[1]!.endsWith("s") || labContinuation.test(rest))
+      return null;
+    references.add(number);
+  }
+  for (const match of value.matchAll(labOrdinal)) {
+    const before = value.slice(0, match.index);
+    const rest = value.slice(match.index + match[0].length);
+    if (
+      match[2]!.endsWith("s") ||
+      labOrdinalPrefix.test(before) ||
+      labContinuation.test(rest)
+    )
+      return null;
+    references.add(ordinalNumber(match[1]!));
+  }
+  if (references.size > 1) return null;
   return references.values().next().value;
 }
 function queryTerms(question: string) {
