@@ -13,8 +13,23 @@ export interface TeacherHistoryOptions {
 }
 
 const day = 86_400_000;
+const excludedText =
+  /\b(?:verbatim|passwords?|credentials?|tokens?|emails?|phone|roster)\b|https?:|@[\w.]|[\p{Cc}\p{Cf}\p{Cs}]/iu;
+// Grade wording is identifying when it refers to an individual or a grade value.
+const identifyingText =
+  /\b(?:(?:my|your|his|her|their|personal|student(?:['’]s)?)\s+(?:names?|address(?:es)?|grades?)|(?:first|last|full|legal)\s+names?|(?:home|work|office|mailing|postal|street|billing|shipping)\s+address(?:es)?|[\p{L}\p{M}]+['’]s\s+grades?)\b|\b(?:names?|address(?:es)?)\s*(?:[:=]|\b(?:is|are)\b|\d)|\bgrades?\s*(?:[:=]|\d|(?:is|are|was|were|of)\s+(?:\d|[a-f][+-]?(?=\s*(?:[.,;!?)]|$)))|(?:did|does|do)\s+(?:i|you|he|she|they|(?:the\s+)?(?:test\s+)?student)\b|for\s+(?:the\s+)?(?:test\s+)?student\b)|\b(?:earned|received|got)\s+(?:an?\s+)?(?:[a-f][+-]?|\d+(?:\.\d+)?%)\s+grades?\b/iu;
 const instructionLike =
-  /\b(?:ignore|override|reveal|verbatim|passwords?|credentials?|tokens?|emails?|phone|address|names?|grades?|roster)\b|https?:|@[\w.]|[\p{Cc}\p{Cf}\p{Cs}]/iu;
+  /(?:^|[.!?]\s+)\s*(?:please\s+)?(?:ignore|override|reveal)\b|\b(?:ignore|override|reveal)\b[^.!?]{0,40}\b(?:instructions?|prompts?|rules?|polic(?:y|ies)|system messages?)\b|\breveal\b[^.!?]{0,40}\b(?:names?|address(?:es)?)\b/iu;
+const maxSummaryBytes = 1024;
+
+function eligibleSummaryText(text: string) {
+  return (
+    !!classifyInput(text) &&
+    !excludedText.test(text) &&
+    !identifyingText.test(text) &&
+    !instructionLike.test(text)
+  );
+}
 
 function selectQuestion(value: unknown) {
   if (typeof value !== "string" || value.length > 200) return;
@@ -116,8 +131,7 @@ export function createTeacherHistoryQueryHandler(
         const questions: string[] = [];
         for (const raw of sample.questions) {
           const question = raw.trim().replace(/\s+/gu, " ");
-          if (!classifyInput(question) || instructionLike.test(question))
-            continue;
+          if (!eligibleSummaryText(question)) continue;
           if (
             Buffer.byteLength(JSON.stringify([...questions, question])) > 2048
           )
@@ -130,11 +144,14 @@ export function createTeacherHistoryQueryHandler(
               controller.signal,
             )
           : undefined;
+        const summary =
+          typeof result === "string" &&
+          Buffer.byteLength(result) <= maxSummaryBytes
+            ? result.replace(/[\t\r\n]+/gu, " ")
+            : undefined;
         text =
-          result?.trim() &&
-          Buffer.byteLength(result) <= 512 &&
-          !instructionLike.test(result)
-            ? result.trim()
+          summary !== undefined && eligibleSummaryText(summary)
+            ? summary.trim()
             : questions.length
               ? "The Local summary is unavailable. The count is still available."
               : sample.count

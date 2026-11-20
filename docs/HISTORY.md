@@ -18,6 +18,8 @@ With LAITA stopped, set `LAITA_HISTORY_SAMPLE_ID` in the API process environment
 
 The plugin reads recorded question text from the configured local sample alone. It includes eligible typed questions and recognized transcripts already recorded there. The recent window is seven days. “This week” begins Monday at 00:00 UTC. Count reports up to 1,000 matching records and uses “at least” if that cap is exceeded. Count does not call a model. Summary considers up to 12 recent records and sends at most 2 KiB of eligible question text to the selected Local model. It omits answers, identifiers, logs, feedback, review notes, grades, usage records and Canvas data. It neither reads ordinary Student records nor combines different sample labels. A summary describes topics in this sample and may omit material. It cannot measure a course or class. Canvas-launched sessions cannot use this plugin.
 
+The plugin accepts up to 1,024 UTF-8 bytes of generated text. It folds tabs and line breaks into spaces and checks the complete summary before displaying it. An ineligible or oversized result leaves Count available.
+
 ## Dashboard example
 
 This Owner-provided capture shows an earlier History record-detail view for a public demo-course question: retained answer, requested/actual Local model, Sources, execution detail, feedback and operator annotation. It is an illustration, not evidence of LAITA Public V1's answer correctness or student deployment. The UI text and timestamp are preserved; no student identifiers, credentials or private host/path are visible. [Source/privacy review](SCREENSHOTS.md).
