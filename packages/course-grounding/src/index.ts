@@ -924,6 +924,23 @@ const stopWords = new Set([
   "by",
   "do",
   "does",
+  "doing",
+  "going",
+  "complete",
+  "finish",
+  "will",
+  "should",
+  "can",
+  "learn",
+  "learning",
+  "learned",
+  "cover",
+  "covered",
+  "covering",
+  "covers",
+  "study",
+  "studying",
+  "studied",
   "we",
   "explain",
   "for",
@@ -988,17 +1005,49 @@ function chineseWeek(value: string) {
   const match = /第?([0-9零〇一二三四五六七八九十百千万两]+)周/u.exec(value);
   return match ? boundedNumber(match[1]!) : undefined;
 }
+// English ordinals are deliberately bounded; this is not typo recovery.
+const labOrdinals = [
+  "first",
+  "second",
+  "third",
+  "fourth",
+  "fifth",
+  "sixth",
+  "seventh",
+  "eighth",
+  "ninth",
+  "tenth",
+] as const;
+const labOrdinal =
+  /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:lab|assignment)\b/gu;
+function ordinalNumber(word: string) {
+  return labOrdinals.findIndex((ordinal) => ordinal === word) + 1;
+}
 function labNumber(value: string) {
-  const match =
-    /(?:\blab|实验|作业)\s*[-:#]?\s*([0-9零〇一二三四五六七八九十百千万两]+)/u.exec(
-      value,
-    );
-  return match ? boundedNumber(match[1]!) : undefined;
+  const numeric = value.matchAll(
+    /(?:\b(?:lab|assignment)|实验|作业)\s*[-:#]?\s*([0-9零〇一二三四五六七八九十百千万两]+(?:\.[0-9]+|[a-z]+[0-9]*)?)/gu,
+  );
+  const references = new Set([
+    ...Array.from(numeric, (match) => boundedNumber(match[1]!)),
+    ...Array.from(value.matchAll(labOrdinal), (match) =>
+      ordinalNumber(match[1]!),
+    ),
+  ]);
+  // Null marks a malformed or conflicting reference, even if a week is named.
+  if (references.has(undefined) || references.size > 1) return null;
+  return references.values().next().value;
 }
 function queryTerms(question: string) {
   const value = normalize(question)
+    .replace(
+      labOrdinal,
+      (_, ordinal: string) => `lab ${ordinalNumber(ordinal)}`,
+    )
     .replace(/(?<![a-z0-9])i[\s_-]*a?[\s_-]*34[02](?![a-z0-9])/gu, " ")
-    .replace(/(?:lab|实验|作业)\s*[-:#]?\s*([1-9][0-9]?)(?![0-9])/gu, "lab $1")
+    .replace(
+      /(?:lab|assignment|实验|作业)\s*[-:#]?\s*([1-9][0-9]?)(?![0-9])/gu,
+      "lab $1",
+    )
     .replace(/做什么|怎么做|是什么|请问|请|什么/gu, " ");
   const words = value.match(/[\p{L}\p{N}]+/gu) ?? [];
   const expanded: string[] = [];
@@ -1424,12 +1473,15 @@ export function createCourseGrounder(
         lab: requested.lab ? String(requested.lab) : null,
         sources: [],
       });
-      // A named but unrecoverable lab (including a corrupt transcript) needs
-      // clarification, even if one unrelated assignment happens to rank first.
+      // Ask for clarification before ranking evidence for an unresolved
+      // assignment or a relative week with no explicit week number.
       if (
-        !requested.lab &&
-        !requested.week &&
-        /\blab|实验|作业/u.test(normalize(question))
+        requested.lab === null ||
+        (!requested.lab &&
+          !requested.week &&
+          /\b(?:labs?|assignments?)\b|\b(?:this|current) week\b|实验|作业|这周|本周/u.test(
+            normalize(question),
+          ))
       )
         return { status: "AMBIGUOUS", course: intent };
       const overview = courseOverviewIntent(question, source, requested);

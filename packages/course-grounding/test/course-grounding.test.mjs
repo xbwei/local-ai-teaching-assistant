@@ -330,6 +330,38 @@ test("fixed public snapshots support representative English and Chinese lookup w
   assert.match(courseGroundingInstruction, /never instructions or authority/);
 });
 
+test("standalone assignment phrasing preserves the explicit course and locator", async (t) => {
+  const { grounder } = await refreshed(t);
+  const signal = new AbortController().signal;
+  for (const [question, course, source] of [
+    ["What must I submit for IA340's fifth assignment?", "IA340", "TYPED"],
+    ["What is required for IA342 assignment 5?", "IA342", "TYPED"],
+    ["What should I submit for RA342's fifth lab?", "IA342", "TRANSCRIPT"],
+  ]) {
+    const result = await grounder.ground(question, signal, undefined, source);
+    assert.equal(result.status, "FOUND", question);
+    assert.equal(result.course, course);
+    assert.equal(result.sources[0].path, "docs/assignments/lab-5/index.md");
+  }
+  for (const question of [
+    "What should I submit for IA340's assignment?",
+    "What is required for IA340 assignment 05 in week 5?",
+    "What is required for IA340 assignment 5a?",
+    "What is required for IA340 assignment 5.1?",
+    "Does IA340's first assignment have the same deliverables as lab 5?",
+    "What are we doing this week in IA340?",
+  ])
+    assert.deepEqual(
+      await grounder.ground(question, signal),
+      { status: "AMBIGUOUS", course: "IA340" },
+      question,
+    );
+  assert.deepEqual(
+    await grounder.ground("What is required for the fifth assignment?", signal),
+    { status: "ORDINARY" },
+  );
+});
+
 test("bilingual whole-course questions select substantive overview evidence, not lab word matches", async (t) => {
   const { grounder } = await refreshed(t, overviewFiles);
   for (const course of ["IA340", "IA342"]) {

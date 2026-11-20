@@ -162,6 +162,22 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/web/public/assets/pwa/icon-180.png",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/web/public/assets/pwa/icon-192.png",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/web/public/assets/pwa/icon-512.png",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/web/public/assets/pwa/manifest.webmanifest",
+      "classification": "RECREATE"
+    },
+    {
       "path": "apps/web/public/capture-worklet.js",
       "classification": "COPY"
     },
@@ -316,6 +332,14 @@
     {
       "path": "docs/assets/screenshots/laita-main-chat.png",
       "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/screenshots/laita-phone-chat.png",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/assets/screenshots/laita-phone-entry.png",
+      "classification": "RECREATE"
     },
     {
       "path": "docs/assets/screenshots/laita-pi-client.jpg",

@@ -24,11 +24,16 @@ export function publicBoundaryViolations(file, bytes) {
       "laita-pi-client.jpg",
       "laita-mac-mini.jpg",
       "laita-history-review.png",
+      "laita-phone-entry.png",
+      "laita-phone-chat.png",
     ].map((name) => `docs/assets/screenshots/${name}`),
   );
   reviewedImages.add("docs/assets/demo/laita-demo.gif");
   // Owner-authorized sandbox derivative; provenance/privacy: docs/SCREENSHOTS.md.
   reviewedImages.add("docs/assets/demo/laita-v020-canvas.gif");
+  // Same-origin raster renders of the repository wordmark for online installation.
+  for (const size of [180, 192, 512])
+    reviewedImages.add(`apps/web/public/assets/pwa/icon-${size}.png`);
   if (isImage && !reviewedImages.has(file))
     violations.push("unreviewed image location");
   if (!isImage && file !== reviewedVideo) {
