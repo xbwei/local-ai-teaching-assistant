@@ -372,6 +372,10 @@ test("compound and shared-label assignment numbers require clarification", async
     "assignment 5, 6",
     "assignment 5, and 6",
     "assignment 5 or 6",
+    "assignment 5 to 7",
+    "assignment 5 through 7",
+    "作业5到7",
+    "作业5至7",
     "Lab 5/6 in Week 5",
   ];
   const results = [];

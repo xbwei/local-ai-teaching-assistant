@@ -1021,7 +1021,7 @@ const labOrdinals = [
 const labOrdinal =
   /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:lab|assignment)\b/gu;
 const labNumberContinuation =
-  /^\s*(?:[-_\/&–—]|(?:and|or)\b|,\s*(?:(?:and|or)\b)?|[、和或])\s*[0-9零〇一二三四五六七八九十百千万两]/u;
+  /^\s*(?:[-_\/&–—]|(?:and|or|to|through)\b|,\s*(?:(?:and|or)\b)?|[、和或到至])\s*[0-9零〇一二三四五六七八九十百千万两]/u;
 function ordinalNumber(word: string) {
   return labOrdinals.findIndex((ordinal) => ordinal === word) + 1;
 }
@@ -1031,7 +1031,7 @@ function labNumber(value: string) {
   );
   const references = new Set([
     ...Array.from(numeric, (match) => {
-      // A compound suffix or a shared-label list does not name a single lab.
+      // A compound suffix, range, or shared-label list does not name a single lab.
       const rest = value.slice(match.index + match[0].length);
       return labNumberContinuation.test(rest)
         ? undefined
