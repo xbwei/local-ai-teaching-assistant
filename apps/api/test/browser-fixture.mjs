@@ -197,6 +197,7 @@ export async function fixture(options = {}) {
           ? options.history
           : persistence.value.history(scope),
     ...(options.canvas ? { canvas: options.canvas } : {}),
+    ...(options.canvasPages ? { canvasPages: options.canvasPages } : {}),
     ...(options.authNow ? { authNow: options.authNow } : {}),
     ...(options.teacherDraft ? { teacherDraft: options.teacherDraft } : {}),
     ...(options.teacherHistory

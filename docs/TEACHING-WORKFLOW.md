@@ -13,3 +13,7 @@ Drafting returns editable text in the browser. It performs no external writes an
 ## Test Student History
 
 Enable the separate [History Chat plugin](HISTORY.md#teacher-history-plugin) for a sample of your own authored, non-sensitive practice questions. Use the ordinary Student role without the sample option for questions you want kept outside the sample.
+
+## Use edited Markdown in Canvas
+
+Copy reviewed, non-sensitive Markdown from the standalone draft. Open your separate signed Canvas Teacher session, enter a title and paste the Markdown. Review the exact destination and content before choosing **Create unpublished page**. The Canvas Page editor uses separate, optional REST setup. [Canvas Page walkthrough](CANVAS.md#6-preview-and-create-a-page)

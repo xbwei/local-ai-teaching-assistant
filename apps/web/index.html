@@ -145,6 +145,52 @@
         </form>
         <p id="teacher-history-status" role="status"></p>
       </details>
+      <details id="teacher-canvas-pages" class="teacher-tool" hidden>
+        <summary>Create a Canvas Page</summary>
+        <p id="canvas-page-status" role="status">Checking Canvas Page setup…</p>
+        <form id="canvas-page-form" autocomplete="off" hidden>
+          <label class="teacher-field" for="canvas-page-title"
+            >Page title
+            <input
+              id="canvas-page-title"
+              type="text"
+              maxlength="250"
+              required
+            />
+          </label>
+          <label class="teacher-field canvas-page-body" for="canvas-page-body"
+            >Page Markdown
+            <textarea
+              id="canvas-page-body"
+              rows="6"
+              maxlength="12000"
+              required
+            ></textarea>
+          </label>
+          <button type="submit">Preview Canvas Page</button>
+        </form>
+        <section
+          id="canvas-page-preview"
+          aria-label="Canvas Page preview"
+          hidden
+        >
+          <p id="canvas-page-target"></p>
+          <p>
+            Unpublished. Course Teachers can edit it. Canvas notifications are
+            off.
+          </p>
+          <h2 id="canvas-page-preview-title"></h2>
+          <div id="canvas-page-preview-body"></div>
+          <details>
+            <summary>Exact HTML sent to Canvas</summary>
+            <pre id="canvas-page-html"></pre>
+          </details>
+          <button id="canvas-page-confirm" type="button">
+            Create unpublished page
+          </button>
+          <button id="canvas-page-cancel" type="button">Cancel preview</button>
+        </section>
+      </details>
       <p id="connection-status" role="status" class="connection-status"></p>
       <main id="learning" hidden>
         <div class="dialogue">

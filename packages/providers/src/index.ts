@@ -245,3 +245,5 @@ export type {
 
 export { OpenAIConfigurationError, OpenAIResponsesAdapter } from "./openai.ts";
 export type { OpenAIAdapterOptions, OpenAIModelCandidate } from "./openai.ts";
+
+export { createCanvasPageClient } from "./canvas-page.ts";

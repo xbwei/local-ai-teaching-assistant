@@ -163,3 +163,5 @@ export {
 } from "./provider-control.ts";
 
 export * from "./history.ts";
+
+export * from "./canvas-page.ts";

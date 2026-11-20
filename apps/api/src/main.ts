@@ -20,6 +20,7 @@ import {
   initializeRuntimePaths,
 } from "@laita/runtime";
 import { initializePersistence, type Persistence } from "@laita/persistence";
+import { readCanvasPageSettings } from "./canvas-pages.ts";
 import { readCanvasConfiguration } from "./canvas.ts";
 import { createApp } from "./app.ts";
 import { createAccessController } from "./access.ts";
@@ -526,6 +527,14 @@ try {
     ownerAuth: persistence.ownerAuth(),
     historyForScope: (scope) => persistence!.history(scope),
     canvas: () => readCanvasConfiguration(process.env.LAITA_CANVAS_CONFIG_FILE),
+    ...(successor && process.env.LAITA_CANVAS_REST_FILE
+      ? {
+          canvasPages: {
+            settings: () =>
+              readCanvasPageSettings(process.env.LAITA_CANVAS_REST_FILE),
+          },
+        }
+      : {}),
     ...(successor
       ? {
           teacherDraft: (course, kind, topic, signal) =>

@@ -19,6 +19,7 @@ import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { fixture } from "../apps/api/test/browser-fixture.mjs";
+import { canvas, canvasNow, canvasPageFixture, signed } from "../apps/api/test/canvas-fixture.mjs";
 import { wav } from "../apps/web/src/client/microphone.ts";
 const { chromium } = await import(
   pathToFileURL(process.env.PLAYWRIGHT_MODULE).href
@@ -164,9 +165,13 @@ try {
   });
   seededHistory.outcome("e".repeat(64), "NO_ANSWER");
   const sampleContext = "5".repeat(64);
+  const syntheticCanvas = canvasPageFixture();
   f = await fixture({
     history: persistence.history(),
     persistence,
+    canvas: () => canvas,
+    authNow: () => canvasNow,
+    canvasPages: syntheticCanvas.options,
     teacherDraft: async (course, kind, topic) => {
       assert.equal(course, "IA342");
       assert.equal(kind, "ASSIGNMENT");
@@ -263,6 +268,7 @@ try {
     }
     await page.getByRole("button", { name: "Sign out / change role" }).click();
     await signIn("teacher");
+    assert.equal(await page.getByText("Create a Canvas Page", { exact: true }).isVisible(), false);
     await page.getByText("Local teaching drafts", { exact: true }).click();
     await page.getByLabel("Course", { exact: true }).selectOption("IA342");
     await page.getByLabel("Draft type").selectOption("ASSIGNMENT");
@@ -289,6 +295,79 @@ try {
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })));
     assert.equal(await draft.inputValue(), "");
     assert.equal(await historyQuestion.inputValue(), "");
+    results.push({ name, width, height, status: "PASS", requests: requests.length });
+    await context.close();
+  }
+  for (const { name, width, height, mobile } of [
+    { name: "canvas-page-desktop", width: 1280, height: 800, mobile: false },
+    { name: "canvas-page-phone", width: 390, height: 844, mobile: true },
+  ]) {
+    const context = await browser.newContext({
+      viewport: { width, height },
+      isMobile: mobile,
+      hasTouch: mobile,
+      ignoreHTTPSErrors: true,
+    });
+    const launchPath = "/api/v1/canvas/launch";
+    const launch = await f.request(launchPath, {
+      method: "POST",
+      headers: {
+        origin: canvas.canvasOrigin,
+        "sec-fetch-site": "cross-site",
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: "",
+      },
+      body: signed(f.config.publicOrigin + launchPath, { oauth_nonce: name }),
+    });
+    assert.equal(launch.status, 303);
+    const cookie = launch.headers.get("set-cookie").split(";")[0];
+    const split = cookie.indexOf("=");
+    await context.addCookies([{
+      name: cookie.slice(0, split),
+      value: cookie.slice(split + 1),
+      url: f.origin + "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+    }]);
+    const page = await context.newPage();
+    const requests = [];
+    page.on("request", (request) => requests.push(request.url()));
+    const writes = syntheticCanvas.writes.length;
+    await page.goto(f.origin);
+    await page.getByText("Create a Canvas Page", { exact: true }).click();
+    assert.equal(await page.getByText("Local teaching drafts", { exact: true }).isVisible(), false);
+    assert.equal(await page.getByText("History Chat plugin", { exact: true }).isVisible(), false);
+    const title = page.getByLabel("Page title");
+    const markdown = page.getByLabel("Page Markdown");
+    const preview = page.getByRole("region", { name: "Canvas Page preview" });
+    const previewButton = page.getByRole("button", { name: "Preview Canvas Page" });
+    const create = page.getByRole("button", { name: "Create unpublished page" });
+    await title.fill("Field exercise — 地图 🌍");
+    await markdown.fill("# Compare routes\n\nPlot a **synthetic** map. 地图 🌍");
+    assert.equal(await create.isVisible(), false);
+    await previewButton.click();
+    await preview.getByText(/^Synthetic Studio/).waitFor();
+    assert.match(await preview.locator("#canvas-page-target").textContent(), /Course 42001.*Teacher 73001.*canvas.example.test/);
+    await preview.getByRole("heading", { name: "Field exercise — 地图 🌍" }).waitFor();
+    await preview.getByRole("heading", { name: "Compare routes" }).waitFor();
+    await preview.getByText("Exact HTML sent to Canvas").click();
+    assert.equal(await preview.locator("pre").textContent(), "<h2>Compare routes</h2><p>Plot a <strong>synthetic</strong> map. 地图 🌍</p>");
+    assert.equal(syntheticCanvas.writes.length, writes);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    await markdown.fill("Revised teaching content — 安全 🌍");
+    assert.equal(await create.isVisible(), false);
+    await previewButton.click();
+    await preview.getByText("Revised teaching content — 安全 🌍", { exact: true }).waitFor();
+    assert.equal(syntheticCanvas.writes.length, writes);
+    await create.click();
+    await page.getByText("Canvas verified unpublished Page 9001.").waitFor();
+    assert.equal(syntheticCanvas.writes.length, writes + 1);
+    assert.equal(syntheticCanvas.writes.at(-1)["wiki_page[body]"], "<p>Revised teaching content — 安全 🌍</p>");
+    assert.equal(await create.isVisible(), false);
+    assert.ok(requests.every((request) => new URL(request).origin === f.origin));
+    assert.equal(requests.filter((request) => request.endsWith("/api/v1/canvas/pages/create")).length, 1);
+    assert.doesNotMatch(await page.locator("body").innerText(), /synthetic-rest-token/);
     results.push({ name, width, height, status: "PASS", requests: requests.length });
     await context.close();
   }

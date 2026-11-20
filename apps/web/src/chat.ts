@@ -41,6 +41,16 @@ if (
       /* Unavailable Teacher tools leave standalone Chat usable. */
     });
 }
+if (
+  document.body.dataset.ownerRole === "teacher" &&
+  document.body.dataset.ownerSource === "canvas"
+) {
+  void import("./client/teacher-canvas-pages.ts")
+    .then(({ mountTeacherCanvasPages }) => mountTeacherCanvasPages(api))
+    .catch(() => {
+      /* Unavailable Canvas tools leave Chat usable. */
+    });
+}
 // Follow message lifetime without retaining old conversations or losing drafts on audio updates.
 const messageFeedback = new WeakMap<Message, HTMLElement>();
 get("usage-open").addEventListener("click", () =>

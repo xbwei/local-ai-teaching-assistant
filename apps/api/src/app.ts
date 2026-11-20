@@ -1,4 +1,5 @@
 import { createOwnerSessions } from "./owner-session.ts";
+import type { CanvasPageOptions } from "./canvas-pages.ts";
 import type { CanvasConfiguration } from "./canvas.ts";
 import type { TeacherDraft } from "./teacher-draft.ts";
 import type { TeacherHistoryOptions } from "./teacher-history.ts";
@@ -48,6 +49,7 @@ interface AppOptions {
     scope: import("@laita/persistence").HistoryScope,
   ) => import("@laita/persistence").HistoryRepository;
   canvas?: () => CanvasConfiguration | undefined;
+  canvasPages?: CanvasPageOptions;
   authNow?: () => number;
   teacherDraft?: TeacherDraft;
   teacherHistory?: TeacherHistoryOptions;
@@ -171,6 +173,7 @@ export function createApp(options: AppOptions = {}) {
         access: options.browserAccess,
         ...(options.ownerAuth ? { store: options.ownerAuth } : {}),
         ...(options.canvas ? { canvas: options.canvas } : {}),
+        ...(options.canvasPages ? { canvasPages: options.canvasPages } : {}),
         ...(options.teacherHistory
           ? { sampleHistoryContext: options.teacherHistory.context }
           : {}),

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHmac, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
@@ -17,6 +17,13 @@ import { initializeRuntimePaths } from "@laita/runtime";
 import { initializePersistence } from "@laita/persistence";
 import { DatabaseSync } from "node:sqlite";
 import { fixture } from "./browser-fixture.mjs";
+import { readCanvasPageSettings } from "../dist/canvas-pages.js";
+import {
+  canvas,
+  canvasNow as now,
+  signed,
+  canvasPageFixture,
+} from "./canvas-fixture.mjs";
 import { testPassphrase, testCredential } from "./owner-fixture.mjs";
 import {
   initializeOwnerCredential,
@@ -30,45 +37,6 @@ import {
   canvasContext,
 } from "../dist/canvas.js";
 
-const now = 1900000000000;
-const canvas = {
-  enabled: true,
-  canvasOrigin: "https://canvas.example.test",
-  courseId: "42001",
-  userId: "73001",
-  consumerKey: "synthetic-consumer-key-not-for-use",
-  sharedSecret: "synthetic-shared-secret-not-a-real-credential",
-};
-// Independent RFC 5849 reference signer in tests; never a product signing endpoint.
-const encode = (s) =>
-  encodeURIComponent(s).replace(
-    /[!'()*]/g,
-    (ch) => "%" + ch.charCodeAt(0).toString(16).toUpperCase(),
-  );
-function signed(url, changes = {}, secret = canvas.sharedSecret) {
-  const fields = {
-    lti_message_type: "basic-lti-launch-request",
-    lti_version: "LTI-1p0",
-    oauth_version: "1.0",
-    oauth_signature_method: "HMAC-SHA1",
-    oauth_consumer_key: canvas.consumerKey,
-    oauth_nonce: "synthetic-nonce-0001",
-    oauth_timestamp: String(now / 1000),
-    roles: "Instructor",
-    custom_canvas_api_domain: "canvas.example.test",
-    custom_canvas_course_id: canvas.courseId,
-    custom_canvas_user_id: canvas.userId,
-    ...changes,
-  };
-  const params = Object.entries(fields)
-    .map(([k, v]) => `${encode(k)}=${encode(v)}`)
-    .sort()
-    .join("&");
-  fields.oauth_signature = createHmac("sha1", encode(secret) + "&")
-    .update(["POST", encode(url), encode(params)].join("&"))
-    .digest("base64");
-  return new URLSearchParams(fields).toString();
-}
 const cookie = (res) => res.headers.get("set-cookie")?.split(";")[0];
 const owner = "a".repeat(64);
 function authenticated(cookieValue, extra = {}) {
@@ -473,6 +441,22 @@ test("Canvas config and generated Paste XML have bounded generic origin, substit
     readCanvasConfiguration(path.join(root, "link.json")),
     undefined,
   );
+  const rest = path.join(root, "canvas-rest.json");
+  const { settings } = canvasPageFixture();
+  writeFileSync(rest, JSON.stringify(settings), { mode: 0o600 });
+  assert.deepEqual(readCanvasPageSettings(rest), settings);
+  chmodSync(rest, 0o644);
+  assert.equal(readCanvasPageSettings(rest), undefined);
+  chmodSync(rest, 0o600);
+  symlinkSync(rest, path.join(root, "rest-link.json"));
+  assert.equal(
+    readCanvasPageSettings(path.join(root, "rest-link.json")),
+    undefined,
+  );
+  writeFileSync(rest, Buffer.alloc(4097, " "));
+  assert.equal(readCanvasPageSettings(rest), undefined);
+  writeFileSync(rest, Buffer.from([0xc3, 0x28]));
+  assert.equal(readCanvasPageSettings(rest), undefined);
   for (const bad of [
     { ...canvas, enabled: false },
     { ...canvas, canvasOrigin: "http://canvas.example.test" },
@@ -1117,7 +1101,10 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
   const context = "5".repeat(64);
   let draftCalls = 0;
   let historyReads = 0;
+  const syntheticCanvas = canvasPageFixture();
   const f = await fixture({
+    canvas: () => canvas,
+    canvasPages: syntheticCanvas.options,
     autoLogin: false,
     async teacherDraft() {
       draftCalls++;
@@ -1154,6 +1141,9 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
   const historySubpath = () => f.request(historyPath + "/unused");
   const badDraft = () => post(draftPath, "{");
   const badHistory = () => post(historyPath, "{");
+  const getCanvasPages = () => f.request(pagesPath);
+  const badCanvasPreview = () => post(pagesPath + "/preview", "{");
+  const badCanvasCreate = () => post(pagesPath + "/create", "{");
   const admitted = [
     [getHistory, 200],
     [count, 200],
@@ -1162,6 +1152,9 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
     [badHistory, 400],
     [getAuth, 200],
     [historySubpath, 404],
+    [getCanvasPages, 403],
+    [badCanvasPreview, 400],
+    [badCanvasCreate, 400],
   ];
 
   assert.equal((await f.login("teacher")).status, 200);
@@ -1185,6 +1178,317 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
   }
   assert.equal(draftCalls, 1);
   assert.equal(historyReads, 1);
+  assert.deepEqual(syntheticCanvas.calls, []);
   assert.equal((await f.request(draftPath)).status, 404);
   assert.equal((await f.request("/health")).status, 200);
+});
+
+const pagesPath = "/api/v1/canvas/pages";
+const authoredDraft = {
+  title: "Studio — 地图 🌍",
+  body: "<h2>地图</h2><p>Compare <strong>two</strong> routes &amp; explain&nbsp;🌍.</p>",
+};
+async function pageEntries(synthetic) {
+  const clock = { now };
+  const f = await fixture({
+    autoLogin: false,
+    canvas: () => canvas,
+    authNow: () => clock.now,
+    canvasPages: synthetic.options,
+  });
+  const response = await launch(f);
+  assert.equal(response.status, 303);
+  const canvasCookie = cookie(response);
+  const request = (phase, body, selected = canvasCookie, extra = {}) =>
+    f.request(pagesPath + (phase ? "/" + phase : ""), {
+      method: phase ? "POST" : "GET",
+      headers: authenticated(selected, {
+        ...(phase ? { "content-type": "application/json" } : {}),
+        ...extra,
+      }),
+      ...(phase ? { body: JSON.stringify(body) } : {}),
+    });
+  const preview = async (draft = authoredDraft) => {
+    const res = await request("preview", { draft });
+    assert.equal(res.status, 200);
+    return res.json();
+  };
+  const create = (plan, draft = plan.draft) =>
+    request("create", { confirm: true, planId: plan.planId, draft });
+  return { f, clock, request, preview, create };
+}
+
+test("Canvas Pages needs the signed Teacher and a matching, current, exact single-use preview", async (t) => {
+  const synthetic = canvasPageFixture();
+  const { f, request, preview, create } = await pageEntries(synthetic);
+  t.after(() => f.close());
+  for (const role of ["admin", "teacher", "student"]) {
+    assert.equal((await f.login(role)).status, 200);
+    assert.equal((await request("", undefined, f.cookie())).status, 403);
+    assert.equal(
+      (await request("preview", { draft: authoredDraft }, f.cookie())).status,
+      403,
+    );
+    assert.equal(
+      (await request("create", { draft: authoredDraft }, f.cookie())).status,
+      403,
+    );
+  }
+  assert.equal((await request("", undefined, "")).status, 401);
+  assert.equal(
+    (
+      await request("preview", { draft: authoredDraft }, undefined, {
+        origin: canvas.canvasOrigin,
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request("", undefined, undefined, {
+        authorization: "Bearer synthetic",
+      })
+    ).status,
+    403,
+  );
+  assert.deepEqual(synthetic.calls, []);
+  assert.deepEqual(await (await request("")).json(), { enabled: true });
+  for (const draft of [
+    { ...authoredDraft, body: "<h2> </h2><p><strong>\n\t</strong><br></p>" },
+    { ...authoredDraft, body: '<p data-note="demo">Draft</p>' },
+    {
+      ...authoredDraft,
+      body: "<h2>Invalid nesting<ul><li>List</li></ul></h2>",
+    },
+    { ...authoredDraft, body: "<p>Broken Unicode \ud800</p>" },
+    { ...authoredDraft, body: "<p>方向\u202e示例</p>" },
+    { ...authoredDraft, body: "<p>" + "界".repeat(6000) + "</p>" },
+    { ...authoredDraft, title: "Misleading\u2066 display" },
+    { ...authoredDraft, courseId: canvas.courseId },
+  ])
+    assert.equal((await request("preview", { draft })).status, 400);
+  assert.equal(
+    (
+      await request("preview", {
+        draft: { ...authoredDraft, title: synthetic.settings.canvasToken },
+      })
+    ).status,
+    503,
+  );
+  assert.deepEqual(synthetic.calls, []);
+  const plan = await preview();
+  assert.deepEqual(plan.target, {
+    origin: canvas.canvasOrigin,
+    courseId: canvas.courseId,
+    teacherId: canvas.userId,
+    courseName: "Synthetic Studio",
+  });
+  assert.deepEqual(plan.draft, authoredDraft);
+  assert.deepEqual(synthetic.calls, [
+    ["GET", "/users/self"],
+    ["GET", `/courses/${canvas.courseId}`],
+  ]);
+  assert.equal(
+    (await request("create", { planId: plan.planId, draft: plan.draft }))
+      .status,
+    400,
+  );
+  assert.equal(
+    (
+      await request("create", {
+        confirm: false,
+        planId: plan.planId,
+        draft: plan.draft,
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await create(plan, { ...plan.draft, title: "Different title" })).status,
+    409,
+  );
+  assert.equal(
+    (
+      await create(plan, {
+        ...plan.draft,
+        body: plan.draft.body.replace("two", "three"),
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await create(plan, {
+        ...plan.draft,
+        body: plan.draft.body.replace("<h2>", "<H2>"),
+      })
+    ).status,
+    400,
+  );
+  assert.deepEqual(synthetic.writes, []);
+  const concurrent = await Promise.all([create(plan), create(plan)]);
+  assert.deepEqual(concurrent.map((r) => r.status).sort(), [200, 409]);
+  assert.deepEqual(await concurrent.find((r) => r.ok).json(), {
+    status: "VERIFIED",
+    pageId: "9001",
+  });
+  assert.deepEqual(synthetic.writes, [
+    {
+      "wiki_page[title]": authoredDraft.title,
+      "wiki_page[body]": authoredDraft.body,
+      "wiki_page[published]": "false",
+      "wiki_page[editing_roles]": "teachers",
+      "wiki_page[notify_of_update]": "false",
+    },
+  ]);
+  assert.deepEqual(synthetic.calls.slice(-4), [
+    ["GET", "/users/self"],
+    ["GET", `/courses/${canvas.courseId}`],
+    ["POST", `/courses/${canvas.courseId}/pages`],
+    ["GET", `/courses/${canvas.courseId}/pages/page_id:9001`],
+  ]);
+  assert.equal((await create(plan)).status, 409);
+  assert.equal(synthetic.writes.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(f.logs),
+    /Studio|routes|synthetic-rest-token/,
+  );
+});
+
+test("Canvas Page writes fail closed on authority, target, preview or configuration drift", async (t) => {
+  const synthetic = canvasPageFixture();
+  const { f, clock, request, preview, create } = await pageEntries(synthetic);
+  t.after(() => f.close());
+  const original = { ...synthetic.settings };
+  for (const change of [
+    { origin: "https://other.example.test" },
+    { teacherId: "73002" },
+    { courseId: "42002" },
+    { expiresAt: new Date(now).toISOString() },
+    { canvasToken: "invalid token" },
+  ]) {
+    Object.assign(synthetic.settings, change);
+    assert.equal((await request("")).status, 503);
+    assert.equal(
+      (await request("preview", { draft: authoredDraft })).status,
+      503,
+    );
+    Object.assign(synthetic.settings, original);
+  }
+  assert.deepEqual(synthetic.calls, []);
+  synthetic.remote.actorId = "73002";
+  assert.equal(
+    (await request("preview", { draft: authoredDraft })).status,
+    503,
+  );
+  assert.deepEqual(synthetic.calls, [["GET", "/users/self"]]);
+  synthetic.remote.actorId = canvas.userId;
+  const course = synthetic.remote.course;
+  for (const change of [
+    { id: 42002 },
+    { workflow_state: "unpublished" },
+    {
+      enrollments: [
+        { type: "student", user_id: 73001, enrollment_state: "active" },
+      ],
+    },
+    {
+      enrollments: [
+        { type: "teacher", user_id: 73002, enrollment_state: "active" },
+      ],
+    },
+    {
+      enrollments: [
+        { type: "teacher", user_id: 73001, enrollment_state: "inactive" },
+      ],
+    },
+    { name: original.canvasToken },
+  ]) {
+    synthetic.remote.course = { ...course, ...change };
+    const unavailable = await request("preview", { draft: authoredDraft });
+    assert.equal(unavailable.status, 503);
+    assert.ok(!(await unavailable.text()).includes(original.canvasToken));
+  }
+  synthetic.remote.course = course;
+  const otherSession = cookie(
+    await launch(f, { oauth_nonce: "synthetic-second-session" }),
+  );
+  let plan = await preview();
+  assert.equal(
+    (
+      await request(
+        "create",
+        { planId: plan.planId, draft: plan.draft, confirm: true },
+        otherSession,
+      )
+    ).status,
+    409,
+  );
+  synthetic.remote.course = { ...course, name: "Renamed Studio" };
+  assert.equal((await create(plan)).status, 409);
+  synthetic.remote.course = course;
+  plan = await preview();
+  clock.now = now + 300_001;
+  assert.equal((await create(plan)).status, 409);
+  plan = await preview();
+  const replacement = await preview();
+  assert.equal((await create(plan)).status, 409);
+  synthetic.remote.before = (method, endpoint) => {
+    if (method === "GET" && endpoint === `/courses/${canvas.courseId}`)
+      synthetic.settings.canvasToken = "rotated-synthetic-rest-value";
+  };
+  assert.equal((await create(replacement)).status, 409);
+  assert.deepEqual(synthetic.writes, []);
+});
+
+test("Canvas Page returns honest readback results and never retries a dispatched write", async (t) => {
+  const synthetic = canvasPageFixture();
+  const { f, preview, create } = await pageEntries(synthetic);
+  t.after(() => f.close());
+  for (const [label, change] of [
+    ["published", (page) => ({ ...page, published: true })],
+    ["wrong ID", (page) => ({ ...page, page_id: 9002 })],
+    ["changed body", (page) => ({ ...page, body: "<p>Changed</p>" })],
+    [
+      "wider editing roles",
+      (page) => ({ ...page, editing_roles: "teachers,students" }),
+    ],
+    [
+      "unavailable readback",
+      () => {
+        throw new Error("Synthetic readback unavailable");
+      },
+    ],
+  ]) {
+    synthetic.remote.readBack = change;
+    const plan = await preview();
+    const result = await create(plan);
+    assert.deepEqual(
+      await result.json(),
+      { status: "UNVERIFIED", pageId: "9001" },
+      label,
+    );
+    assert.equal((await create(plan)).status, 409);
+  }
+  synthetic.remote.afterCreate = () => {
+    throw new Error("Synthetic connection ended before response");
+  };
+  const lost = await preview();
+  assert.deepEqual(await (await create(lost)).json(), { status: "UNCERTAIN" });
+  assert.equal((await create(lost)).status, 409);
+  assert.equal(synthetic.writes.length, 6);
+  synthetic.remote.afterCreate = () => {
+    synthetic.settings.canvasToken = "rotated-fixture-token-after-dispatch";
+  };
+  const changed = await preview();
+  const callsBeforeConfirm = synthetic.calls.length;
+  assert.deepEqual(await (await create(changed)).json(), {
+    status: "UNCERTAIN",
+  });
+  assert.equal((await create(changed)).status, 409);
+  assert.deepEqual(
+    synthetic.calls.slice(callsBeforeConfirm).map(([method]) => method),
+    ["GET", "GET", "POST"],
+  );
+  assert.equal(synthetic.writes.length, 7);
 });
