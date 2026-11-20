@@ -1254,6 +1254,7 @@ test("Canvas Pages needs the signed Teacher and a matching, current, exact singl
   assert.deepEqual(synthetic.calls, []);
   assert.deepEqual(await (await request("")).json(), { enabled: true });
   for (const draft of [
+    { ...authoredDraft, body: "<h2> </h2><p><strong>\n\t</strong><br></p>" },
     { ...authoredDraft, body: '<p data-note="demo">Draft</p>' },
     {
       ...authoredDraft,

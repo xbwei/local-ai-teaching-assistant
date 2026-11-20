@@ -62,6 +62,7 @@ export function safeLessonHtml(value: unknown): string {
   ]);
   const stack: string[] = [];
   let result = "";
+  let hasText = false;
   for (const token of value.split(/(<[^>]*>)/u)) {
     if (token.startsWith("<")) {
       const m = /^<(\/?)([a-z0-9]+)\s*(\/?)>$/iu.exec(token);
@@ -97,14 +98,11 @@ export function safeLessonHtml(value: unknown): string {
         /&(?!(?:amp|lt|gt|quot|apos|nbsp|#39);)/u.test(token)
       )
         throw new Error("INVALID_HTML");
+      hasText ||= token.trim().length > 0;
       result += token.replaceAll(">", "&gt;");
     }
   }
-  if (
-    utf8Bytes(result) > 16000 ||
-    stack.length ||
-    !result.replace(/<[^>]+>/gu, "").trim()
-  )
+  if (utf8Bytes(result) > 16000 || stack.length || !hasText)
     throw new Error("INVALID_HTML");
   return result;
 }
