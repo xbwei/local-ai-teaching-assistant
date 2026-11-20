@@ -19,6 +19,7 @@ Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teac
 - **Chat locally:** `gemma4:12b-mlx` by default, with an explicit `llama3.1:8b` alternative. Continue across turns, cancel a response, or start a new conversation.
 - **Choose your provider:** Local / optional OpenAI / Compare, with visible provider/model attribution and no silent fallback. OpenAI uses your own key through server-side macOS Keychain.
 - **Ask course-grounded questions:** supported public course sources, bounded evidence and visible source provenance. Unavailable, invalid or insufficient evidence fails closed before model invocation.
+- **Use LAITA on a phone:** the responsive interface supports an online Safari home-screen entry when your phone can reach your LAITA HTTPS origin. [Phone setup](docs/GETTING-STARTED.md#iphone-home-screen-entry).
 - **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review.
 - **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.
 - **Use local roles:** Owner Admin / Teacher / Student views with scoped History, all operated by the same Owner.

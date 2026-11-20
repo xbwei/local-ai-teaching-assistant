@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="manifest" href="/assets/pwa/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/assets/pwa/icon-180.png" />
+    <meta name="theme-color" content="#163e45" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="LAITA" />
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; media-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
@@ -64,6 +69,15 @@
             >History &amp; Review (new tab)</a
           >
         </nav>
+        <details class="install-help">
+          <summary>Use LAITA from your home screen</summary>
+          <p>
+            On iPhone, open this page in Safari and choose Add to Home Screen
+            from the Share menu. Turn on Open as Web App if offered. Open LAITA
+            from its icon and sign in again if prompted. The app needs a
+            connection to your LAITA server.
+          </p>
+        </details>
         <span id="recording-status" role="status"></span>
       </aside>
       <p id="connection-status" role="status" class="connection-status"></p>

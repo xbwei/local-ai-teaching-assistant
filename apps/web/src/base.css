@@ -86,6 +86,23 @@ h1 {
   font-size: 12px;
   color: #595959;
 }
+.install-help {
+  display: none;
+}
+@media (max-width: 600px) {
+  .install-help {
+    display: block;
+  }
+  .install-help summary {
+    cursor: pointer;
+    padding: 6px 0;
+  }
+}
+@media (display-mode: standalone) {
+  .install-help {
+    display: none;
+  }
+}
 main {
   background: white;
   padding: 36px 44px 4px;

@@ -32,3 +32,9 @@ These exact media derivatives have Owner authorization. That permission does not
 ## v0.2.0 sandbox Canvas demo
 
 `assets/demo/laita-v020-canvas.gif` is the Owner-provided, Owner-authorized derivative for Public repository use, supplied in PR #51: a 960 × 540 animated GIF showing Canvas → LAITA launch/demo. It visibly displays **SANDBOX ONLY** and **No real student or teacher data.** No real student or teacher data, credentials, consumer key, shared secret, API token, private hostname or private operational path is present. No UI or state was fabricated. The supplied GIF is committed unchanged; the separate social-media MP4 is not included. This sandbox demonstration is not universal Canvas/browser acceptance evidence.
+
+## Synthetic phone captures
+
+The [install guide](assets/screenshots/laita-phone-entry.png) and [phone composer](assets/screenshots/laita-phone-chat.png) show the built UI at 390 × 844 in Chromium. The local browser fixture uses synthetic responses and captures the app without browser chrome. The PNGs contain no participant records, credentials, or operator endpoints. Their metadata was stripped. Physical iPhone installation remains unverified.
+
+The 180, 192 and 512 pixel app icons in `apps/web/public/assets/pwa/` are raster renders of the repository's LAITA wordmark.

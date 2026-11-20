@@ -330,6 +330,128 @@ test("fixed public snapshots support representative English and Chinese lookup w
   assert.match(courseGroundingInstruction, /never instructions or authority/);
 });
 
+test("standalone assignment phrasing preserves the explicit course and locator", async (t) => {
+  const { grounder } = await refreshed(t);
+  const signal = new AbortController().signal;
+  for (const [question, course, source] of [
+    ["What must I submit for IA340's fifth assignment?", "IA340", "TYPED"],
+    ["What is required for IA342 assignment 5?", "IA342", "TYPED"],
+    ["What should I submit for RA342's fifth lab?", "IA342", "TRANSCRIPT"],
+  ]) {
+    const result = await grounder.ground(question, signal, undefined, source);
+    assert.equal(result.status, "FOUND", question);
+    assert.equal(result.course, course);
+    assert.equal(result.sources[0].path, "docs/assignments/lab-5/index.md");
+  }
+  for (const question of [
+    "What should I submit for IA340's assignment?",
+    "What is required for IA340 assignment 05 in week 5?",
+    "What is required for IA340 assignment 5a?",
+    "What is required for IA340 assignment 5.1?",
+    "Does IA340's first assignment have the same deliverables as lab 5?",
+    "What are we doing this week in IA340?",
+  ])
+    assert.deepEqual(
+      await grounder.ground(question, signal),
+      { status: "AMBIGUOUS", course: "IA340" },
+      question,
+    );
+  assert.deepEqual(
+    await grounder.ground("What is required for the fifth assignment?", signal),
+    { status: "ORDINARY" },
+  );
+});
+
+test("ambiguous single-label and plural assignment locators require clarification", async (t) => {
+  const { grounder } = await refreshed(t);
+  const signal = new AbortController().signal;
+  const cases = [
+    "assignment 5-1",
+    "assignment 5_1",
+    "assignment 5 and 6",
+    "assignment 5, 6",
+    "assignment 5, and 6",
+    "assignment 5 or 6",
+    "assignment 5 to 7",
+    "assignment 5 through 7",
+    "作业5到7",
+    "作业5至7",
+    "Lab 5/6 in Week 5",
+    "first and second assignment",
+    "first or second lab",
+    "fifth assignment and 6",
+    "fifth assignment or sixth",
+    "labs 5 and 6 in Week 5",
+    "assignments 5.1 in Week 5",
+    "lab 5 and assignments 6, 7",
+    "fifth assignments in Week 5",
+    "assignment 5 through the seventh",
+    "assignment 5 up to 7",
+    "assignment 5 or 7 may be due",
+    "the fifth assignment and the seventh are due",
+    "first to the third assignment",
+    "1st and second assignment",
+    "first and the 2nd assignment",
+    "the 1st through the 3rd assignment",
+    "the fifth assignment or the seventh",
+    "the fifth assignment, or the 7th",
+    "assignment between 5 and 7 in Week 5",
+    "assignment from the fifth through the seventh in Week 5",
+    "the second to the twenty-first assignment",
+    "assignment 5_b",
+  ];
+  const results = [];
+  for (const reference of cases) {
+    let lab;
+    const result = await grounder.ground(
+      `What must I submit for IA340 ${reference}?`,
+      signal,
+      (_stage, event, _duration, detail) => {
+        if (event === "LOCATOR_CHECKED") lab = detail.lab;
+      },
+    );
+    results.push([reference, result.status, lab]);
+  }
+  assert.deepEqual(
+    results,
+    cases.map((reference) => [reference, "AMBIGUOUS", null]),
+  );
+
+  const lab = await grounder.ground(
+    "What must I submit for IA340 Lab 5?",
+    signal,
+  );
+  assert.equal(lab.status, "FOUND");
+  assert.equal(lab.sources[0].path, "docs/assignments/lab-5/index.md");
+  const week = await grounder.ground(
+    "What do we collect in IA340 Week 5?",
+    signal,
+  );
+  assert.equal(week.status, "FOUND");
+  assert.equal(week.sources[0].path, "docs/modules/module-5/index.md");
+
+  for (const question of [
+    "What should I submit for IA340 Week 5 and the fifth assignment?",
+    "What do I submit for IA340 assignment 5 to prepare 7 slides?",
+    "Can you explain IA340 assignment 5 and 7 slides about it?",
+    "For IA340, I have 2 questions about the fifth assignment.",
+    "What should I submit for IA340 assignment 5 and Week 5?",
+    "What should I submit for IA340 assignment 5 during the seventh week?",
+    "Can you explain IA340 assignment 5 and the seventh week?",
+  ]) {
+    let lab;
+    const result = await grounder.ground(
+      question,
+      signal,
+      (_stage, event, _duration, detail) => {
+        if (event === "LOCATOR_CHECKED") lab = detail.lab;
+      },
+    );
+    assert.equal(lab, "5", question);
+    assert.notEqual(result.status, "AMBIGUOUS", question);
+  }
+});
+
 test("bilingual whole-course questions select substantive overview evidence, not lab word matches", async (t) => {
   const { grounder } = await refreshed(t, overviewFiles);
   for (const course of ["IA340", "IA342"]) {

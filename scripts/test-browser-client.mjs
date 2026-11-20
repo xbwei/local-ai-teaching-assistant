@@ -38,7 +38,8 @@ const longChineseAnswer = Array.from(
   (_, index) =>
     `第${index + 1}段用合成内容说明一个概念，并保留足够的文字来验证小屏幕上的完整长回答阅读。`,
 ).join("\n\n");
-const courseQuestion = "What must students submit for IA342 Lab 5?";
+const courseQuestion =
+  "What must students submit for IA342's fifth assignment?";
 const courseCommit = "b".repeat(40);
 const coursePath = "docs/assignments/lab-5/index.md";
 const courseSection = "Deliverables";
@@ -200,7 +201,9 @@ try {
     webRoot,
   });
   browser = await chromium.launch({
-    channel: "chrome",
+    ...(process.env.CLIENT_CHROMIUM_BINARY
+      ? { executablePath: process.env.CLIENT_CHROMIUM_BINARY }
+      : { channel: "chrome" }),
     headless: true,
     args: [
       "--use-fake-device-for-media-stream",
@@ -272,6 +275,32 @@ try {
         };
       });
     const page = await context.newPage();
+    if (name === "phone") {
+      const manifestResponse = await context.request.get(
+        `${f.origin}/assets/pwa/manifest.webmanifest`,
+      );
+      assert.equal(manifestResponse.status(), 200);
+      assert.match(manifestResponse.headers()["content-type"], /manifest\+json/u);
+      const manifest = await manifestResponse.json();
+      assert.equal(manifest.id, "/");
+      assert.equal(manifest.start_url, "/");
+      assert.equal(manifest.scope, "/");
+      assert.equal(manifest.display, "standalone");
+      assert.deepEqual(
+        manifest.icons.map(({ src, sizes }) => [src, sizes]),
+        [
+          ["icon-192.png", "192x192"],
+          ["icon-512.png", "512x512"],
+        ],
+      );
+      for (const size of [180, 192, 512]) {
+        const icon = await context.request.get(
+          `${f.origin}/assets/pwa/icon-${size}.png`,
+        );
+        assert.equal(icon.status(), 200);
+        assert.equal(icon.headers()["content-type"], "image/png");
+      }
+    }
     const requests = [],
       errors = [];
     page.on("request", (r) => requests.push(r.url()));
@@ -327,6 +356,35 @@ try {
       await page.evaluate(() => document.activeElement?.id),
       compactTouch ? "" : "question",
     );
+    const installGuide = page.locator(".install-help");
+    if (name === "desktop") assert.equal(await installGuide.isVisible(), false);
+    if (name === "phone") {
+      assert.equal(await installGuide.isVisible(), true);
+      assert.equal(
+        await page.locator('link[rel="manifest"]').getAttribute("href"),
+        "/assets/pwa/manifest.webmanifest",
+      );
+      assert.equal(
+        await page.locator('link[rel="apple-touch-icon"]').getAttribute("href"),
+        "/assets/pwa/icon-180.png",
+      );
+      assert.equal(
+        await page.evaluate(() => navigator.serviceWorker.controller),
+        null,
+      );
+      const scroll = await page.evaluate(() => window.scrollY);
+      await installGuide.locator("summary").click();
+      await installGuide.getByText(/add to home screen/i).waitFor();
+      if (process.env.CLIENT_SCREENSHOTS) {
+        mkdirSync(process.env.CLIENT_SCREENSHOTS, { recursive: true });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({
+          path: path.join(process.env.CLIENT_SCREENSHOTS, "phone-entry.png"),
+        });
+      }
+      await installGuide.locator("summary").click();
+      await page.evaluate((top) => window.scrollTo(0, top), scroll);
+    }
     assert.equal(await page.locator('input[name="provider"]').count(), 3);
     assert.equal(await page.locator("#pairing").count(), 0);
     assert.equal(await page.locator("#speech-language").count(), 0);
