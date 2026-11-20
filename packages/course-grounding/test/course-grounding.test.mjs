@@ -362,6 +362,49 @@ test("standalone assignment phrasing preserves the explicit course and locator",
   );
 });
 
+test("compound and shared-label assignment numbers require clarification", async (t) => {
+  const { grounder } = await refreshed(t);
+  const signal = new AbortController().signal;
+  const cases = [
+    "assignment 5-1",
+    "assignment 5_1",
+    "assignment 5 and 6",
+    "assignment 5, 6",
+    "assignment 5, and 6",
+    "assignment 5 or 6",
+    "Lab 5/6 in Week 5",
+  ];
+  const results = [];
+  for (const reference of cases) {
+    let lab;
+    const result = await grounder.ground(
+      `What must I submit for IA340 ${reference}?`,
+      signal,
+      (_stage, event, _duration, detail) => {
+        if (event === "LOCATOR_CHECKED") lab = detail.lab;
+      },
+    );
+    results.push([reference, result.status, lab]);
+  }
+  assert.deepEqual(
+    results,
+    cases.map((reference) => [reference, "AMBIGUOUS", null]),
+  );
+
+  const lab = await grounder.ground(
+    "What must I submit for IA340 Lab 5?",
+    signal,
+  );
+  assert.equal(lab.status, "FOUND");
+  assert.equal(lab.sources[0].path, "docs/assignments/lab-5/index.md");
+  const week = await grounder.ground(
+    "What do we collect in IA340 Week 5?",
+    signal,
+  );
+  assert.equal(week.status, "FOUND");
+  assert.equal(week.sources[0].path, "docs/modules/module-5/index.md");
+});
+
 test("bilingual whole-course questions select substantive overview evidence, not lab word matches", async (t) => {
   const { grounder } = await refreshed(t, overviewFiles);
   for (const course of ["IA340", "IA342"]) {
