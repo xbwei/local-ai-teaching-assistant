@@ -602,3 +602,46 @@ select {
 html[data-touch-capable][data-virtual-keyboard] .owner-role {
   display: none;
 }
+
+.teacher-tool {
+  margin-top: 10px;
+  padding: 4px 12px 10px;
+  border: 1px solid #d7d3dc;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.teacher-tool summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+}
+.teacher-tool form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 8px 0;
+}
+.teacher-tool .teacher-field {
+  flex: 1 1 170px;
+  min-width: 0;
+}
+.teacher-tool input,
+.teacher-tool select,
+.teacher-tool textarea {
+  display: block;
+  width: 100%;
+}
+.teacher-tool input,
+.teacher-tool textarea {
+  min-height: 44px;
+  border: 1px solid #777;
+  border-radius: 6px;
+  padding: 6px;
+}
+.teacher-tool textarea {
+  resize: vertical;
+}
+.teacher-tool ul:empty {
+  display: none;
+}

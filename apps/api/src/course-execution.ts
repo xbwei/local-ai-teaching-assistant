@@ -15,6 +15,7 @@ import {
   courseEvidencePrompt,
   identifyCourseQuestion,
   type CourseGroundingResult,
+  type CourseId,
 } from "@laita/course-grounding";
 
 type Evidence = {
@@ -81,6 +82,7 @@ export function createCourseAwareExecution(options: {
     sessionRef: `session-${string}`,
     trace?: Trace,
     source: "TYPED" | "TRANSCRIPT" = "TYPED",
+    draft?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" },
   ): Promise<ProviderRunResult> {
     const executeProvider: typeof options.executeProvider = async (...args) => {
       const started = Date.now();
@@ -115,6 +117,8 @@ export function createCourseAwareExecution(options: {
       lab: null,
       sources: [],
     });
+    if (draft && identified !== draft.course)
+      return notice(request, { status: "EVIDENCE_AMBIGUOUS" });
     if (!identified) {
       trace?.("RETRIEVAL", "NOT_APPLICABLE");
       return executeProvider(request, signal, sessionRef);
@@ -170,7 +174,18 @@ export function createCourseAwareExecution(options: {
       sources: [],
     });
     if (grounding.status === "ORDINARY")
-      return executeProvider(request, signal, sessionRef);
+      return draft
+        ? notice(request, {
+            status: "EVIDENCE_NOT_FOUND",
+            course: draft.course,
+          })
+        : executeProvider(request, signal, sessionRef);
+    if (
+      draft &&
+      grounding.status === "FOUND" &&
+      grounding.course !== draft.course
+    )
+      return notice(request, { status: "EVIDENCE_AMBIGUOUS" });
     if (grounding.status !== "FOUND") {
       trace?.("PROVIDER", "NOT_EXECUTED");
       const status = {
@@ -187,9 +202,12 @@ export function createCourseAwareExecution(options: {
         course: identified,
       });
     }
+    const systemInstruction = draft
+      ? `${courseGroundingInstruction}\nDraft editable student-facing Markdown ${draft.kind === "PAGE" ? "lesson content" : "assignment instructions"} in the topic's language. Use short headings and practice prompts. Do not invent citations, deadlines, marks, URLs, settings or completed actions. Return only draft content.`
+      : courseGroundingInstruction;
     let fittedRequest = request;
     const firstEvidence = {
-      systemInstruction: courseGroundingInstruction,
+      systemInstruction,
       prompt: courseEvidencePrompt(grounding.sources.slice(0, 1)),
     };
     const inputLimit =
@@ -221,7 +239,7 @@ export function createCourseAwareExecution(options: {
       const candidate = [...sources, source];
       if (
         !fits({
-          systemInstruction: courseGroundingInstruction,
+          systemInstruction,
           prompt: courseEvidencePrompt(candidate),
         })
       )
@@ -242,7 +260,7 @@ export function createCourseAwareExecution(options: {
       sources,
     });
     const result = await executeProvider(fittedRequest, signal, sessionRef, {
-      systemInstruction: courseGroundingInstruction,
+      systemInstruction,
       prompt: courseEvidencePrompt(sources),
       refs: sources.map((_, index) => `course-source-${index + 1}`),
     });

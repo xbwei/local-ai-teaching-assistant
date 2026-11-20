@@ -1,5 +1,7 @@
 import { createOwnerSessions } from "./owner-session.ts";
 import type { CanvasConfiguration } from "./canvas.ts";
+import type { TeacherDraft } from "./teacher-draft.ts";
+import type { TeacherHistoryOptions } from "./teacher-history.ts";
 import { installHistoryRoutes } from "./history.ts";
 import path from "node:path";
 import { createOwnerTransport } from "./browser.ts";
@@ -47,6 +49,8 @@ interface AppOptions {
   ) => import("@laita/persistence").HistoryRepository;
   canvas?: () => CanvasConfiguration | undefined;
   authNow?: () => number;
+  teacherDraft?: TeacherDraft;
+  teacherHistory?: TeacherHistoryOptions;
   browserAccess?: AccessConfiguration;
   browserNow?: () => number;
   webRoot?: string;
@@ -167,6 +171,9 @@ export function createApp(options: AppOptions = {}) {
         access: options.browserAccess,
         ...(options.ownerAuth ? { store: options.ownerAuth } : {}),
         ...(options.canvas ? { canvas: options.canvas } : {}),
+        ...(options.teacherHistory
+          ? { sampleHistoryContext: options.teacherHistory.context }
+          : {}),
         ...(options.authNow ? { now: options.authNow } : {}),
       })
     : undefined;
@@ -176,7 +183,7 @@ export function createApp(options: AppOptions = {}) {
     context.code = "OK";
     next();
   });
-  ownerSessions?.install(app);
+  ownerSessions?.install(app, options.teacherDraft, options.teacherHistory);
   if (ownerSessions)
     app.use(["/api/admin", "/api/instructor"], ownerSessions.entryLimit);
   function authorize(

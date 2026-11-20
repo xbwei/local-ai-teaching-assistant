@@ -106,6 +106,18 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/api/src/owner-session.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/teacher-draft.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/teacher-history.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "apps/api/test/access.test.mjs",
       "classification": "GENERICIZE"
     },
@@ -140,6 +152,10 @@
     {
       "path": "apps/api/test/local-health.test.mjs",
       "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/test/owner-canvas.test.mjs",
+      "classification": "RECREATE"
     },
     {
       "path": "apps/api/test/public-candidate.test.mjs",
@@ -222,11 +238,19 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/web/src/client/teacher-local.ts",
+      "classification": "RECREATE"
+    },
+    {
       "path": "apps/web/src/client/viewport.ts",
       "classification": "COPY"
     },
     {
       "path": "apps/web/src/laita.svg",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/web/src/login.ts",
       "classification": "RECREATE"
     },
     {
@@ -299,6 +323,10 @@
     },
     {
       "path": "docs/SPEECH.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/TEACHING-WORKFLOW.md",
       "classification": "RECREATE"
     },
     {

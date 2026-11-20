@@ -812,3 +812,78 @@ test("follow-up transcript alias routing keeps typed behavior and Cloud isolatio
   assert.equal(grounded, 1);
   assert.equal(calls, 1);
 });
+
+test("Teacher drafting requires evidence for the selected course before Local generation", async () => {
+  let grounding = { status: "ORDINARY" };
+  const calls = [];
+  const execute = createCourseAwareExecution({
+    grounder: {
+      async ground() {
+        return grounding;
+      },
+    },
+    async executeProvider(request, _signal, _session, evidence) {
+      assert.equal(request.mode, "LOCAL");
+      calls.push(evidence);
+      return providerResult();
+    },
+  });
+  const run = (text, kind = "PAGE", mode = "LOCAL") =>
+    execute(
+      request(text, mode),
+      AbortSignal.timeout(1000),
+      session,
+      undefined,
+      "TYPED",
+      { course: "IA342", kind },
+    );
+  assert.equal(
+    (await run("IA340: Lab 5")).grounding.status,
+    "EVIDENCE_AMBIGUOUS",
+  );
+  assert.equal(
+    (await run("IA342 and IA340: Lab 5")).grounding.status,
+    "EVIDENCE_AMBIGUOUS",
+  );
+  assert.equal(
+    (await run("IA342: Lab 5")).grounding.status,
+    "EVIDENCE_NOT_FOUND",
+  );
+  assert.equal(
+    (await run("IA342: Lab 5", "PAGE", "OPENAI")).grounding.status,
+    "LOCAL_ONLY",
+  );
+  const sources = [
+    {
+      course: "IA342",
+      repository: "JMU-Data/IA342",
+      commit: "c".repeat(40),
+      path: "docs/example.md",
+      section: "Lab 5",
+      url: "https://example.test/example",
+      excerpt: "Synthetic course material for a data visualization lab.",
+    },
+  ];
+  grounding = {
+    status: "FOUND",
+    course: "IA340",
+    sources,
+    snapshot: "c".repeat(40),
+  };
+  assert.equal(
+    (await run("IA342: Lab 5")).grounding.status,
+    "EVIDENCE_AMBIGUOUS",
+  );
+  assert.equal(calls.length, 0);
+  grounding.course = "IA342";
+  for (const [kind, wording] of [
+    ["PAGE", "lesson content"],
+    ["ASSIGNMENT", "assignment instructions"],
+  ]) {
+    const result = await run("IA342: Lab 5", kind);
+    assert.deepEqual(result.grounding.sources, sources);
+    assert.match(calls.at(-1).systemInstruction, new RegExp(wording));
+    assert.match(calls.at(-1).prompt, /Synthetic course material/);
+  }
+  assert.equal(calls.length, 2);
+});

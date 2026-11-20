@@ -5,6 +5,17 @@ import type { AccessConfiguration } from "@laita/contracts/server";
 import type { HistoryScope, OwnerAuthRepository } from "@laita/persistence";
 import { verifyOwnerCredential } from "./owner-credential.ts";
 import {
+  createTeacherDraftHandler,
+  createTeacherDraftParser,
+  type TeacherDraft,
+} from "./teacher-draft.ts";
+import {
+  createTeacherHistoryParser,
+  createTeacherHistoryQueryHandler,
+  createTeacherHistoryStatusHandler,
+  type TeacherHistoryOptions,
+} from "./teacher-history.ts";
+import {
   canvasContext,
   canvasFingerprint,
   type CanvasConfiguration,
@@ -23,6 +34,7 @@ export function createOwnerSessions(options: {
   access: AccessConfiguration;
   store?: OwnerAuthRepository;
   canvas?: () => CanvasConfiguration | undefined;
+  sampleHistoryContext?: string;
   now?: () => number;
 }) {
   const { access, store } = options;
@@ -146,13 +158,34 @@ export function createOwnerSessions(options: {
       return deny(res, 503);
     }
   }
+  function isCurrent(req: Request, binding: string) {
+    try {
+      return transport(req) && lookup(req)?.binding === binding;
+    } catch {
+      return false;
+    }
+  }
+  const authority = { authorize, isCurrent };
   return {
-    authorize,
+    ...authority,
     entryLimit,
-    install(app: Express) {
+    install(
+      app: Express,
+      teacherDraft?: TeacherDraft,
+      teacherHistory?: TeacherHistoryOptions,
+    ): void {
       app.get("/api/v1/auth/session", entryLimit, (req, res) => {
         const s = authorize(req, res);
-        if (s) res.json({ role: s.role, source: s.source });
+        if (s)
+          res.json({
+            role: s.role,
+            source: s.source,
+            ...(s.role === "student" &&
+            s.context === options.sampleHistoryContext &&
+            options.sampleHistoryContext
+              ? { sample: true }
+              : {}),
+          });
       });
       const json = express.json({
         inflate: false,
@@ -182,10 +215,16 @@ export function createOwnerSessions(options: {
           });
         },
         async (req, res) => {
+          const keys = req.body && Object.keys(req.body).sort().join(",");
+          const sample =
+            keys === "passphrase,role,sample" &&
+            req.body.role === "student" &&
+            req.body.sample === true &&
+            options.sampleHistoryContext;
           if (
             !req.is("application/json") ||
             !req.body ||
-            Object.keys(req.body).sort().join(",") !== "passphrase,role" ||
+            (keys !== "passphrase,role" && !sample) ||
             !["admin", "teacher", "student"].includes(req.body.role) ||
             typeof req.body.passphrase !== "string" ||
             Buffer.byteLength(req.body.passphrase) > 1024
@@ -222,7 +261,13 @@ export function createOwnerSessions(options: {
               establish(
                 req,
                 res,
-                { role: req.body.role, source: "local" },
+                {
+                  role: req.body.role,
+                  source: "local",
+                  ...(req.body.role === "student"
+                    ? { context: sample || "" }
+                    : {}),
+                },
                 credential.revision,
               )
             )
@@ -334,6 +379,23 @@ export function createOwnerSessions(options: {
           }
         },
       );
+      if (teacherDraft)
+        app.post(
+          "/api/v1/teacher-draft",
+          entryLimit,
+          createTeacherDraftParser(),
+          createTeacherDraftHandler(authority, teacherDraft),
+        );
+      if (teacherHistory) {
+        const historyPath = "/api/v1/teacher-tools/history";
+        app.use(historyPath, entryLimit);
+        app.get(historyPath, createTeacherHistoryStatusHandler(authority));
+        app.post(
+          historyPath,
+          createTeacherHistoryParser(),
+          createTeacherHistoryQueryHandler(authority, teacherHistory),
+        );
+      }
     },
     close() {
       sessions.clear();

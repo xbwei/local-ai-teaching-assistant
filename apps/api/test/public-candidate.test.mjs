@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:net";
 import {
@@ -56,15 +57,29 @@ for (const cloud of [false, true]) {
       ? { kind: "opaque", id: "synthetic-openai" }
       : null;
     assert.equal(parseConfiguration(JSON.stringify(config)).ok, true);
+    const sampleId = "practice";
+    const sampleQuestion = "How can two visual examples be compared?";
+    const ordinaryQuestion = "Ordinary outside sample";
+    const summary = "The sample explores comparing visual examples.";
     // Every provider request is intercepted in the child. No real Ollama/Cloud/Keychain use.
     const preload = path.join(root, "synthetic-provider.mjs");
     writeFileSync(
       preload,
-      `globalThis.fetch = async (input) => {
+      `globalThis.fetch = async (input, init) => {
       const u = new URL(String(input));
       if (u.origin !== 'http://127.0.0.1:11434') throw new Error('Unexpected network request');
       if (u.pathname === '/api/tags') return Response.json({ models: ['gemma4:12b-mlx','llama3.1:8b'].map(model => ({model,digest:'a'.repeat(64),size:1000})) });
       if (u.pathname === '/api/ps') return Response.json({models:[]});
+      if (u.pathname === '/api/chat' && ${cloud}) {
+        const request = JSON.parse(init.body);
+        const prompt = request.messages.map(({content}) => content).join(' ');
+        if (!prompt.includes(${JSON.stringify(sampleQuestion)}) || prompt.includes(${JSON.stringify(ordinaryQuestion)}))
+          throw new Error('Unexpected synthetic sample scope');
+        const response = { model: request.model, message: { role: 'assistant', content: ${JSON.stringify(summary)} }, done: true, done_reason: 'stop' };
+        return request.stream
+          ? new Response(JSON.stringify(response) + '\\n', { headers: { 'content-type': 'application/x-ndjson' } })
+          : Response.json(response);
+      }
       throw new Error('Unexpected provider execution');
     };`,
       { mode: 0o600 },
@@ -74,6 +89,26 @@ for (const cloud of [false, true]) {
     const db = initializePersistence(paths.value);
     assert.equal(db.ok, true);
     db.value.ownerAuth().setCredential(await testCredential);
+    if (cloud) {
+      const context = createHash("sha256")
+        .update(`laita-test-student:${sampleId}`)
+        .digest("hex");
+      for (const [scope, text] of [
+        [context, sampleQuestion],
+        ["", ordinaryQuestion],
+      ]) {
+        const history = db.value.history({ role: "student", context: scope });
+        const id = randomUUID();
+        history.begin({
+          conversation: randomUUID(),
+          id,
+          inputType: "TYPED",
+          text,
+          correlation: null,
+        });
+        history.outcome(id, "NO_ANSWER");
+      }
+    }
     db.value.close();
     const child = spawn(
       process.execPath,
@@ -83,7 +118,10 @@ for (const cloud of [false, true]) {
         new URL("../dist/main.js", import.meta.url).pathname,
       ],
       {
-        env: { APP_CONFIG_JSON: JSON.stringify(config) },
+        env: {
+          APP_CONFIG_JSON: JSON.stringify(config),
+          ...(cloud ? { LAITA_HISTORY_SAMPLE_ID: sampleId } : {}),
+        },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -148,7 +186,30 @@ for (const cloud of [false, true]) {
         false,
       );
       assert.equal(JSON.stringify(choices).includes("synthetic-openai"), false);
+      const history = `${origin}/api/v1/teacher-tools/history`;
+      assert.equal(
+        (await fetch(history, { headers })).status,
+        cloud ? 200 : 404,
+      );
+      if (cloud) {
+        const ask = (question) =>
+          fetch(history, {
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+            body: JSON.stringify({ question }),
+          });
+        assert.match(
+          (await (await ask("How many questions?")).json()).text,
+          /^1 question recorded/,
+        );
+        assert.deepEqual(
+          await (await ask("Summarize recent questions.")).json(),
+          { text: summary },
+        );
+      }
       assert.equal(output.includes(config.runtimeRoot), false);
+      assert.equal(output.includes(sampleQuestion), false);
+      assert.equal(errors.includes(sampleQuestion), false);
     } finally {
       child.kill("SIGTERM");
       const ended = await Promise.race([

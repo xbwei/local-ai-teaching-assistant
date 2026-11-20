@@ -20,6 +20,8 @@ Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teac
 - **Choose your provider:** Local / optional OpenAI / Compare, with visible provider/model attribution and no silent fallback. OpenAI uses your own key through server-side macOS Keychain.
 - **Ask course-grounded questions:** supported public course sources, bounded evidence and visible source provenance. Unavailable, invalid or insufficient evidence fails closed before model invocation.
 - **Use LAITA on a phone:** the responsive interface supports an online Safari home-screen entry when your phone can reach your LAITA HTTPS origin. [Phone setup](docs/GETTING-STARTED.md#iphone-home-screen-entry).
+- **Draft teaching material:** use the [standalone Teacher tools](docs/TEACHING-WORKFLOW.md) for Local lesson and assignment drafts grounded in supported course sources.
+- **Ask about practice questions:** the opt-in [History Chat plugin](docs/HISTORY.md#teacher-history-plugin) counts and locally summarizes one Test Student sample.
 - **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review.
 - **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.
 - **Use local roles:** Owner Admin / Teacher / Student views with scoped History, all operated by the same Owner.

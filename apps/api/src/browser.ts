@@ -59,7 +59,9 @@ export function createOwnerTransport(
         owner: `${session.binding}:${owner}`,
         historyScope: {
           role: session.role,
-          ...(session.context ? { context: session.context } : {}),
+          ...(session.context !== undefined
+            ? { context: session.context }
+            : {}),
         },
       };
     },

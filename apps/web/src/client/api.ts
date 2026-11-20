@@ -103,6 +103,71 @@ export class InputApi {
     if (signal?.aborted) throw new ClientError();
     return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
   }
+  async teacherDraft(
+    course: string,
+    kind: string,
+    topic: string,
+    signal: AbortSignal,
+  ): Promise<
+    | { code: string }
+    | { text: string; sources: { path: string; section: string }[] }
+  > {
+    const value = await this.request(
+      "/api/v1/teacher-draft",
+      "POST",
+      JSON.stringify({ course, kind, topic }),
+      signal,
+    );
+    if (value && typeof value === "object") {
+      if ("code" in value && typeof value.code === "string")
+        return { code: value.code };
+      if (
+        "text" in value &&
+        typeof value.text === "string" &&
+        "sources" in value &&
+        Array.isArray(value.sources) &&
+        value.sources.every(
+          (source: unknown) =>
+            source &&
+            typeof source === "object" &&
+            "path" in source &&
+            typeof source.path === "string" &&
+            "section" in source &&
+            typeof source.section === "string",
+        )
+      )
+        return {
+          text: value.text,
+          sources: value.sources as { path: string; section: string }[],
+        };
+    }
+    throw new ClientError();
+  }
+  async teacherHistoryEnabled() {
+    const value = await this.request("/api/v1/teacher-tools/history", "GET");
+    return (
+      !!value &&
+      typeof value === "object" &&
+      "enabled" in value &&
+      value.enabled === true
+    );
+  }
+  async teacherHistory(question: string, signal: AbortSignal) {
+    const value = await this.request(
+      "/api/v1/teacher-tools/history",
+      "POST",
+      JSON.stringify({ question }),
+      signal,
+    );
+    if (
+      value &&
+      typeof value === "object" &&
+      "text" in value &&
+      typeof value.text === "string"
+    )
+      return value.text;
+    throw new ClientError();
+  }
   async historyRequest<T>(
     action: "query" | "conversation" | "feedback" | "review",
     value: unknown,

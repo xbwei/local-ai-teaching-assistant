@@ -74,7 +74,7 @@ caddy run --config ops/reference/Caddyfile --adapter caddyfile
 
 Open **https://localhost:3443**, choose Teacher (or your local Admin/Student role), and sign in with your initialized Owner passphrase. Trust only the local CA you installed yourself; do not bypass unexpected certificate errors. The backend port 3100 is loopback-only and is not the browser entry. The HTTPS edge requires the exact Host and fixes security forwarding headers. It preserves each page’s random, non-secret transient client reference, so opening or resetting another browser/tab does not reset the first. Authenticated pages share the global one-operation limit; History is scoped by role and, for Canvas, launch context; overlapping generation returns BUSY without a queue. This reference is not a login or authority credential.
 
-Try a general question, then a follow-up. Open `/history` from the UI. Stop foreground processes with Ctrl-C. Unset `APP_CONFIG_JSON` selects a fail-closed developer scaffold rather than this full operator profile; `.env` is not loaded automatically.
+Try a general question, then a follow-up. For Teacher drafting and optional Test Student History, follow [standalone Teacher tools](TEACHING-WORKFLOW.md). Open `/history` from the UI. Stop foreground processes with Ctrl-C. Unset `APP_CONFIG_JSON` selects a fail-closed developer scaffold rather than this full operator profile; `.env` is not loaded automatically.
 
 ### iPhone home-screen entry
 
