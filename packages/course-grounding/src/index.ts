@@ -1019,55 +1019,72 @@ const labOrdinals = [
   "tenth",
 ] as const;
 const labOrdinalWords = labOrdinals.join("|");
+// Recognize other endpoints when rejecting a compound, while accepting only
+// the existing spaced ordinals and canonical numbers as single locators.
+const labOrdinalEndpoint = String.raw`\b(?:(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[ -](?:${labOrdinalWords})|${labOrdinalWords}|eleventh|twelfth|[a-z]+(?:teenth|tieth)|[0-9]+(?:st|nd|rd|th))\b`;
 const labOrdinal = new RegExp(
-  String.raw`\b(${labOrdinalWords})\s+(labs?|assignments?)\b`,
+  String.raw`(${labOrdinalEndpoint})\s+(labs?|assignments?)\b`,
   "gu",
 );
-const labSeparator = String.raw`(?:[-_/&–—]|(?:and|or|to|through)\b|,\s*(?:(?:and|or)\b)?|[、和或到至])`;
-const labContinuation = new RegExp(
-  String.raw`^\s*${labSeparator}\s*(?:[0-9零〇一二三四五六七八九十百千万两]|\b(?:${labOrdinalWords})\b)`,
+const labLabel = String.raw`(?:\b(?:labs?|assignments?)|实验|作业)`;
+const labNumberToken = String.raw`[0-9零〇一二三四五六七八九十百千万两]+(?:\.[0-9]+|[a-z]+[0-9]*)?`;
+const labEndpoint = String.raw`(?:${labOrdinalEndpoint}|${labNumberToken})`;
+const labSeparator = String.raw`(?:[-_/&–—]|(?:and(?:/or)?|or|(?:up\s+)?to|through)\b|,\s*(?:(?:and|or)\b)?|[、和或到至])`;
+const labArticle = String.raw`(?:the\s+)?`;
+// A bare endpoint can end before punctuation, another item, or context
+// such as "in Week 5". A noun after it can make it a separate count.
+const labContextWord = String.raw`(?:in|on|of|for|from|at|by|with|during|before|after|about|within|labs?|assignments?|is|are|was|were|do|does|may|might|can|could|must|should|will|would|has|have|had|needs?|due)\b`;
+const labEndpointEnd = String.raw`(?=$|[\p{P}\p{Script=Han}]|\s+(?:$|[\p{P}]|${labSeparator}|${labContextWord}))`;
+const labJoinedEndpoint = String.raw`\s*${labSeparator}\s*${labArticle}${labEndpoint}${labEndpointEnd}`;
+const labCompoundAfterLabel = new RegExp(
+  String.raw`${labLabel}\s*[-:#]?\s*(?:(?:from|between)\s+)?${labArticle}${labEndpoint}${labJoinedEndpoint}`,
   "u",
 );
+const labNumeric = new RegExp(
+  String.raw`(${labLabel})\s*[-:#]?\s*(${labNumberToken})`,
+  "gu",
+);
+const labContinuation = new RegExp(String.raw`^${labJoinedEndpoint}`, "u");
 const labOrdinalPrefix = new RegExp(
-  String.raw`\b(?:${labOrdinalWords})\s*${labSeparator}\s*$`,
+  String.raw`${labOrdinalEndpoint}\s*${labSeparator}\s*${labArticle}$`,
   "u",
 );
 function ordinalNumber(word: string) {
   return labOrdinals.findIndex((ordinal) => ordinal === word) + 1;
 }
 function labNumber(value: string) {
-  const numeric = value.matchAll(
-    /(\b(?:labs?|assignments?)|实验|作业)\s*[-:#]?\s*([0-9零〇一二三四五六七八九十百千万两]+(?:\.[0-9]+|[a-z]+[0-9]*)?)/gu,
-  );
   const references = new Set<number>();
   // Null marks a malformed or conflicting reference, even if a week is named.
-  for (const match of numeric) {
+  if (labCompoundAfterLabel.test(value)) return null;
+  for (const match of value.matchAll(labNumeric)) {
     const number = boundedNumber(match[2]!);
     const rest = value.slice(match.index + match[0].length);
-    if (!number || match[1]!.endsWith("s") || labContinuation.test(rest))
+    if (!number || match[1]!.endsWith("s") || /^[-_]\p{L}/u.test(rest))
       return null;
     references.add(number);
   }
   for (const match of value.matchAll(labOrdinal)) {
+    const number = ordinalNumber(match[1]!);
     const before = value.slice(0, match.index);
     const rest = value.slice(match.index + match[0].length);
     if (
+      !number ||
       match[2]!.endsWith("s") ||
       labOrdinalPrefix.test(before) ||
       labContinuation.test(rest)
     )
       return null;
-    references.add(ordinalNumber(match[1]!));
+    references.add(number);
   }
   if (references.size > 1) return null;
   return references.values().next().value;
 }
 function queryTerms(question: string) {
   const value = normalize(question)
-    .replace(
-      labOrdinal,
-      (_, ordinal: string) => `lab ${ordinalNumber(ordinal)}`,
-    )
+    .replace(labOrdinal, (reference, ordinal: string) => {
+      const number = ordinalNumber(ordinal);
+      return number ? `lab ${number}` : reference;
+    })
     .replace(/(?<![a-z0-9])i[\s_-]*a?[\s_-]*34[02](?![a-z0-9])/gu, " ")
     .replace(
       /(?:lab|assignment|实验|作业)\s*[-:#]?\s*([1-9][0-9]?)(?![0-9])/gu,

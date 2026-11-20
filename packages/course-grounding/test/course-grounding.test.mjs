@@ -385,6 +385,20 @@ test("ambiguous single-label and plural assignment locators require clarificatio
     "assignments 5.1 in Week 5",
     "lab 5 and assignments 6, 7",
     "fifth assignments in Week 5",
+    "assignment 5 through the seventh",
+    "assignment 5 up to 7",
+    "assignment 5 or 7 may be due",
+    "the fifth assignment and the seventh are due",
+    "first to the third assignment",
+    "1st and second assignment",
+    "first and the 2nd assignment",
+    "the 1st through the 3rd assignment",
+    "the fifth assignment or the seventh",
+    "the fifth assignment, or the 7th",
+    "assignment between 5 and 7 in Week 5",
+    "assignment from the fifth through the seventh in Week 5",
+    "the second to the twenty-first assignment",
+    "assignment 5_b",
   ];
   const results = [];
   for (const reference of cases) {
@@ -415,6 +429,27 @@ test("ambiguous single-label and plural assignment locators require clarificatio
   );
   assert.equal(week.status, "FOUND");
   assert.equal(week.sources[0].path, "docs/modules/module-5/index.md");
+
+  for (const question of [
+    "What should I submit for IA340 Week 5 and the fifth assignment?",
+    "What do I submit for IA340 assignment 5 to prepare 7 slides?",
+    "Can you explain IA340 assignment 5 and 7 slides about it?",
+    "For IA340, I have 2 questions about the fifth assignment.",
+    "What should I submit for IA340 assignment 5 and Week 5?",
+    "What should I submit for IA340 assignment 5 during the seventh week?",
+    "Can you explain IA340 assignment 5 and the seventh week?",
+  ]) {
+    let lab;
+    const result = await grounder.ground(
+      question,
+      signal,
+      (_stage, event, _duration, detail) => {
+        if (event === "LOCATOR_CHECKED") lab = detail.lab;
+      },
+    );
+    assert.equal(lab, "5", question);
+    assert.notEqual(result.status, "AMBIGUOUS", question);
+  }
 });
 
 test("bilingual whole-course questions select substantive overview evidence, not lab word matches", async (t) => {
