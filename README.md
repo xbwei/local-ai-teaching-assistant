@@ -25,13 +25,13 @@ Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teac
 - **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review.
 - **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.
 - **Use local roles:** Owner Admin / Teacher / Student views with scoped History, all operated by the same Owner.
-- **Optional Canvas Teacher entry and Pages:** launch from one configured course. With separate REST access, preview and explicitly create an unpublished Page, then verify it by ID.
+- **Optional Canvas Teacher authoring:** launch from one configured course. With separate REST access, preview and explicitly create unpublished Pages and Assignments or rename an approved Assignment, then verify the result by ID.
 
 ## Optional Canvas course launch
 
 Canvas is optional. Installation requires permission in your own Canvas environment to add a **course-level External App / Paste XML**; actual account and institution policies still apply. You provide the Canvas HTTPS origin, numeric course ID, numeric Canvas Owner user ID, generated consumer key, generated shared secret and exact LAITA HTTPS origin.
 
-The consumer key/shared secret are launch credentials, not your Canvas password or a Canvas REST API token. The signed launch requires **no Canvas REST API token**. The optional Page panel uses its own backend token for the same Instructor and course. It rechecks the target before an explicit create action and reports the Page readback result. Standalone use needs neither configuration. [Canvas installation and Page creation](docs/CANVAS.md)
+The consumer key/shared secret are launch credentials, not your Canvas password or a Canvas REST API token. The signed launch requires **no Canvas REST API token**. The optional Canvas authoring panels use a backend token for the same Instructor and course. They recheck the target before an explicit write and report the readback result. Standalone use needs neither configuration. [Canvas installation and authoring](docs/CANVAS.md)
 
 ## Public course sources
 

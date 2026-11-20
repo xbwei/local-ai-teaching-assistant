@@ -165,3 +165,4 @@ export {
 export * from "./history.ts";
 
 export * from "./canvas-page.ts";
+export * from "./canvas-assignment.ts";

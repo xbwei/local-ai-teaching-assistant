@@ -41,13 +41,16 @@ export function signed(url, changes = {}, secret = canvas.sharedSecret) {
   return new URLSearchParams(fields).toString();
 }
 
-export function canvasPageFixture() {
+export function canvasPageFixture({ assignments = false } = {}) {
   const settings = {
     origin: canvas.canvasOrigin,
     courseId: canvas.courseId,
     teacherId: canvas.userId,
     expiresAt: new Date(canvasNow + 3600_000).toISOString(),
     canvasToken: "synthetic-rest-token-for-fixtures",
+    ...(assignments && {
+      assignments: { groupId: "72", editableIds: ["81", "82"] },
+    }),
   };
   const course = {
     id: Number(canvas.courseId),
@@ -63,6 +66,24 @@ export function canvasPageFixture() {
   };
   const calls = [];
   const writes = [];
+  const assignmentWrites = [];
+  const assignmentRows = new Map([
+    [
+      "81",
+      {
+        id: 81,
+        course_id: Number(canvas.courseId),
+        name: "Synthetic draft",
+        updated_at: "2026-11-20T12:00:00Z",
+        published: true,
+        description: "<p>Original instructions.</p>",
+        assignment_group_id: 72,
+        points_possible: 7,
+        submission_types: ["online_url"],
+        due_at: null,
+      },
+    ],
+  ]);
   let page;
   const remote = {
     actorId: canvas.userId,
@@ -70,6 +91,9 @@ export function canvasPageFixture() {
     before: undefined,
     afterCreate: undefined,
     readBack: (value) => value,
+    group: { id: 72, name: "Studio Exercises" },
+    assignmentRead: (value) => value,
+    afterAssignmentWrite: undefined,
   };
   const options = {
     settings: () => settings,
@@ -109,10 +133,74 @@ export function canvasPageFixture() {
         endpoint === `${coursePath}/pages/page_id:9001`
       )
         return Response.json(remote.readBack(page));
+      if (assignments) {
+        if (
+          init.method === "GET" &&
+          endpoint === `${coursePath}/assignment_groups/72`
+        )
+          return Response.json(remote.group);
+        const assignmentPath = `${coursePath}/assignments`;
+        const exactId = endpoint.startsWith(assignmentPath + "/")
+          ? endpoint.slice(assignmentPath.length + 1)
+          : "";
+        if (init.method === "GET" && exactId) {
+          const row = assignmentRows.get(exactId);
+          return row
+            ? Response.json(remote.assignmentRead(row))
+            : Response.json({}, { status: 404 });
+        }
+        const creating = init.method === "POST" && endpoint === assignmentPath;
+        const editing = init.method === "PUT" && assignmentRows.has(exactId);
+        if (creating || editing) {
+          const fields = new URLSearchParams(init.body);
+          assignmentWrites.push({
+            method: init.method,
+            endpoint,
+            fields: [...fields],
+          });
+          const id = creating ? "91" : exactId;
+          const previous = assignmentRows.get(id);
+          const row = creating
+            ? {
+                id: Number(id),
+                course_id: Number(canvas.courseId),
+                name: fields.get("assignment[name]"),
+                updated_at: "2026-11-20T12:00:01Z",
+                description: fields.get("assignment[description]"),
+                points_possible: Number(
+                  fields.get("assignment[points_possible]"),
+                ),
+                submission_types: fields.getAll(
+                  "assignment[submission_types][]",
+                ),
+                assignment_group_id: Number(
+                  fields.get("assignment[assignment_group_id]"),
+                ),
+                due_at: fields.get("assignment[due_at]"),
+                published: fields.get("assignment[published]") === "true",
+              }
+            : {
+                ...previous,
+                name: fields.get("assignment[name]"),
+                updated_at: "2026-11-20T12:00:01Z",
+              };
+          assignmentRows.set(id, row);
+          await remote.afterAssignmentWrite?.(row);
+          return Response.json({ id: row.id, course_id: row.course_id });
+        }
+      }
       assert.fail(
         `Unexpected synthetic Canvas endpoint ${init.method} ${endpoint}`,
       );
     },
   };
-  return { options, settings, remote, calls, writes };
+  return {
+    options,
+    settings,
+    remote,
+    calls,
+    writes,
+    assignmentWrites,
+    assignmentRows,
+  };
 }

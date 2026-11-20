@@ -235,7 +235,7 @@
     },
     {
       "path": "apps/web/src/client/markdown.ts",
-      "classification": "COPY"
+      "classification": "GENERICIZE"
     },
     {
       "path": "apps/web/src/client/microphone.ts",
@@ -247,6 +247,10 @@
     },
     {
       "path": "apps/web/src/client/style.css",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/client/teacher-canvas-assignments.ts",
       "classification": "GENERICIZE"
     },
     {
@@ -502,6 +506,10 @@
       "classification": "COPY"
     },
     {
+      "path": "packages/contracts/src/canvas-assignment.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "packages/contracts/src/canvas-page.ts",
       "classification": "GENERICIZE"
     },
@@ -734,7 +742,15 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "packages/providers/src/canvas-assignment.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "packages/providers/src/canvas-page.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/canvas-response.ts",
       "classification": "GENERICIZE"
     },
     {

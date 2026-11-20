@@ -165,7 +165,7 @@ try {
   });
   seededHistory.outcome("e".repeat(64), "NO_ANSWER");
   const sampleContext = "5".repeat(64);
-  const syntheticCanvas = canvasPageFixture();
+  const syntheticCanvas = canvasPageFixture({ assignments: true });
   f = await fixture({
     history: persistence.history(),
     persistence,
@@ -269,6 +269,7 @@ try {
     await page.getByRole("button", { name: "Sign out / change role" }).click();
     await signIn("teacher");
     assert.equal(await page.getByText("Create a Canvas Page", { exact: true }).isVisible(), false);
+    assert.equal(await page.getByText("Canvas Assignments", { exact: true }).isVisible(), false);
     await page.getByText("Local teaching drafts", { exact: true }).click();
     await page.getByLabel("Course", { exact: true }).selectOption("IA342");
     await page.getByLabel("Draft type").selectOption("ASSIGNMENT");
@@ -369,6 +370,61 @@ try {
     assert.equal(requests.filter((request) => request.endsWith("/api/v1/canvas/pages/create")).length, 1);
     assert.doesNotMatch(await page.locator("body").innerText(), /synthetic-rest-token/);
     results.push({ name, width, height, status: "PASS", requests: requests.length });
+
+    await page.getByText("Create a Canvas Page", { exact: true }).click();
+    await page.getByText("Canvas Assignments", { exact: true }).click();
+    const tool = page.locator("#teacher-canvas-assignments");
+    const assignmentPreview = tool.getByRole("region", { name: "Canvas Assignment preview" });
+    const assignmentTitle = tool.getByLabel("Assignment title");
+    const previewAssignment = tool.getByRole("button", { name: "Preview Canvas Assignment" });
+    const createAssignment = assignmentPreview.getByRole("button", { name: "Create unpublished assignment" });
+    const saveTitle = assignmentPreview.getByRole("button", { name: "Save assignment title" });
+    const assignmentWrites = syntheticCanvas.assignmentWrites.length;
+    await assignmentTitle.fill("Synthetic studio lab");
+    await tool.getByLabel("Assignment Markdown").fill("## Map lab\n\nCompare two maps. 地图");
+    await tool.getByLabel("Points possible").fill("4.5");
+    await tool.getByLabel("File Upload").check();
+    await tool.getByLabel("Due date and time (UTC, optional)").fill("2026-12-21T10:30");
+    await previewAssignment.click();
+    await assignmentPreview.getByText(/^Group 72 · Studio Exercises/).waitFor();
+    assert.match(await assignmentPreview.locator("#canvas-assignment-subject").textContent(), /Unpublished.*4.5 points.*Text Entry, File Upload.*2026-12-21T10:30:00.000Z/);
+    await assignmentPreview.getByRole("heading", { name: "Map lab" }).waitFor();
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
+    await assignmentTitle.fill("Reviewed studio lab");
+    assert.equal(await createAssignment.isVisible(), false);
+    await previewAssignment.click();
+    await assignmentPreview.getByRole("heading", { name: "Reviewed studio lab" }).waitFor();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    await createAssignment.click();
+    await tool.getByText("Canvas verified assignment 91.").waitFor();
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites + 1);
+
+    await tool.getByLabel("Assignment action").selectOption("TITLE");
+    await tool.getByLabel("Assignment to rename").selectOption("81");
+    assert.equal(await tool.getByLabel("Assignment Markdown").isVisible(), false);
+    const previousTitle = syntheticCanvas.assignmentRows.get("81").name;
+    const updatedTitle = mobile ? "Reviewed title on phone" : "Reviewed title on desktop";
+    await assignmentTitle.fill(updatedTitle);
+    await previewAssignment.click();
+    await assignmentPreview.getByText(/^Assignment 81 · Current title/).waitFor();
+    assert.ok((await assignmentPreview.locator("#canvas-assignment-subject").textContent()).includes(previousTitle));
+    await assignmentPreview.getByRole("button", { name: "Cancel assignment preview" }).click();
+    assert.equal(await saveTitle.isVisible(), false);
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites + 1);
+    await previewAssignment.click();
+    await saveTitle.waitFor();
+    syntheticCanvas.assignmentRows.get("81").updated_at = "2026-11-20T12:00:00.123456Z";
+    await saveTitle.click();
+    await tool.getByText("The preview could not be confirmed. Review the current assignment and preview again.").waitFor();
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites + 1);
+    await previewAssignment.click();
+    await saveTitle.click();
+    await tool.getByText("Canvas verified assignment 81.").waitFor();
+    assert.equal(syntheticCanvas.assignmentRows.get("81").name, updatedTitle);
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites + 2);
+    assert.equal(requests.filter(request => request.endsWith("/api/v1/canvas/assignments/save")).length, 3);
+    assert.ok(requests.every(request => new URL(request).origin === f.origin));
+    results.push({ name: mobile ? "canvas-assignment-phone" : "canvas-assignment-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
   for (const scenario of [
@@ -1000,13 +1056,12 @@ try {
       });
       await page.setViewportSize({ width: 800, height: 1024 });
       await page.waitForFunction(() => window.innerHeight === 1024);
-      await page.evaluate(() => {
+      const tallOverlayViewport = await page.evaluate(() => {
+        // Sample the synthetic state before a native resize callback can replace it.
         const root = document.documentElement;
         root.toggleAttribute("data-virtual-keyboard", true);
         root.style.setProperty("--visual-viewport-height", "420px");
         root.style.setProperty("--visual-viewport-offset-top", "0px");
-      });
-      const tallOverlayViewport = await page.evaluate(() => {
         const conversation = document
           .querySelector("#conversation")
           .getBoundingClientRect();

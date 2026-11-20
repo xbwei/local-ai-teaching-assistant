@@ -652,3 +652,25 @@ html[data-touch-capable][data-virtual-keyboard] .owner-role {
 #canvas-page-preview pre {
   white-space: pre-wrap;
 }
+
+#canvas-assignment-create {
+  flex-basis: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.canvas-submission-types {
+  min-inline-size: 0;
+}
+
+.teacher-tool .canvas-submission-types input {
+  display: inline;
+  width: auto;
+  min-height: 0;
+}
+
+#canvas-assignment-preview pre {
+  white-space: pre-wrap;
+}

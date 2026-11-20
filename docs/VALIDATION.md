@@ -33,3 +33,7 @@ These results do not establish interoperability with a live Canvas instance. Rea
 ## Canvas Page authoring
 
 The synthetic API tests exercise credential file permissions, signed Teacher isolation, Unicode and HTML validation, mismatch and expiry of a preview, changed REST credentials and course identity, concurrent confirmation, and exact creation/readback or an uncertain result. Canvas calls use an injected provider. Live Canvas REST permissions and end-to-end behavior in an operator’s course require a separate acceptance check.
+
+## Canvas Assignment authoring
+
+The fake Canvas REST adapter covers unpublished creation and title-only editing on approved IDs. API tests check the read-only preview, exact course, identity and group or assignment ID, one-time confirmation, target drift, cancellation before dispatch, readback mismatch and ambiguous writes without replay. Synthetic desktop and phone Chromium scenarios exercise both flows alongside Page creation.

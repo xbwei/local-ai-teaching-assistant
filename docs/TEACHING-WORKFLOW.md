@@ -17,3 +17,5 @@ Enable the separate [History Chat plugin](HISTORY.md#teacher-history-plugin) for
 ## Use edited Markdown in Canvas
 
 Copy reviewed, non-sensitive Markdown from the standalone draft. Open your separate signed Canvas Teacher session, enter a title and paste the Markdown. Review the exact destination and content before choosing **Create unpublished page**. The Canvas Page editor uses separate, optional REST setup. [Canvas Page walkthrough](CANVAS.md#6-preview-and-create-a-page)
+
+For an assignment draft, use **Canvas Assignments** in the signed Canvas Teacher view. The operator can preview an unpublished assignment in the configured group or preview a title-only change to an approved assignment. [Canvas Assignment walkthrough](CANVAS.md#7-create-and-rename-canvas-assignments)

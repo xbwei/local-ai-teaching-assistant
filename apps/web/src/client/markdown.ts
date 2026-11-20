@@ -75,3 +75,17 @@ export function renderMessageText(
     container.textContent = message.text;
   }
 }
+
+export function canvasDraftMarkup(markdown: string) {
+  const fragment = document.createElement("div");
+  renderMessageText(fragment, { role: "answer", text: markdown });
+  for (const heading of Array.from(fragment.querySelectorAll("h1,h4,h5,h6"))) {
+    const replacement = document.createElement("h2");
+    replacement.append(...Array.from(heading.childNodes));
+    heading.replaceWith(replacement);
+  }
+  fragment
+    .querySelectorAll("ol")
+    .forEach((list) => list.removeAttribute("start"));
+  return fragment;
+}

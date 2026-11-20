@@ -3,24 +3,10 @@ import {
   type CanvasPagePreview,
 } from "@laita/contracts/browser";
 import type { InputApi } from "./api.ts";
-import { renderMessageText } from "./markdown.ts";
+import { canvasDraftMarkup } from "./markdown.ts";
 
 const get = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
-
-function fromMarkdown(markdown: string) {
-  const fragment = document.createElement("div");
-  renderMessageText(fragment, { role: "answer", text: markdown });
-  for (const heading of Array.from(fragment.querySelectorAll("h1,h4,h5,h6"))) {
-    const replacement = document.createElement("h2");
-    replacement.append(...Array.from(heading.childNodes));
-    heading.replaceWith(replacement);
-  }
-  fragment
-    .querySelectorAll("ol")
-    .forEach((list) => list.removeAttribute("start"));
-  return fragment;
-}
 
 export function mountTeacherCanvasPages(api: InputApi) {
   const tool = get("teacher-canvas-pages");
@@ -85,7 +71,7 @@ export function mountTeacherCanvasPages(api: InputApi) {
     event.preventDefault();
     if (pending) return;
     clearPreview();
-    const fragment = fromMarkdown(body.value);
+    const fragment = canvasDraftMarkup(body.value);
     let draft;
     try {
       draft = readCanvasPageDraft({

@@ -3,11 +3,13 @@ import express, { type RequestHandler } from "express";
 import {
   canvasPageId,
   canvasPagePlanId,
+  readCanvasAssignmentDraft,
+  readCanvasAssignmentScope,
   readCanvasPageDraft,
-  sameCanvasPageDraft,
   type CanvasPageDraft,
-  type CanvasPagePreview,
-  type CanvasPageResult,
+  type CanvasAssignmentDraft,
+  type CanvasAssignmentScope,
+  type CanvasAssignmentSubject,
 } from "@laita/contracts";
 import { createCanvasPageClient } from "@laita/providers";
 import { createSecretHandleForProvider } from "@laita/runtime";
@@ -25,6 +27,7 @@ interface CanvasPageSettings {
   teacherId: string;
   expiresAt: string;
   canvasToken: string;
+  assignments?: CanvasAssignmentScope;
 }
 
 export interface CanvasPageOptions {
@@ -43,9 +46,10 @@ function connection(
 ): CanvasPageSettings | undefined {
   if (!canvas || !value || typeof value !== "object") return;
   const v = value as Record<string, unknown>;
+  const permitted = "canvasToken,courseId,expiresAt,origin,teacherId";
+  const keys = Object.keys(v).sort().join(",");
   if (
-    Object.keys(v).sort().join(",") !==
-      "canvasToken,courseId,expiresAt,origin,teacherId" ||
+    (keys !== permitted && keys !== `assignments,${permitted}`) ||
     typeof v.origin !== "string" ||
     v.origin !== canvas.canvasOrigin ||
     !canvasPageId(v.courseId) ||
@@ -70,29 +74,47 @@ function connection(
     teacherId: v.teacherId,
     expiresAt: v.expiresAt,
     canvasToken: v.canvasToken,
+    ...(Object.hasOwn(v, "assignments") && {
+      assignments: readCanvasAssignmentScope(v.assignments),
+    }),
   };
 }
 
-type PageIntent =
-  | { action: "preview"; draft: CanvasPageDraft }
-  | { action: "create"; draft: CanvasPageDraft; planId: string };
+type Resource = "page" | "assignment";
+type Draft = CanvasPageDraft | CanvasAssignmentDraft;
 
-function readIntent(value: unknown, action: PageIntent["action"]): PageIntent {
+function readIntent(
+  value: unknown,
+  action: "preview" | "confirm",
+  resource: Resource,
+) {
   if (!value || typeof value !== "object") throw new Error("INVALID_DRAFT");
   const { draft, confirm, planId } = value as Record<string, unknown>;
   const keys = Object.keys(value).sort().join(",");
-  const checked = readCanvasPageDraft(draft);
-  if (action === "preview" && keys === "draft")
-    return { action, draft: checked };
+  const checked =
+    resource === "page"
+      ? readCanvasPageDraft(draft)
+      : readCanvasAssignmentDraft(draft);
+  if (action === "preview" && keys === "draft") return { draft: checked };
   if (
-    action === "create" &&
-    keys === "confirm,draft,planId" &&
-    confirm === true &&
-    canvasPagePlanId(planId) &&
-    (draft as CanvasPageDraft).body === checked.body
+    action !== "confirm" ||
+    keys !== "confirm,draft,planId" ||
+    confirm !== true ||
+    !canvasPagePlanId(planId)
   )
-    return { action, draft: checked, planId };
-  throw new Error("INVALID_DRAFT");
+    throw new Error("INVALID_DRAFT");
+
+  // The browser confirms the draft exactly as returned by preview.
+  const submitted = draft as Record<string, unknown>;
+  if ("body" in checked && submitted.body !== checked.body)
+    throw new Error("INVALID_DRAFT");
+  if (
+    "submissionTypes" in checked &&
+    JSON.stringify(submitted.submissionTypes) !==
+      JSON.stringify(checked.submissionTypes)
+  )
+    throw new Error("INVALID_DRAFT");
+  return { draft: checked, planId };
 }
 
 export function createCanvasPageParser(): RequestHandler {
@@ -109,15 +131,23 @@ export function createCanvasPageParser(): RequestHandler {
   };
 }
 
-export function createCanvasPageHandlers(
+export function createCanvasAuthoringHandlers(
   sessions: Pick<OwnerSessions, "authorize" | "isCurrent">,
   options: CanvasPageOptions,
   launch: () => CanvasConfiguration | undefined,
   now: () => number,
 ) {
-  // One current preview for the single operator. A new preview supersedes it.
+  // One current preview and one in-flight operation across both authoring tools.
   let saved:
-    { preview: CanvasPagePreview; key: string; expires: number } | undefined;
+    | {
+        resource: Resource;
+        planId: string;
+        key: string;
+        draftKey: string;
+        snapshot: string;
+        expires: number;
+      }
+    | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   let busy = false;
   function clearPreview() {
@@ -125,7 +155,10 @@ export function createCanvasPageHandlers(
     saved = undefined;
   }
 
-  function handler(action: "status" | PageIntent["action"]): RequestHandler {
+  function handler(
+    resource: Resource,
+    action: "status" | "preview" | "confirm",
+  ): RequestHandler {
     return async (req, res) => {
       const actor = sessions.authorize(req, res);
       if (!actor) return;
@@ -136,7 +169,7 @@ export function createCanvasPageHandlers(
       const unavailable = () =>
         res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
       const stale = () => res.status(409).json({ code: "PREVIEW_REQUIRED" });
-      const get = (draft?: CanvasPageDraft) => {
+      const get = (draft?: Draft) => {
         if (!sessions.isCurrent(req, actor.binding))
           throw new Error("INVALID_CANVAS_TARGET");
         const canvas = launch();
@@ -147,13 +180,16 @@ export function createCanvasPageHandlers(
         )
           throw new Error("INVALID_CANVAS_TARGET");
         const settings = connection(options.settings(), canvas, now());
-        if (!settings) throw new Error("CANVAS_UNAVAILABLE");
+        if (!settings || (resource === "assignment" && !settings.assignments))
+          throw new Error("CANVAS_UNAVAILABLE");
+        const { assignments, ...rest } = settings;
         const launchKeys = [canvas.consumerKey, canvas.sharedSecret];
         if (
           draft &&
           launchKeys.some(
             (secret) =>
-              draft.title.includes(secret) || draft.body.includes(secret),
+              draft.title.includes(secret) ||
+              ("body" in draft && draft.body.includes(secret)),
           )
         )
           throw new Error("INVALID_DRAFT");
@@ -162,52 +198,65 @@ export function createCanvasPageHandlers(
           launchKeys,
           key: createHash("sha256")
             .update(
-              JSON.stringify([actor.binding, actor.canvasRevision, settings]),
+              JSON.stringify([
+                actor.binding,
+                actor.canvasRevision,
+                rest,
+                assignments?.groupId ?? null,
+                assignments?.editableIds ?? [],
+              ]),
             )
             .digest("hex"),
         };
       };
-      let key: string;
-      let target: Pick<CanvasPageSettings, "origin" | "courseId" | "teacherId">;
+      let initial: ReturnType<typeof get>;
       try {
-        const { settings, key: revision } = get();
-        key = revision;
-        target = {
-          origin: settings.origin,
-          courseId: settings.courseId,
-          teacherId: settings.teacherId,
-        };
+        initial = get();
       } catch {
         unavailable();
         return;
       }
       if (action === "status") {
-        res.json({ enabled: true });
+        res.json(
+          resource === "page"
+            ? { enabled: true }
+            : initial.settings.assignments,
+        );
         return;
       }
-      let intent: PageIntent;
+      let intent: ReturnType<typeof readIntent>;
       try {
         if (!req.is("json")) throw new Error("INVALID_DRAFT");
-        intent = readIntent(req.body, action);
+        intent = readIntent(req.body, action, resource);
       } catch {
         res.status(400).json({ code: "INVALID_REQUEST" });
         return;
       }
+      const { draft, planId } = intent;
+      const { origin, courseId, teacherId, assignments } = initial.settings;
+      if (
+        "kind" in draft &&
+        draft.kind === "TITLE" &&
+        !assignments?.editableIds.includes(draft.assignmentId)
+      ) {
+        res.status(403).json({ code: "FORBIDDEN" });
+        return;
+      }
       const plan = saved;
-      function checkPlan(planId: string, draft: CanvasPageDraft) {
+      const draftKey = JSON.stringify(draft);
+      const key = initial.key;
+      function checkPlan() {
         return (
           !!plan &&
           saved === plan &&
+          plan.resource === resource &&
           plan.key === key &&
           plan.expires > now() &&
-          plan.preview.planId === planId &&
-          sameCanvasPageDraft(plan.preview.draft, draft)
+          plan.planId === planId &&
+          plan.draftKey === draftKey
         );
       }
-      if (
-        intent.action === "create" &&
-        !checkPlan(intent.planId, intent.draft)
-      ) {
+      if (action === "confirm" && !checkPlan()) {
         stale();
         return;
       }
@@ -220,21 +269,34 @@ export function createCanvasPageHandlers(
       const disconnect = () => controller.abort();
       res.once("close", disconnect);
       let dispatched = false;
-      let pageId: string | undefined;
+      let resourceId: string | undefined;
       const assertCurrent = () => {
         controller.signal.throwIfAborted();
-        const details = get(intent.draft);
+        const details = get(draft);
         if (details.key !== key) throw new Error("INVALID_CANVAS_TARGET");
         return details;
       };
-      const sendResult = (result: CanvasPageResult) => {
-        if (!res.destroyed) res.json(result);
+      const sendResult = (
+        status: "VERIFIED" | "UNVERIFIED" | "UNCERTAIN",
+        id?: string,
+      ) => {
+        if (!res.destroyed)
+          res.json(
+            id
+              ? {
+                  status,
+                  [resource === "page" ? "pageId" : "assignmentId"]: id,
+                }
+              : { status },
+          );
       };
       try {
-        if (intent.action === "preview") clearPreview();
+        if (action === "preview") clearPreview();
         const client = createCanvasPageClient(
           {
-            ...target,
+            origin,
+            courseId,
+            teacherId,
             refresh: () =>
               createSecretHandleForProvider(
                 assertCurrent().settings.canvasToken,
@@ -243,47 +305,84 @@ export function createCanvasPageHandlers(
           },
           controller.signal,
         );
-        const current = await client.readTarget(intent.draft);
+        const current = await client.readTarget(draft);
+        let subject: CanvasAssignmentSubject | undefined;
+        if ("kind" in draft) {
+          if (!assignments) throw new Error("CANVAS_UNAVAILABLE");
+          subject = await client.assignments.preview(
+            draft,
+            assignments.groupId,
+          );
+        }
+        const { launchKeys, settings } = assertCurrent();
         if (
-          assertCurrent().launchKeys.some((secret) =>
-            current.courseName.includes(secret),
+          [...launchKeys, settings.canvasToken].some(
+            (secret) =>
+              current.courseName.includes(secret) ||
+              subject?.name.includes(secret),
           )
         )
           throw new Error("INVALID_CANVAS_TARGET");
-        if (intent.action === "preview") {
-          const preview: CanvasPagePreview = {
-            planId: randomBytes(32).toString("hex"),
-            target: current,
-            draft: intent.draft,
+        const snapshot = JSON.stringify({ target: current, subject });
+        if (action === "preview") {
+          const id = randomBytes(32).toString("hex");
+          saved = {
+            resource,
+            planId: id,
+            key,
+            draftKey,
+            snapshot,
+            expires: now() + 300_000,
           };
-          saved = { preview, key, expires: now() + 300_000 };
           expiry = setTimeout(clearPreview, 300_000);
           expiry.unref();
-          res.json(preview);
+          res.json({
+            planId: id,
+            target: current,
+            draft,
+            ...(subject && { subject }),
+          });
           return;
         }
-        const { planId, draft } = intent;
+
         if (
-          !checkPlan(planId, draft) ||
-          plan?.preview.target.courseName !== current.courseName
+          !checkPlan() ||
+          plan?.snapshot !== snapshot ||
+          (subject?.kind === "TITLE" && subject.name === draft.title)
         ) {
           clearPreview();
           stale();
           return;
         }
-        pageId = await client.create(draft, () => {
+        const beforeDispatch = () => {
           assertCurrent();
-          if (!checkPlan(planId, draft)) throw new Error("PREVIEW_REQUIRED");
+          if (!checkPlan()) throw new Error("PREVIEW_REQUIRED");
           clearPreview();
           dispatched = true;
-        });
-        const verified = await client.readBack(pageId, draft);
+        };
+        let verified: boolean;
+        if ("kind" in draft) {
+          if (!subject) throw new Error("INVALID_CANVAS_TARGET");
+          resourceId = await client.assignments.write(
+            draft,
+            subject,
+            beforeDispatch,
+          );
+          verified = await client.assignments.readBack(
+            resourceId,
+            draft,
+            subject,
+          );
+        } else {
+          resourceId = await client.create(draft, beforeDispatch);
+          verified = await client.readBack(resourceId, draft);
+        }
         assertCurrent();
-        sendResult({ status: verified ? "VERIFIED" : "UNVERIFIED", pageId });
+        sendResult(verified ? "VERIFIED" : "UNVERIFIED", resourceId);
       } catch {
         if (res.destroyed) return;
         if (!dispatched) {
-          if (intent.action === "create") {
+          if (action === "confirm") {
             clearPreview();
             stale();
           } else unavailable();
@@ -291,14 +390,14 @@ export function createCanvasPageHandlers(
         }
         try {
           assertCurrent();
-          if (pageId) {
-            sendResult({ status: "UNVERIFIED", pageId });
+          if (resourceId) {
+            sendResult("UNVERIFIED", resourceId);
             return;
           }
         } catch {
           // A changed session or credential cannot receive a resource ID.
         }
-        sendResult({ status: "UNCERTAIN" });
+        sendResult("UNCERTAIN");
       } finally {
         busy = false;
         res.off("close", disconnect);
@@ -307,9 +406,16 @@ export function createCanvasPageHandlers(
   }
 
   return {
-    status: handler("status"),
-    preview: handler("preview"),
-    create: handler("create"),
+    pages: {
+      status: handler("page", "status"),
+      preview: handler("page", "preview"),
+      create: handler("page", "confirm"),
+    },
+    assignments: {
+      status: handler("assignment", "status"),
+      preview: handler("assignment", "preview"),
+      save: handler("assignment", "confirm"),
+    },
     close: clearPreview,
   };
 }

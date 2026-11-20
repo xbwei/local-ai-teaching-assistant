@@ -16,3 +16,4 @@ export { validConversation } from "./provider-control.ts";
 export * from "./history.ts";
 
 export * from "./canvas-page.ts";
+export * from "./canvas-assignment.ts";

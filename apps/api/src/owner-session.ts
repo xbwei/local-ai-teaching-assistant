@@ -16,7 +16,7 @@ import {
   type TeacherHistoryOptions,
 } from "./teacher-history.ts";
 import {
-  createCanvasPageHandlers,
+  createCanvasAuthoringHandlers,
   createCanvasPageParser,
   type CanvasPageOptions,
 } from "./canvas-pages.ts";
@@ -172,9 +172,9 @@ export function createOwnerSessions(options: {
     }
   }
   const authority = { authorize, isCurrent };
-  const pages =
+  const authoring =
     options.canvasPages && options.canvas
-      ? createCanvasPageHandlers(
+      ? createCanvasAuthoringHandlers(
           authority,
           options.canvasPages,
           options.canvas,
@@ -394,13 +394,19 @@ export function createOwnerSessions(options: {
           }
         },
       );
-      if (pages) {
+      if (authoring) {
+        const { pages, assignments } = authoring;
         const parser = createCanvasPageParser();
         const pagesPath = "/api/v1/canvas/pages";
         app.use(pagesPath, entryLimit);
         app.get(pagesPath, pages.status);
         app.post(pagesPath + "/preview", parser, pages.preview);
         app.post(pagesPath + "/create", parser, pages.create);
+        const assignmentsPath = "/api/v1/canvas/assignments";
+        app.use(assignmentsPath, entryLimit);
+        app.get(assignmentsPath, assignments.status);
+        app.post(assignmentsPath + "/preview", parser, assignments.preview);
+        app.post(assignmentsPath + "/save", parser, assignments.save);
       }
       if (teacherDraft)
         app.post(
@@ -421,7 +427,7 @@ export function createOwnerSessions(options: {
       }
     },
     close() {
-      pages?.close();
+      authoring?.close();
       sessions.clear();
       entryStore.shutdown();
     },
