@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { request as httpRequest } from "node:http";
+import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import {
@@ -137,16 +138,15 @@ test("explicit demo configuration binds loopback and requires its private proxy 
   child.stderr.on("data", (data) => {
     stderr += data;
   });
+  const startupLines = createInterface({ input: child.stdout });
   try {
-    for (
-      let attempt = 0;
-      attempt < 100 && !stdout.includes('"event":"API_STARTED"');
-      attempt++
-    ) {
-      assert.equal(child.exitCode, null);
-      await delay(50);
-    }
-    const started = JSON.parse(stdout.trim());
+    const [startupLine] = await Promise.race([
+      once(startupLines, "line", { signal: AbortSignal.timeout(15_000) }),
+      exited.then(([code, signal]) => {
+        assert.fail(`API exited before startup evidence (${code ?? signal})`);
+      }),
+    ]);
+    const started = JSON.parse(startupLine);
     assert.equal(started.event, "API_STARTED");
     assert.equal(started.code, "OK");
     assert.equal(started.operation, "API_STARTUP");
@@ -192,6 +192,7 @@ test("explicit demo configuration binds loopback and requires its private proxy 
     assertSafe(stdout + stderr);
     assert.equal((stdout + stderr).includes(configuration.runtimeRoot), false);
   } finally {
+    startupLines.close();
     child.kill("SIGTERM");
     const result = await Promise.race([
       exited,
