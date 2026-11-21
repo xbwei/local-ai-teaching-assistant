@@ -75,7 +75,7 @@ The verifier requires the exact HTTP Canvas Origin, signed `$Canvas.api.domain` 
 
 Finish the signed launch setup first. From your own authorized Canvas environment, obtain a short-lived REST token for the **same Instructor identity** and the one configured course. Use a separate REST token alongside the LTI consumer key and shared secret. Grant the scopes needed for the authoring actions you use, where scoped tokens are supported.
 
-For the Page flow the backend uses these Canvas REST operations. The Assignment, Module and [Canvas Chat](#canvas-chat-plugin) sections list the operations for those tools.
+For the Page flow the backend uses these Canvas REST operations. The Assignment, Module, [Canvas Chat](#canvas-chat-plugin) and [Teacher feedback](#canvas-teacher-feedback) sections list the operations for those tools.
 
 | Method | Endpoint                                        | Use                                                                             |
 | ------ | ----------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -84,7 +84,7 @@ For the Page flow the backend uses these Canvas REST operations. The Assignment,
 | POST   | `/api/v1/courses/:course_id/pages`              | Create one unpublished Page after confirmation                                  |
 | GET    | `/api/v1/courses/:course_id/pages/page_id:<id>` | Verify the created Page by numeric ID                                           |
 
-Create a separate JSON file in the protected configuration directory from step 2. Use a private editor and the same OS account that runs LAITA. Set the file to mode `0600` and keep the directory at `0700`, outside Git and without symlinks. The JSON object requires these five string fields. The optional `assignments`, `modules` and `chat` settings are described below.
+Create a separate JSON file in the protected configuration directory from step 2. Use a private editor and the same OS account that runs LAITA. Set the file to mode `0600` and keep the directory at `0700`, outside Git and without symlinks. The JSON object requires these five string fields. The optional `assignments`, `modules`, `chat` and `feedback` settings are described below.
 
 | Field         | Value                                                                                          |
 | ------------- | ---------------------------------------------------------------------------------------------- |
@@ -202,6 +202,29 @@ The same Instructor token needs permission for the exact course and the followin
 Launch through the configured course as the Teacher and open **Canvas Chat plugin**. For a synthetic assignment named “Map studio,” submit **How many submissions for Map studio?** or **What is the score for Map studio?** Use the full title when there are similar assignments. The count can be zero or one for this sample. Score answers use the grade for the current supported attempt. The plugin distinguishes missing, ungraded, excused and unavailable observations.
 
 Answers are generated from these narrow Canvas responses without a model. They exclude other students, class totals, submitted content, attachments and comments. The browser output is session-local and outside retained Chat History. Read a missing or ambiguous assignment response as a request to check the full title and approved configuration. The **Cancel request** button stops an in-flight query. Removing `chat` disables the plugin and restores compatibility with earlier LAITA builds if rolling back. [Canvas course users](https://github.com/instructure/canvas-lms/blob/master/app/controllers/courses_controller.rb) · [Canvas submissions](https://developerdocs.instructure.com/services/canvas/resources/submissions)
+
+## Canvas Teacher feedback
+
+Enable this tool only for non-sensitive practice submissions in your authorized sandbox course. Create the course's Test Student through Canvas Student View, then submit a synthetic attempt to a published, individual Text Entry, Website URL or File Upload assignment. Find the numeric IDs in your authorized Canvas setup. Add the `feedback` field to the protected REST JSON. These IDs are synthetic.
+
+```json
+{
+  "feedback": {
+    "testStudentId": "73009",
+    "assignmentIds": ["81"]
+  }
+}
+```
+
+Use 1–15 digit IDs with no leading zero, one to twelve unique assignments, and the same Test Student ID as `chat` if both are enabled. `feedback` has its own assignment allowlist. Group, quiz, anonymously or moderately graded assignments and absent, invisible, missing or excused submissions are outside this flow. Use an already-posted submission or a practice assignment with manual posting enabled. Canvas can otherwise post a submission when an Instructor adds a comment, which could expose previously unposted grades or comments. LAITA checks the posting state before enabling the preview and again before sending the comment. [Canvas submission implementation](https://github.com/instructure/canvas-lms/blob/master/app/models/submission.rb)
+
+Use the same active Teacher token as in step 5. Give it only the necessary scoped permissions where supported. The tool checks the same assignment, course Student View membership and exact submission GET routes listed above. It also requires the submission PUT route `/api/v1/courses/:course_id/assignments/:id/submissions/:user_id` to add one text comment. The request preserves the reviewed plain text by escaping HTML-sensitive characters and binds it to the exact attempt with group commenting disabled. LAITA sends no grade, rubric, attachment or bulk-update fields. Canvas controls notification and comment visibility according to the course settings. [Canvas submissions API](https://developerdocs.instructure.com/services/canvas/resources/submissions)
+
+1. Open **Canvas Test Student feedback** in the signed Teacher view. Select the approved assignment and enter your own plain-text feedback. For a synthetic example, use “Compare the two map legends and explain one difference. 地图 🌍”. The limit is 1,024 UTF-8 bytes, including line breaks. LAITA trims outer whitespace before preview.
+2. Choose **Preview feedback**. Verify the course, Teacher, assignment, Test Student, attempt, submission time and exact text. Preview only reads Canvas. Existing comments, grades and submission content do not appear in the preview or enter Chat History. Changing the draft, cancelling or leaving the page clears the visible approval.
+3. Choose **Post feedback** only when you intend to record that comment. LAITA rechecks the current Teacher, scope and submission before consuming the preview once. It then reads back a new comment with the expected Teacher, attempt and text. If the target changed before the write, check the target and preview again. When Canvas omits the comment's attempt or the result is otherwise uncertain or unverified, check the submission directly in Canvas before trying again. LAITA does not automatically retry a write.
+
+Preview, recheck, write and readback use separate Canvas requests. Canvas can change between those requests. A local database recovery does not undo a Canvas comment. Remove `feedback` to disable the tool or before rolling back to a build that predates this field. The local schema and stored History are unchanged.
 
 ## 8. Disable, remove, rotate or recover
 

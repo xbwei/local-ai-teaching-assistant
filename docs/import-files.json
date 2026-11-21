@@ -258,6 +258,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/web/src/client/teacher-canvas-feedback.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "apps/web/src/client/teacher-canvas-modules.ts",
       "classification": "GENERICIZE"
     },
@@ -522,6 +526,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "packages/contracts/src/canvas-feedback.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "packages/contracts/src/canvas-module.ts",
       "classification": "GENERICIZE"
     },
@@ -763,6 +771,10 @@
     },
     {
       "path": "packages/providers/src/canvas-chat.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/canvas-feedback.ts",
       "classification": "GENERICIZE"
     },
     {

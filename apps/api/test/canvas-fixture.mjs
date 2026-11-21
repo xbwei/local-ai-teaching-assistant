@@ -45,6 +45,7 @@ export function canvasPageFixture({
   assignments = false,
   modules = false,
   chat = false,
+  feedback = false,
 } = {}) {
   const testStudent = "73009";
   const settings = {
@@ -62,6 +63,9 @@ export function canvasPageFixture({
     ...(chat && {
       chat: { testStudentId: testStudent, assignmentIds: ["81"] },
     }),
+    ...(feedback && {
+      feedback: { testStudentId: testStudent, assignmentIds: ["81"] },
+    }),
   };
   const course = {
     id: Number(canvas.courseId),
@@ -78,6 +82,7 @@ export function canvasPageFixture({
   const calls = [];
   const writes = [];
   const assignmentWrites = [];
+  const feedbackWrites = [];
   const assignmentRows = new Map([
     [
       "81",
@@ -88,6 +93,7 @@ export function canvasPageFixture({
         updated_at: "2026-11-20T12:00:00Z",
         published: true,
         is_quiz_assignment: false,
+        post_manually: false,
         description: "<p>Original instructions.</p>",
         assignment_group_id: 72,
         group_category_id: null,
@@ -129,12 +135,19 @@ export function canvasPageFixture({
     afterModuleWrite: undefined,
     moduleRead: (value) => value,
     studentView: [{ id: Number(testStudent), name: "Synthetic Test Student" }],
+    feedbackRead: (value) => value,
+    feedbackReceipt: (value) => value,
+    comments: [
+      { id: 700, author_id: 73001, comment: "Synthetic prior comment" },
+    ],
     submission: {
+      id: 315,
       user_id: Number(testStudent),
       assignment_id: 81,
       assignment_visible: true,
       attempt: 1,
       submitted_at: "2026-11-20T12:00:00Z",
+      posted_at: "2026-11-20T13:00:00Z",
       submission_type: "online_url",
       workflow_state: "graded",
       grade_matches_current_submission: true,
@@ -163,8 +176,13 @@ export function canvasPageFixture({
         target.search,
         endpoint === studentViewPath
           ? `?user_ids%5B%5D=${testStudent}&enrollment_type%5B%5D=student_view&enrollment_state%5B%5D=active&per_page=2`
-          : endpoint === submissionPath
-            ? "?include%5B%5D=visibility"
+          : endpoint === submissionPath && init.method === "GET"
+            ? feedback &&
+              target.searchParams
+                .getAll("include[]")
+                .includes("submission_comments")
+              ? "?include%5B%5D=visibility&include%5B%5D=group&include%5B%5D=submission_comments"
+              : "?include%5B%5D=visibility"
             : /\/modules\/\d+$/u.test(endpoint)
               ? "?include%5B%5D=items"
               : "",
@@ -175,13 +193,44 @@ export function canvasPageFixture({
         return Response.json({ id: remote.actorId });
       if (init.method === "GET" && endpoint === coursePath)
         return Response.json(remote.course);
-      if (chat && init.method === "GET") {
+      if ((chat || feedback) && init.method === "GET") {
         if (endpoint === studentViewPath)
           return Response.json(remote.studentView, {
             headers: { Link: `<${url}>; rel="current"` },
           });
-        if (endpoint === submissionPath)
-          return Response.json(remote.submission);
+        if (endpoint === submissionPath) {
+          const full = target.searchParams
+            .getAll("include[]")
+            .includes("submission_comments");
+          return Response.json(
+            full
+              ? remote.feedbackRead({
+                  ...remote.submission,
+                  submission_comments: remote.comments,
+                })
+              : remote.submission,
+          );
+        }
+      }
+      if (feedback && init.method === "PUT" && endpoint === submissionPath) {
+        const fields = Object.fromEntries(new URLSearchParams(init.body));
+        feedbackWrites.push({ endpoint, fields });
+        const comment = fields["comment[text_comment]"];
+        assert.doesNotMatch(comment, /[<>]|&(?!amp;|lt;|gt;)/u);
+        remote.comments.push({
+          id: 700 + feedbackWrites.length,
+          author_id: Number(canvas.userId),
+          attempt: Number(fields["comment[attempt]"]),
+          comment: comment.replace(
+            /&(amp|lt|gt);/gu,
+            (_, entity) => ({ amp: "&", lt: "<", gt: ">" })[entity],
+          ),
+        });
+        const value = await remote.feedbackReceipt({
+          ...remote.submission,
+          submission_comments: remote.comments,
+        });
+        return Response.json(value);
       }
       if (init.method === "POST" && endpoint === `${coursePath}/pages`) {
         const fields = Object.fromEntries(new URLSearchParams(init.body));
@@ -252,7 +301,7 @@ export function canvasPageFixture({
           return Response.json({ id: item.id, module_id: row.id });
         }
       }
-      if (assignments || modules || chat) {
+      if (assignments || modules || chat || feedback) {
         if (
           init.method === "GET" &&
           endpoint === `${coursePath}/assignment_groups/72`
@@ -320,6 +369,7 @@ export function canvasPageFixture({
     calls,
     writes,
     assignmentWrites,
+    feedbackWrites,
     assignmentRows,
     moduleWrites,
     moduleRows,

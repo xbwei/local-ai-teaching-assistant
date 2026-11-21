@@ -2,11 +2,17 @@ import {
   canvasPageId,
   canvasPagePlanId,
   canvasPageTitle,
+  canvasFeedbackSubmittedAt,
   readCanvasAssignmentDraft,
   readCanvasAssignmentScope,
   type CanvasAssignmentDraft,
   type CanvasAssignmentPreview,
   type CanvasAssignmentResult,
+  readCanvasFeedbackDraft,
+  readCanvasTestStudentScope,
+  type CanvasFeedbackDraft,
+  type CanvasFeedbackPreview,
+  type CanvasFeedbackResult,
   readCanvasModuleDraft,
   readCanvasModuleScope,
   type CanvasModuleDraft,
@@ -394,6 +400,75 @@ export class InputApi {
       canvasPageId(value.resourceId)
     )
       return { status: value.status, resourceId: value.resourceId };
+    throw new ClientError();
+  }
+
+  async canvasFeedbackScope() {
+    return readCanvasTestStudentScope(
+      await this.request("/api/v1/canvas/feedback", "GET"),
+    );
+  }
+
+  async previewCanvasFeedback(
+    draft: CanvasFeedbackDraft,
+    testStudentId: string,
+    signal: AbortSignal,
+  ): Promise<CanvasFeedbackPreview> {
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/feedback/preview",
+        "POST",
+        JSON.stringify({ draft }),
+        signal,
+      ),
+    );
+    const target = readCanvasTarget(value?.target);
+    const subject = responseRecord(value?.feedbackSubject);
+    if (
+      !canvasPagePlanId(value?.planId) ||
+      JSON.stringify(readCanvasFeedbackDraft(value.draft)) !==
+        JSON.stringify(draft) ||
+      !subject ||
+      subject.testStudentId !== testStudentId ||
+      !canvasPageTitle(subject.assignmentName) ||
+      typeof subject.attempt !== "number" ||
+      !Number.isSafeInteger(subject.attempt) ||
+      subject.attempt < 1 ||
+      !canvasFeedbackSubmittedAt(subject.submittedAt)
+    )
+      throw new ClientError();
+    return {
+      planId: value.planId,
+      target,
+      draft,
+      feedbackSubject: {
+        testStudentId,
+        assignmentName: subject.assignmentName,
+        attempt: subject.attempt,
+        submittedAt: subject.submittedAt,
+      },
+    };
+  }
+
+  async postCanvasFeedback(
+    preview: CanvasFeedbackPreview,
+    signal: AbortSignal,
+  ): Promise<CanvasFeedbackResult> {
+    const { planId, draft } = preview;
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/feedback/post",
+        "POST",
+        JSON.stringify({ confirm: true, planId, draft }),
+        signal,
+      ),
+    );
+    if (value?.status === "UNCERTAIN") return { status: "UNCERTAIN" };
+    if (
+      (value?.status === "VERIFIED" || value?.status === "UNVERIFIED") &&
+      canvasPageId(value.commentId)
+    )
+      return { status: value.status, commentId: value.commentId };
     throw new ClientError();
   }
 

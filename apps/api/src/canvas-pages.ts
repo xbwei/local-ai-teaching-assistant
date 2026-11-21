@@ -10,13 +10,17 @@ import {
   canvasPageTitle,
   readCanvasAssignmentDraft,
   readCanvasAssignmentScope,
+  readCanvasFeedbackDraft,
   readCanvasModuleDraft,
   readCanvasModuleScope,
   readCanvasPageDraft,
+  readCanvasTestStudentScope,
   type CanvasPageDraft,
   type CanvasAssignmentDraft,
   type CanvasAssignmentScope,
   type CanvasAssignmentSubject,
+  type CanvasFeedbackDraft,
+  type CanvasTestStudentScope,
   type CanvasModuleDraft,
   type CanvasModuleScope,
 } from "@laita/contracts";
@@ -38,7 +42,8 @@ interface CanvasPageSettings {
   canvasToken: string;
   assignments?: CanvasAssignmentScope;
   modules?: CanvasModuleScope;
-  chat?: { testStudentId: string; assignmentIds: string[] };
+  chat?: CanvasTestStudentScope;
+  feedback?: CanvasTestStudentScope;
 }
 
 export interface CanvasPageOptions {
@@ -48,25 +53,6 @@ export interface CanvasPageOptions {
 
 export function readCanvasPageSettings(file: string | undefined): unknown {
   return readProtectedOwnerJson(file, 4096);
-}
-
-function readChatScope(value: unknown, teacherId: string) {
-  if (!value || typeof value !== "object")
-    throw new Error("INVALID_CHAT_SCOPE");
-  const scope = value as Record<string, unknown>;
-  const { testStudentId, assignmentIds } = scope;
-  if (
-    Object.keys(scope).sort().join(",") !== "assignmentIds,testStudentId" ||
-    !canvasPageId(testStudentId) ||
-    testStudentId === teacherId ||
-    !Array.isArray(assignmentIds) ||
-    assignmentIds.length < 1 ||
-    assignmentIds.length > 12 ||
-    !assignmentIds.every(canvasPageId) ||
-    new Set(assignmentIds).size !== assignmentIds.length
-  )
-    throw new Error("INVALID_CHAT_SCOPE");
-  return { testStudentId, assignmentIds: [...assignmentIds] as string[] };
 }
 
 function connection(
@@ -79,7 +65,7 @@ function connection(
   const permitted = "canvasToken,courseId,expiresAt,origin,teacherId";
   const keys = Object.keys(v)
     .filter(
-      (key) => key !== "assignments" && key !== "modules" && key !== "chat",
+      (key) => !["assignments", "modules", "chat", "feedback"].includes(key),
     )
     .sort()
     .join(",");
@@ -103,6 +89,18 @@ function connection(
     v.canvasToken === canvas.consumerKey
   )
     return;
+  const chat = Object.hasOwn(v, "chat")
+    ? readCanvasTestStudentScope(v.chat)
+    : undefined;
+  const feedback = Object.hasOwn(v, "feedback")
+    ? readCanvasTestStudentScope(v.feedback)
+    : undefined;
+  if (
+    chat?.testStudentId === v.teacherId ||
+    feedback?.testStudentId === v.teacherId ||
+    (chat && feedback && chat.testStudentId !== feedback.testStudentId)
+  )
+    return;
   return {
     origin: v.origin,
     courseId: v.courseId,
@@ -115,17 +113,17 @@ function connection(
     ...(Object.hasOwn(v, "modules") && {
       modules: readCanvasModuleScope(v.modules),
     }),
-    ...(Object.hasOwn(v, "chat") && {
-      chat: readChatScope(v.chat, v.teacherId),
-    }),
+    ...(chat && { chat }),
+    ...(feedback && { feedback }),
   };
 }
 
-type Resource = "page" | "assignment" | "module";
+type Resource = "page" | "assignment" | "module" | "feedback";
 type Draft =
   | (CanvasPageDraft & { kind?: never })
   | CanvasAssignmentDraft
-  | CanvasModuleDraft;
+  | CanvasModuleDraft
+  | CanvasFeedbackDraft;
 
 function readIntent(
   value: unknown,
@@ -139,6 +137,7 @@ function readIntent(
     page: readCanvasPageDraft,
     assignment: readCanvasAssignmentDraft,
     module: readCanvasModuleDraft,
+    feedback: readCanvasFeedbackDraft,
   };
   const checked = parse[resource](draft);
   if (action === "preview" && keys === "draft") return { draft: checked };
@@ -231,18 +230,23 @@ export function createCanvasAuthoringHandlers(
       !settings ||
       (resource === "assignment" && !settings.assignments) ||
       (resource === "module" && !settings.modules) ||
-      (resource === "chat" && !settings.chat)
+      (resource === "chat" && !settings.chat) ||
+      (resource === "feedback" && !settings.feedback)
     )
       throw new Error("CANVAS_UNAVAILABLE");
-    const { assignments, modules, chat, ...rest } = settings;
+    const { assignments, modules, chat, feedback, ...rest } = settings;
     const launchKeys = [canvas.consumerKey, canvas.sharedSecret];
     if (
-      draft &&
-      launchKeys.some(
-        (secret) =>
-          ("title" in draft && draft.title.includes(secret)) ||
-          ("body" in draft && draft.body.includes(secret)),
-      )
+      (draft &&
+        launchKeys.some(
+          (secret) =>
+            ("title" in draft && draft.title.includes(secret)) ||
+            ("body" in draft && draft.body.includes(secret)),
+        )) ||
+      (draft?.kind === "FEEDBACK" &&
+        [...launchKeys, rest.canvasToken].some((secret) =>
+          draft.text.includes(secret),
+        ))
     )
       throw new Error("INVALID_DRAFT");
     return {
@@ -261,6 +265,7 @@ export function createCanvasAuthoringHandlers(
             modules?.assignmentIds ?? null,
             chat?.testStudentId ?? null,
             chat?.assignmentIds ?? null,
+            feedback ?? null,
           ]),
         )
         .digest("hex"),
@@ -272,6 +277,7 @@ export function createCanvasAuthoringHandlers(
     action: "status" | "preview" | "confirm",
   ): RequestHandler {
     return async (req, res) => {
+      if (resource === "feedback") res.setHeader("Cache-Control", "no-store");
       const actor = authorizeTeacher(req, res);
       if (!actor) return;
       const unavailable = () =>
@@ -291,6 +297,7 @@ export function createCanvasAuthoringHandlers(
             page: { enabled: true },
             assignment: initial.settings.assignments,
             module: initial.settings.modules,
+            feedback: initial.settings.feedback,
           }[resource],
         );
         return;
@@ -304,11 +311,13 @@ export function createCanvasAuthoringHandlers(
         return;
       }
       const { draft, planId } = intent;
-      const { origin, courseId, teacherId, assignments, modules } =
+      const { origin, courseId, teacherId, assignments, modules, feedback } =
         initial.settings;
       if (
-        draft.kind === "TITLE" &&
-        !assignments?.editableIds.includes(draft.assignmentId)
+        (draft.kind === "TITLE" &&
+          !assignments?.editableIds.includes(draft.assignmentId)) ||
+        (draft.kind === "FEEDBACK" &&
+          !feedback?.assignmentIds.includes(draft.assignmentId))
       ) {
         res.status(403).json({ code: "FORBIDDEN" });
         return;
@@ -324,7 +333,9 @@ export function createCanvasAuthoringHandlers(
         return;
       }
       const plan = saved;
-      const draftKey = JSON.stringify(draft);
+      const draftKey = createHash("sha256")
+        .update(JSON.stringify(draft))
+        .digest("hex");
       const key = initial.key;
       function checkPlan() {
         return (
@@ -370,6 +381,7 @@ export function createCanvasAuthoringHandlers(
                     page: "pageId",
                     assignment: "assignmentId",
                     module: "resourceId",
+                    feedback: "commentId",
                   }[resource]]: id,
                 }
               : { status },
@@ -395,6 +407,13 @@ export function createCanvasAuthoringHandlers(
         );
         const link =
           "moduleId" in draft ? await client.modules.preview(draft) : undefined;
+        const sample =
+          draft.kind === "FEEDBACK" && feedback
+            ? await client.feedback.preview(
+                draft.assignmentId,
+                feedback.testStudentId,
+              )
+            : undefined;
         let subject: CanvasAssignmentSubject | undefined;
         if (draft.kind === "CREATE" || draft.kind === "TITLE") {
           if (!assignments) throw new Error("CANVAS_UNAVAILABLE");
@@ -409,13 +428,19 @@ export function createCanvasAuthoringHandlers(
             (secret) =>
               current.courseName.includes(secret) ||
               subject?.name.includes(secret) ||
+              sample?.subject.assignmentName.includes(secret) ||
               link?.subject.moduleName.includes(secret) ||
               link?.resource.name.includes(secret) ||
               link?.resource.reference.includes(secret),
           )
         )
           throw new Error("INVALID_CANVAS_TARGET");
-        const snapshot = JSON.stringify({ target: current, subject, link });
+        const snapshot = JSON.stringify({
+          target: current,
+          subject,
+          link,
+          sample,
+        });
         if (action === "preview") {
           const id = randomBytes(32).toString("hex");
           saved = {
@@ -434,6 +459,7 @@ export function createCanvasAuthoringHandlers(
             draft,
             ...(subject && { subject }),
             ...(link && { moduleSubject: link.subject }),
+            ...(sample && { feedbackSubject: sample.subject }),
           });
           return;
         }
@@ -470,6 +496,20 @@ export function createCanvasAuthoringHandlers(
             resourceId,
             draft,
             subject,
+          );
+        } else if (draft.kind === "FEEDBACK") {
+          if (!sample) throw new Error("INVALID_CANVAS_TARGET");
+          resourceId = await client.feedback.post(
+            draft,
+            sample.subject,
+            sample.commentIds,
+            beforeDispatch,
+          );
+          verified = await client.feedback.readBack(
+            resourceId,
+            draft,
+            sample.subject,
+            sample.digest,
           );
         } else {
           resourceId = await client.modules.write(draft, link, beforeDispatch);
@@ -618,6 +658,11 @@ export function createCanvasAuthoringHandlers(
       status: handler("module", "status"),
       preview: handler("module", "preview"),
       save: handler("module", "confirm"),
+    },
+    feedback: {
+      status: handler("feedback", "status"),
+      preview: handler("feedback", "preview"),
+      post: handler("feedback", "confirm"),
     },
     chat: chatHandler,
     close: clearPreview,

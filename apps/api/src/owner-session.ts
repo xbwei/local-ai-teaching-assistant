@@ -395,7 +395,7 @@ export function createOwnerSessions(options: {
         },
       );
       if (authoring) {
-        const { pages, assignments, modules, chat } = authoring;
+        const { pages, assignments, modules, feedback, chat } = authoring;
         const parser = createCanvasPageParser();
         const pagesPath = "/api/v1/canvas/pages";
         app.use(pagesPath, entryLimit);
@@ -412,6 +412,12 @@ export function createOwnerSessions(options: {
         app.get(modulesPath, modules.status);
         app.post(modulesPath + "/preview", parser, modules.preview);
         app.post(modulesPath + "/save", parser, modules.save);
+        const feedbackPath = "/api/v1/canvas/feedback";
+        app.use(feedbackPath, entryLimit);
+        app.get(feedbackPath, feedback.status);
+        const feedbackParser = createCanvasPageParser(8192);
+        app.post(feedbackPath + "/preview", feedbackParser, feedback.preview);
+        app.post(feedbackPath + "/post", feedbackParser, feedback.post);
         const chatPath = "/api/v1/canvas/chat";
         app.use(chatPath, entryLimit);
         app.get(chatPath, chat);

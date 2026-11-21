@@ -671,6 +671,7 @@ html[data-touch-capable][data-virtual-keyboard] .owner-role {
   min-height: 0;
 }
 
-#canvas-assignment-preview pre {
+#canvas-assignment-preview pre,
+#canvas-feedback-preview pre {
   white-space: pre-wrap;
 }

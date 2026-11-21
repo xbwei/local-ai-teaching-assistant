@@ -23,3 +23,5 @@ For an assignment draft, use **Canvas Assignments** in the signed Canvas Teacher
 Use **Canvas Modules** to preview an empty unpublished module or add one approved Page or Assignment to an approved unpublished module. Confirm each change in its own preview and check the readback result. [Canvas Module walkthrough](CANVAS.md#8-create-and-organize-unpublished-canvas-modules)
 
 In the same signed Teacher view, open the optional **Canvas Chat plugin** and ask “How many submissions for Map studio?” or “What is the score for Map studio?” using the full title of one approved practice assignment. This answers from one Canvas Test Student sample. [Setup and scope](CANVAS.md#canvas-chat-plugin)
+
+Use **Canvas Test Student feedback** to review the exact assignment, recipient, attempt and text before choosing **Post feedback**. Check the readback. If it is uncertain or unverified, check Canvas directly before trying again. A feedback comment does not update a grade. [Feedback setup and walkthrough](CANVAS.md#canvas-teacher-feedback)
