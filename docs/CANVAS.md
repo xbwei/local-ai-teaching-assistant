@@ -1,6 +1,6 @@
 # Optional Canvas course App
 
-This early-adopter reference connects **one Owner, one Canvas course and one Instructor identity** to the existing local Teacher role. Admin, Teacher and Student are three views operated by that same Owner, not three real people. The signed launch enters the same local API, Chat, course grounding, SQLite and History. A separate optional REST configuration enables unpublished Page, Assignment and Module creation, approved Assignment renaming, and adding approved Pages or Assignments to unpublished Modules. The integration does not provision Canvas accounts or memberships.
+This early-adopter reference connects **one Owner, one Canvas course and one Instructor identity** to the existing local Teacher role. Admin, Teacher and Student are three views operated by that same Owner, not three real people. The signed launch enters the same local API, Chat, course grounding, SQLite and History. Separate optional REST configuration enables scoped Canvas Chat and Test Student reads, unpublished Page, Assignment and Module creation, approved Assignment renaming, linking approved items in unpublished Modules, and explicitly confirmed Test Student feedback. The separately configured GitHub/MongoDB verifiers read approved practice submissions and perform read-only provider checks. None of these tools provisions Canvas accounts or memberships.
 
 ## 1. Install and initialize standalone access
 
@@ -32,7 +32,7 @@ Your Canvas permissions must allow **course-level external Apps installed with P
 
 The Owner's browser must reach both Canvas and the configured LAITA HTTPS origin. For an instructor working on the same Mac, the existing trusted `https://localhost:3443` entry can be used; the browser posts the launch form to localhost. Canvas servers do not need to call the LAITA API. Browser private-network/loopback policies or institution policy may block this. Confirm on your own authorized setup. The supplied Caddyfile stays loopback-only. A remote browser requires a separately configured, independently protected Owner entry with the exact public origin and fixed forwarding headers; it is outside this reference setup. Do not open the loopback API or expose this reference as a hosted service.
 
-Identify your own numeric Canvas **course ID** and **user ID** using your authorized Canvas UI/course profile or your Canvas administrator. The LTI `context_id` and opaque `user_id` are not substitutes for these numeric Canvas values. The signed launch by itself makes no Canvas REST calls. The integration does not ingest rosters, grades, submissions or Canvas course material for Chat. Generic examples are `https://canvas.example.test`, course `42001`, user `73001`; these are synthetic and will not connect to a service.
+Identify your own numeric Canvas **course ID** and **user ID** using your authorized Canvas UI/course profile or your Canvas administrator. The LTI `context_id` and opaque `user_id` are not substitutes for these numeric Canvas values. The signed launch by itself makes no Canvas REST calls or reads of rosters, grades, submissions or course material. Optional Teacher REST tools described below can read the configured Test Student or an explicitly approved practice roster; those reads are separate from course-grounded Chat. Generic examples are `https://canvas.example.test`, course `42001`, user `73001`; these are synthetic and will not connect to a service.
 
 Generate a new random consumer key (at least 16 characters) and shared secret (at least 32 random characters, ideally 256 bits) in your password manager. Store them privately there for transfer into the Canvas App settings and the next hidden Terminal prompts. These are launch credentials, not a Canvas password or Canvas REST API token. Do not use institutional login credentials. Do not put secrets into shell commands/history, Git, issue reports, screenshots, application JSON or browser local/session storage.
 
@@ -230,7 +230,7 @@ Preview, recheck, write and readback use separate Canvas requests. Canvas can ch
 
 The signed Teacher can optionally run [GitHub and MongoDB assignment verification](CANVAS-VERIFICATION.md) for an explicitly configured roster. Each row checks one current attempt. The Test Student-only Canvas Chat and feedback tools keep their own scope.
 
-## 8. Disable, remove, rotate or recover
+## 9. Disable, remove, rotate or recover
 
 To disable Canvas authoring, remove the REST file and revoke the token through your authorized Canvas setup. The steps below disable the signed launch itself.
 
