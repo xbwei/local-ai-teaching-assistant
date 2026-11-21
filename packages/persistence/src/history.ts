@@ -1,6 +1,8 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+import { historyOutcomes, historyStages } from "@laita/contracts";
 import type {
   HistoryAnswer,
+  HistoryDiagnostic,
   HistoryEvent,
   HistoryFeedback,
   HistoryFilter,
@@ -294,6 +296,44 @@ export function createHistoryRepository(
       db.prepare(
         "UPDATE history_turns SET suspected = 1, suspicion_reason = 'Existing input guard rejected excluded or invalid input; not a confirmed violation.', suspicion_source = 'SAFETY' WHERE id = ?",
       ).run(turn);
+    },
+    diagnostic(reference: string): HistoryDiagnostic | null {
+      if (scope?.role !== "admin") throw new HistoryValidationError();
+      const matches = db
+        .prepare(
+          `SELECT id, outcome, recording FROM history_turns
+           WHERE ordinal > (SELECT coalesce(max(ordinal), 0) - 2000 FROM history_turns)
+             AND correlation = ? LIMIT 2`,
+        )
+        .all(reference);
+      if (matches.length !== 1) return null;
+      const { id, recording, outcome } = matches[0]!;
+      const checkedOutcome = historyOutcomes.find((value) => value === outcome);
+      if (
+        typeof id !== "string" ||
+        (recording !== "RECORDED" && recording !== "INCOMPLETE") ||
+        checkedOutcome === undefined
+      )
+        return null;
+
+      const events = db
+        .prepare(
+          `SELECT json_extract(document, '$.stage') AS stage,
+                  json_extract(document, '$.origin') AS origin
+           FROM history_events WHERE turn = ? ORDER BY ordinal LIMIT 256`,
+        )
+        .all(id);
+      const stages: Pick<HistoryEvent, "stage" | "origin">[] = [];
+      for (const { stage, origin } of events) {
+        const checkedStage = historyStages.find((value) => value === stage);
+        if (
+          checkedStage === undefined ||
+          (origin !== "SERVER" && origin !== "BROWSER")
+        )
+          return null;
+        stages.push({ stage: checkedStage, origin });
+      }
+      return { recording, outcome: checkedOutcome, stages };
     },
     sampleQuestions(since: string, until: string, includeText: boolean) {
       const context = scope?.context;

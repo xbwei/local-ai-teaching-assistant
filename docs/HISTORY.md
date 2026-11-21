@@ -8,6 +8,14 @@ New conversation clears active model context, not saved history. No automatic ex
 
 This is one Owner's dashboard behind local role sign-in, not a multi-person service. Admin can inspect all retained records, including pre-v0.2 History. Teacher and Student see their respective role records. Regular Student excludes Test Student sample records. Canvas Teacher sees only its configured origin/course/identity context. Student cannot write Owner review annotations. Role/session references cannot transfer access. See [role setup and Canvas boundaries](CANVAS.md). Never expose the reference entry as a public student/admin system.
 
+## Admin diagnostic lookup
+
+Sign in as local **Admin** and open **History & Review**. Open a retained record, expand **Execution trace / identifiers**, and copy the complete value marked **Correlation**. If the record says **unobserved**, it has no reference to look up. Select **Back to results**, expand **Find a local diagnostic**, paste the reference and select **Look up reference**.
+
+The lookup uses the latest 2,000 turn ordinal positions in the existing SQLite archive. A unique match shows the recording status, turn outcome and up to 256 observed stage names with their server or browser origins. Missing, older and ambiguous references return no match. A stage without an event remains unobserved. The lookup makes no provider request, writes no History and returns no text, answers, event details, identifiers, feedback or usage records.
+
+MongoDB verifier outcomes have no support reference in this version. Diagnostic lookup is part of the local, single-operator dashboard. The full Admin record view and the existing History retention rules still apply.
+
 ## Teacher History plugin
 
 With LAITA stopped, set `LAITA_HISTORY_SAMPLE_ID` in the API process environment to a stable operator-chosen label of 1–32 lowercase ASCII letters, digits or hyphens beginning with a letter or digit. Restart the API with the [public operator configuration](GETTING-STARTED.md). Leaving the variable unset or using an invalid label disables the plugin. It is a local scope label. Keep the same label for the same sample, and use a separate label to start a different sample. Changing or removing it does not delete retained records.

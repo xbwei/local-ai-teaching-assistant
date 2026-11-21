@@ -6,6 +6,7 @@ import { initializePersistence } from "@laita/persistence";
  * microphone hardware or system TTS. Speech/audio are synthetic fixtures.
  */
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import {
   cpSync,
   mkdtempSync,
@@ -94,6 +95,7 @@ try {
   assert.equal(initialized.ok, true);
   persistence = initialized.value;
   const seededHistory = persistence.history();
+  const diagnosticReference = randomUUID();
   for (let i = 0; i < 65; i++) {
     const id = (i + 1).toString(16).padStart(64, "0");
     seededHistory.begin({
@@ -101,7 +103,7 @@ try {
       conversation: id,
       inputType: i % 2 ? "VOICE" : "TYPED",
       text: `Scan fixture ${i} ${"compact preview ".repeat(30)}`,
-      correlation: null,
+      correlation: i === 0 ? diagnosticReference : null,
     });
     seededHistory.result(
       id,
@@ -268,6 +270,9 @@ try {
       await page.locator("#composer").getByRole("button", { name: "Send", exact: true }).click();
       await page.locator("#messages article.answer").first().waitFor();
     }
+    await page.goto(`${f.origin}/history`);
+    await page.getByRole("heading", { name: "Owner history & review" }).waitFor();
+    assert.equal(await page.getByText("Find a local diagnostic", { exact: true }).count(), 0);
     await page.getByRole("button", { name: "Sign out / change role" }).click();
     await signIn("teacher");
     assert.equal(await page.getByText("Create a Canvas Page", { exact: true }).isVisible(), false);
@@ -298,6 +303,9 @@ try {
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })));
     assert.equal(await draft.inputValue(), "");
     assert.equal(await historyQuestion.inputValue(), "");
+    await page.goto(`${f.origin}/history`);
+    await page.getByRole("heading", { name: "Owner history & review" }).waitFor();
+    assert.equal(await page.getByText("Find a local diagnostic", { exact: true }).count(), 0);
     results.push({ name, width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
@@ -1596,6 +1604,22 @@ try {
       await historyDialog.locator(".history-turn").innerText(),
       /DETAIL_ONLY_ANSWER_189/,
     );
+    await historyDialog.getByText("Execution trace / identifiers", { exact: true }).click();
+    const copiedReference = (await historyDialog.locator("pre").filter({ hasText: "Correlation:" }).innerText())
+      .match(/Correlation: ([0-9a-f-]{36})\n/u)?.[1];
+    assert.equal(copiedReference, diagnosticReference);
+    await historyDialog.getByRole("link", { name: "Back to results", exact: true }).click();
+    const localDiagnostic = historyDialog.locator("details").filter({ hasText: "Find a local diagnostic" });
+    await localDiagnostic.locator("summary").click();
+    const diagnosticInput = localDiagnostic.getByLabel("Correlation reference");
+    await diagnosticInput.fill(copiedReference);
+    await localDiagnostic.getByRole("button", { name: "Look up reference" }).click();
+    await localDiagnostic.getByText("SUCCESS · RECORDED. Observed stages TTS (SERVER).", { exact: true }).waitFor();
+    assert.doesNotMatch(await localDiagnostic.innerText(), /DETAIL_ONLY_ANSWER_189|Scan fixture 0/);
+    assert.ok(await historyPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await diagnosticInput.fill(randomUUID());
+    await diagnosticInput.press("Enter");
+    await localDiagnostic.getByText("No matching diagnostic in the recent History window.", { exact: true }).waitFor();
     assert.equal(f.calls(), beforeHistory);
     assert.ok(
       historyRequests.every((url) => !url.includes("/api/v1/input/")),

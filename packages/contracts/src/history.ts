@@ -38,6 +38,11 @@ export interface HistoryEvent {
   origin: "SERVER" | "BROWSER";
   snapshot?: HistorySnapshot;
 }
+export interface HistoryDiagnostic {
+  recording: RecordingState;
+  outcome: HistoryOutcome;
+  stages: readonly Pick<HistoryEvent, "stage" | "origin">[];
+}
 export type Trace = (
   stage: HistoryStage,
   outcome: string,
@@ -49,16 +54,18 @@ export type Trace = (
     snapshot?: HistorySnapshot;
   },
 ) => void;
-export type HistoryOutcome =
-  | "PENDING"
-  | "TRANSCRIBED"
-  | "SUCCESS"
-  | "PARTIAL"
-  | "FAILED"
-  | "TIMEOUT"
-  | "CANCELLED"
-  | "NO_ANSWER"
-  | "INTERRUPTED";
+export const historyOutcomes = [
+  "PENDING",
+  "TRANSCRIBED",
+  "SUCCESS",
+  "PARTIAL",
+  "FAILED",
+  "TIMEOUT",
+  "CANCELLED",
+  "NO_ANSWER",
+  "INTERRUPTED",
+] as const;
+export type HistoryOutcome = (typeof historyOutcomes)[number];
 export interface HistoryAnswer {
   leg: string;
   provider: string;
