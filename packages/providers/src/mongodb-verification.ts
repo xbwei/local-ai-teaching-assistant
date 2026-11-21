@@ -114,6 +114,7 @@ export function mongoSubmission(
       ))
         throw denied;
     }
+    // WHATWG URL accessors retain the percent-encoded user info.
     const credential = JSON.stringify({
       username: decodeURIComponent(u.username),
       password: decodeURIComponent(u.password),

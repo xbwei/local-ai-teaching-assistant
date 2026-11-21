@@ -63,15 +63,38 @@ test("MongoDB verifier binds exact URI and scope and constructs the pinned read-
     assert.equal(client.options.connectionType.name, "BoundedConnection");
     for (const address of [
       "127.0.0.1",
+      "192.0.0.1",
       "192.0.2.1",
+      "192.88.99.1",
+      "192.168.0.1",
       "10.0.0.1",
       "::1",
       "169.254.1.1",
     ])
       assert.equal(mongoPublicIPv4(address), false);
-    assert.equal(mongoPublicIPv4("8.8.8.8"), true);
+    for (const address of ["8.8.8.8", "192.0.1.1", "192.2.1.1"])
+      assert.equal(mongoPublicIPv4(address), true);
   } finally {
     await client.close();
+  }
+});
+
+test("MongoDB credentials are decoded exactly once from both supported URI schemes", () => {
+  for (const scheme of ["mongodb", "mongodb+srv"]) {
+    for (const [encoded, expected] of [
+      ["synthetic%21", "synthetic!"],
+      ["synthetic%25", "synthetic%"],
+      ["synthetic%2521", "synthetic%21"],
+    ]) {
+      const { credential } = mongoSubmission(
+        `${scheme}://%73ample:${encoded}@${expectation.host}/practice`,
+        expectation,
+      );
+      assert.deepEqual(JSON.parse(credential), {
+        username: "sample",
+        password: expected,
+      });
+    }
   }
 });
 

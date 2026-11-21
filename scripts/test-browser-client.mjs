@@ -552,7 +552,7 @@ try {
     await stopped.promise;
     await verifier.getByText("Verification cancelled. 0 of 30 results received.").waitFor();
     assert.equal(await verifier.getByText(/Cancelled — unchecked/).count(), 29);
-    assert.doesNotMatch(await verifier.innerText(), /example.mongodb.net|synthetic-only-passphrase|synthetic_github_reader|README.md/);
+    assert.doesNotMatch(await verifier.innerText(), /example\.mongodb\.net|synthetic-only-passphrase|synthetic_github_reader|README\.md/);
     assert.equal(requests.slice(verificationRequests).filter((request) => request === f.origin + "/api/v1/canvas/verification").length, 61);
     syntheticVerification.state.mongo = async () => {};
     results.push({ name: mobile ? "canvas-verification-phone" : "canvas-verification-desktop", width, height, status: "PASS", requests: requests.length });
