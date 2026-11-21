@@ -6,11 +6,17 @@ The compatibility gate uses Node 24.19.0/npm 11.17.0 and runs runtime/persistenc
 
 Opt-in browser validation: set `PLAYWRIGHT_MODULE` to your installed Playwright module and run `node scripts/test-browser-client.mjs` after build. It uses synthetic HTTPS/providers/audio/storage, not real model requests or physical microphones. The reference HTTPS configuration must be validated too. Fresh-clone setup smoke must use only LAITA files and isolated operator-owned runtime.
 
-The browser fixture checks the phone's install guide, HTTPS manifest and icons and opens a chat with synthetic course provenance. Desktop and phone scenarios also exercise the signed Teacher Page preview, invalidation on edit, explicit creation and readback using a fake Canvas REST adapter. Set `CLIENT_CHROMIUM_BINARY` to use an installed Chromium executable outside the default Chrome location. Chromium viewport testing does not establish native Safari installation or real-device behavior.
+The browser fixture checks the phone's install guide, HTTPS manifest and icons and opens a chat with synthetic course provenance. It exercises standalone Teacher drafting and History Count/Summary, signed Canvas previews and readback, both verifiers, the Canvas Chat panel, Admin diagnostics and synthetic audio. Set `CLIENT_CHROMIUM_BINARY` to use an installed Chromium executable outside the default Chrome location. Chromium viewport testing does not establish native Safari installation or real-device behavior.
 
 Synthetic golden retrieval tests cover bilingual overview, Lab/Week locators, exact displayed evidence, active-context preservation, unsupported refusal and Cloud isolation. Run `node scripts/test-public-course-sources.mjs` for a bounded read-only current public-source check without model calls. If anonymous GitHub API limits prevent refresh, `PUBLIC_COURSE_GITHUB_CLI=1` uses your existing GitHub CLI connection only for these public reads; the application remains unauthenticated/fail-closed. The output distinguishes transports. A live public-source check verifies retrieval, not model answer quality. Synthetic results do not establish real model quality, real speech or physical hardware acceptance, or acceptance of an operator's deployment. Results from a private deployment do not establish those properties for LAITA Public V1.
 
 Provide validation evidence for each revision, including applicable build, tests, policy and security checks. Review findings must be fixed or supported by a concrete disposition. Substantive changes require maintainer review and approval before merge; passing checks do not authorize deployment or release.
+
+## Integration and v0.2.0 recovery
+
+From a clean checkout, install with `npm ci --ignore-scripts`, build, and run the full and runtime-compatibility gates. The reference HTTPS test uses a new synthetic SQLite runtime, initializes the Owner credential and checks role and session boundaries with optional integrations disabled. The browser suite uses a separate synthetic runtime with optional integrations enabled. The Markdown test checks literal code and inert HTML, links and images. Browser cases cover Chat display and Canvas Page and Assignment previews.
+
+For the compatibility check, seed an isolated database using a separately built public v0.2.0 checkout. Save a stopped, version-matched snapshot, open the database with the candidate and verify the Owner credential, scoped History, existing feedback, accounting and all five SQLite migration checksums. Restore the snapshot and open it with v0.2.0 to verify the saved records. See the [operator recovery procedure](DEPLOYMENT.md#explicit-update-and-recovery).
 
 ## Startup and boundary regressions
 

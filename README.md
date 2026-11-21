@@ -44,6 +44,8 @@ Course grounding is separate from Canvas credentials. It uses explicitly support
 
 Follow [Getting started](docs/GETTING-STARTED.md) for prerequisites, installation, configuration, model setup and the first conversation. The reference deployment uses an Apple Silicon Mac, Ollama, Node 24 and an operator-controlled HTTPS entry on loopback. OpenAI is optional.
 
+[Unreleased changes since v0.2.0](docs/RELEASE-NOTES-unreleased.md) lists the supported workflows, a practice walkthrough and upgrade checks.
+
 | Guide                                                          | What it covers                                                                                                               |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | [Local roles and optional Canvas course App](docs/CANVAS.md)   | Hidden Terminal credential setup, standalone roles, signed Instructor launch, unpublished Pages, removal and troubleshooting |
