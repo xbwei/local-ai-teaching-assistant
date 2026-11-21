@@ -1161,6 +1161,9 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
     [() => f.request(modulesPath), 403],
     [() => post(modulesPath + "/preview", "{"), 400],
     [() => post(modulesPath + "/save", "{"), 400],
+    [() => f.request(feedbackPath), 403],
+    [() => post(feedbackPath + "/preview", "{"), 400],
+    [() => post(feedbackPath + "/post", "{"), 400],
     [() => f.request(canvasChatPath), 403],
     [() => post(canvasChatPath, "{"), 400],
   ];
@@ -1192,6 +1195,7 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
 });
 
 const pagesPath = "/api/v1/canvas/pages";
+const feedbackPath = "/api/v1/canvas/feedback";
 const authoredDraft = {
   title: "Studio — 地图 🌍",
   body: "<h2>地图</h2><p>Compare <strong>two</strong> routes &amp; explain&nbsp;🌍.</p>",
@@ -2260,4 +2264,321 @@ test("Canvas Chat withholds an in-flight result after scope drift or a cancelled
     synthetic.calls.filter(([method]) => method !== "GET").length,
     0,
   );
+});
+
+const commentDraft = {
+  kind: "FEEDBACK",
+  assignmentId: "81",
+  text: "Compare <two routes> & explain why. 地图 🌍\nDescribe your evidence.",
+};
+const encodedFeedback =
+  "Compare &lt;two routes&gt; &amp; explain why. 地图 🌍\nDescribe your evidence.";
+async function feedbackEntries(synthetic) {
+  const entries = await pageEntries(synthetic, feedbackPath);
+  const preview = () => entries.preview(commentDraft);
+  const post = (plan, draft = plan.draft, signal) =>
+    entries.request(
+      "post",
+      { confirm: true, planId: plan.planId, draft },
+      undefined,
+      {},
+      signal,
+    );
+  return { ...entries, preview, post };
+}
+
+test("Canvas feedback is opt-in and posts one exact reviewed comment to the signed Teacher's Test Student", async (t) => {
+  const disabled = canvasPageFixture({ chat: true });
+  const inactive = await feedbackEntries(disabled);
+  t.after(() => inactive.f.close());
+  assert.equal((await inactive.request("")).status, 503);
+  assert.equal(
+    (await inactive.request("preview", { draft: commentDraft })).status,
+    503,
+  );
+  assert.deepEqual(disabled.calls, []);
+
+  const synthetic = canvasPageFixture({ chat: true, feedback: true });
+  const { f, request, preview, post } = await feedbackEntries(synthetic);
+  t.after(() => f.close());
+  assert.equal((await request("", undefined, "")).status, 401);
+  for (const role of ["admin", "teacher", "student"]) {
+    assert.equal((await f.login(role)).status, 200);
+    assert.equal((await request("", undefined, f.cookie())).status, 403);
+    assert.equal(
+      (await request("preview", { draft: commentDraft }, f.cookie())).status,
+      403,
+    );
+    assert.equal(
+      (await request("post", { draft: commentDraft }, f.cookie())).status,
+      403,
+    );
+  }
+  const status = await request("");
+  assert.equal(status.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await status.json(), synthetic.settings.feedback);
+  synthetic.settings.feedback.testStudentId = "73010";
+  assert.equal((await request("")).status, 503);
+  synthetic.settings.feedback.testStudentId = "73009";
+
+  for (const draft of [
+    { ...commentDraft, text: "   " },
+    { ...commentDraft, text: "界".repeat(342) },
+    { ...commentDraft, text: "broken surrogate \ud800" },
+    { ...commentDraft, text: "directional control \u202e" },
+    { ...commentDraft, text: "carriage\rreturn" },
+    { ...commentDraft, postedGrade: 4 },
+    { ...commentDraft, testStudentId: "73010" },
+  ])
+    assert.equal((await request("preview", { draft })).status, 400);
+  for (const text of [
+    canvas.sharedSecret,
+    canvas.consumerKey,
+    synthetic.settings.canvasToken,
+  ])
+    assert.equal(
+      (await request("preview", { draft: { ...commentDraft, text } })).status,
+      503,
+    );
+  assert.equal(
+    (
+      await request("preview", {
+        draft: { ...commentDraft, assignmentId: "82" },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request("post", {
+        confirm: true,
+        planId: "a".repeat(64),
+        draft: commentDraft,
+      })
+    ).status,
+    409,
+  );
+  assert.deepEqual(synthetic.calls, []);
+
+  const plan = await preview();
+  assert.deepEqual(plan.draft, commentDraft);
+  assert.deepEqual(plan.target, {
+    origin: canvas.canvasOrigin,
+    courseId: canvas.courseId,
+    teacherId: canvas.userId,
+    courseName: "Synthetic Studio",
+  });
+  assert.deepEqual(plan.feedbackSubject, {
+    assignmentName: "Synthetic draft",
+    testStudentId: "73009",
+    attempt: 1,
+    submittedAt: "2026-11-20T12:00:00Z",
+  });
+  assert.deepEqual(Object.keys(plan).sort(), [
+    "draft",
+    "feedbackSubject",
+    "planId",
+    "target",
+  ]);
+  assert.ok(synthetic.calls.every(([method]) => method === "GET"));
+  assert.equal(
+    (
+      await request("post", {
+        confirm: false,
+        planId: plan.planId,
+        draft: plan.draft,
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await post(plan, { ...commentDraft, text: "Different text" })).status,
+    409,
+  );
+  assert.deepEqual(synthetic.feedbackWrites, []);
+  const response = await post(plan);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), {
+    status: "VERIFIED",
+    commentId: "701",
+  });
+  const endpoint = "/courses/42001/assignments/81/submissions/73009";
+  assert.deepEqual(synthetic.feedbackWrites, [
+    {
+      endpoint,
+      fields: {
+        "comment[text_comment]": encodedFeedback,
+        "comment[attempt]": "1",
+        "comment[group_comment]": "false",
+      },
+    },
+  ]);
+  assert.deepEqual(
+    synthetic.calls
+      .filter(([, path]) => path === endpoint)
+      .map(([method]) => method),
+    ["GET", "GET", "PUT", "GET"],
+  );
+  assert.equal((await post(plan)).status, 409);
+  assert.equal(synthetic.feedbackWrites.length, 1);
+  synthetic.assignmentRows.get("81").post_manually = true;
+  synthetic.remote.submission.posted_at = null;
+  const manual = await preview();
+  assert.deepEqual(await (await post(manual)).json(), {
+    status: "VERIFIED",
+    commentId: "702",
+  });
+  assert.equal(synthetic.feedbackWrites.length, 2);
+  assert.equal(synthetic.remote.submission.posted_at, null);
+  assert.equal(synthetic.remote.submission.score, 6.5);
+  assert.doesNotMatch(
+    JSON.stringify(f.logs),
+    /Compare <two routes>|Synthetic prior comment|Synthetic submission body|synthetic-rest-token/,
+  );
+});
+
+test("Canvas feedback declines out-of-scope, changed, expired and cancelled submissions before dispatch", async (t) => {
+  const synthetic = canvasPageFixture({ feedback: true });
+  const { f, clock, request, preview, post } = await feedbackEntries(synthetic);
+  t.after(() => f.close());
+  const { remote, settings } = synthetic;
+  for (const [field, value] of [
+    ["user_id", 73010],
+    ["assignment_id", 82],
+    ["attempt", 0],
+    ["assignment_visible", false],
+    ["excused", true],
+    ["missing", true],
+    ["group", { id: 65 }],
+    ["submitted_at", "2026-11-31T12:00:00Z"],
+    ["posted_at", null],
+  ]) {
+    const original = remote.submission[field];
+    remote.submission[field] = value;
+    assert.equal(
+      (await request("preview", { draft: commentDraft })).status,
+      503,
+    );
+    remote.submission[field] = original;
+  }
+  for (const [field, value] of [
+    ["published", false],
+    ["group_category_id", 72],
+    ["anonymous_grading", true],
+    ["moderated_grading", true],
+    ["submission_types", ["external_tool"]],
+  ]) {
+    const assignment = synthetic.assignmentRows.get("81");
+    const original = assignment[field];
+    assignment[field] = value;
+    assert.equal(
+      (await request("preview", { draft: commentDraft })).status,
+      503,
+    );
+    assignment[field] = original;
+  }
+  const approvedStudent = remote.studentView;
+  remote.studentView = [{ id: 73010 }];
+  assert.equal((await request("preview", { draft: commentDraft })).status, 503);
+  remote.studentView = [...approvedStudent, { id: 73010 }];
+  assert.equal((await request("preview", { draft: commentDraft })).status, 503);
+  remote.studentView = approvedStudent;
+
+  const changedAttempt = await preview();
+  remote.submission.attempt++;
+  assert.equal((await post(changedAttempt)).status, 409);
+  const changedBody = await preview();
+  remote.submission.body = "A new synthetic draft";
+  assert.equal((await post(changedBody)).status, 409);
+  const changedPosting = await preview();
+  const originalPosting = remote.submission.posted_at;
+  remote.submission.posted_at = null;
+  assert.equal((await post(changedPosting)).status, 409);
+  remote.submission.posted_at = originalPosting;
+  const changedCredential = await preview();
+  remote.before = (method, endpoint) => {
+    if (method === "GET" && endpoint.endsWith("/submissions/73009"))
+      settings.canvasToken = "synthetic-rotated-token-for-fixtures";
+  };
+  assert.equal((await post(changedCredential)).status, 409);
+  remote.before = undefined;
+
+  const changedIdentity = await preview();
+  remote.actorId = "73002";
+  assert.equal((await post(changedIdentity)).status, 409);
+  remote.actorId = canvas.userId;
+  const superseded = await preview();
+  const expired = await preview();
+  assert.equal((await post(superseded)).status, 409);
+  clock.now += 300_001;
+  assert.equal((await post(expired)).status, 409);
+
+  const cancelled = await preview();
+  const entered = Promise.withResolvers();
+  const disconnected = Promise.withResolvers();
+  remote.before = async (method, endpoint, signal) => {
+    if (method !== "GET" || !endpoint.endsWith("/submissions/73009")) return;
+    entered.resolve();
+    await new Promise((resolve) =>
+      signal.addEventListener("abort", resolve, { once: true }),
+    );
+    disconnected.resolve();
+  };
+  const controller = new AbortController();
+  const result = post(cancelled, cancelled.draft, controller.signal);
+  await entered.promise;
+  controller.abort();
+  await assert.rejects(result, { name: "AbortError" });
+  await disconnected.promise;
+  assert.deepEqual(synthetic.feedbackWrites, []);
+});
+
+test("Canvas feedback verifies a new exact comment and never retries a dispatched write", async (t) => {
+  const synthetic = canvasPageFixture({ feedback: true });
+  const { f, preview, post } = await feedbackEntries(synthetic);
+  t.after(() => f.close());
+  const { remote } = synthetic;
+  for (const projection of [
+    (receipt) => ({ ...receipt, attempt: 2 }),
+    (receipt) => ({
+      ...receipt,
+      submission_comments: [
+        { ...receipt.submission_comments.at(-1), attempt: null },
+      ],
+    }),
+    (receipt) => ({
+      ...receipt,
+      submission_comments: receipt.submission_comments.slice(0, -1),
+    }),
+    (receipt) => ({
+      ...receipt,
+      submission_comments: [
+        { ...receipt.submission_comments.at(-1), author_id: 73002 },
+      ],
+    }),
+    () => {
+      throw new Error("Synthetic dropped response after write");
+    },
+  ]) {
+    const plan = await preview();
+    remote.feedbackReceipt = projection;
+    assert.deepEqual(await (await post(plan)).json(), { status: "UNCERTAIN" });
+    assert.equal((await post(plan)).status, 409);
+  }
+  assert.equal(synthetic.feedbackWrites.length, 5);
+
+  remote.feedbackReceipt = (receipt) => {
+    remote.feedbackRead = (value) => ({
+      ...value,
+      submission_comments: value.submission_comments.slice(0, -1),
+    });
+    return receipt;
+  };
+  const plan = await preview();
+  assert.deepEqual(await (await post(plan)).json(), {
+    status: "UNVERIFIED",
+    commentId: "706",
+  });
+  assert.equal((await post(plan)).status, 409);
+  assert.equal(synthetic.feedbackWrites.length, 6);
 });

@@ -349,6 +349,46 @@
           </button>
         </section>
       </details>
+      <details id="teacher-canvas-feedback" class="teacher-tool" hidden>
+        <summary>Canvas Test Student feedback</summary>
+        <p id="canvas-feedback-status" role="status"></p>
+        <form id="canvas-feedback-form" autocomplete="off">
+          <label class="teacher-field">
+            Approved assignment
+            <select id="canvas-feedback-assignment"></select>
+          </label>
+          <label class="teacher-field">
+            Plain-text feedback (up to 1,024 UTF-8 bytes)
+            <textarea
+              id="canvas-feedback-text"
+              rows="4"
+              maxlength="1024"
+              required
+            ></textarea>
+          </label>
+          <button type="submit" id="canvas-feedback-review">
+            Preview feedback
+          </button>
+          <button type="button" id="canvas-feedback-abort" hidden>
+            Stop preview
+          </button>
+        </form>
+        <section
+          id="canvas-feedback-preview"
+          aria-label="Canvas feedback preview"
+          hidden
+        >
+          <p id="canvas-feedback-target"></p>
+          <p id="canvas-feedback-submission"></p>
+          <pre id="canvas-feedback-comment" dir="auto"></pre>
+          <button type="button" id="canvas-feedback-confirm">
+            Post feedback
+          </button>
+          <button type="button" id="canvas-feedback-cancel">
+            Cancel preview
+          </button>
+        </section>
+      </details>
       <details id="canvas-chat-plugin" class="teacher-tool" hidden>
         <summary>Canvas Chat plugin</summary>
         <p id="canvas-chat-scope">

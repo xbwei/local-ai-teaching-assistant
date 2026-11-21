@@ -7,6 +7,7 @@ import {
 import type { SecretHandle } from "@laita/runtime";
 import { assignmentAuthoring } from "./canvas-assignment.ts";
 import { canvasChat } from "./canvas-chat.ts";
+import { feedbackAuthoring } from "./canvas-feedback.ts";
 import { moduleAuthoring } from "./canvas-module.ts";
 import { canvasResponseId as id } from "./canvas-response.ts";
 
@@ -196,6 +197,12 @@ export function createCanvasPageClient(
     assignments: assignmentAuthoring(courseId, request),
     modules: moduleAuthoring(courseId, request),
     chat: canvasChat(courseId, request, assertTestStudent),
+    feedback: feedbackAuthoring(
+      courseId,
+      teacherId,
+      request,
+      assertTestStudent,
+    ),
     async readTarget(draft?: { title: string; body?: string }) {
       const self = await request("/users/self", draft);
       if (id(self.id) !== teacherId) throw new Error("INVALID_CANVAS_TARGET");

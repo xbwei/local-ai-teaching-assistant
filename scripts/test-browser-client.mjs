@@ -165,7 +165,7 @@ try {
   });
   seededHistory.outcome("e".repeat(64), "NO_ANSWER");
   const sampleContext = "5".repeat(64);
-  const syntheticCanvas = canvasPageFixture({ assignments: true, modules: true, chat: true });
+  const syntheticCanvas = canvasPageFixture({ assignments: true, modules: true, chat: true, feedback: true });
   f = await fixture({
     history: persistence.history(),
     persistence,
@@ -484,6 +484,42 @@ try {
     assert.ok(requests.slice(browserRequests).every(request => request === f.origin + "/api/v1/canvas/chat"));
     assert.ok(syntheticCanvas.calls.slice(providerRequests).every(([method]) => method === "GET"));
     results.push({ name: mobile ? "canvas-chat-phone" : "canvas-chat-desktop", width, height, status: "PASS", requests: requests.length });
+
+    const feedback = page.locator("#teacher-canvas-feedback");
+    const feedbackPreview = feedback.getByRole("region", { name: "Canvas feedback preview" });
+    const feedbackText = feedback.getByLabel("Plain-text feedback", { exact: false });
+    const previewFeedback = feedback.getByRole("button", { name: "Preview feedback" });
+    const postFeedback = feedback.getByRole("button", { name: "Post feedback" });
+    const feedbackWrites = syntheticCanvas.feedbackWrites.length;
+    const comment = "Explain what each <route> shows. 地图 🌍\nCompare both legends & explain why.";
+    await feedback.locator("summary").click();
+    await feedbackText.fill(comment);
+    assert.equal(await postFeedback.isVisible(), false);
+    await previewFeedback.click();
+    await feedbackPreview.waitFor();
+    assert.match(await feedbackPreview.textContent(), /Course 42001.*Teacher 73001.*Assignment 81.*Test Student 73009.*Attempt 1/s);
+    assert.equal(await feedbackPreview.locator("pre").textContent(), comment);
+    assert.equal(await feedbackPreview.locator("pre").locator("route").count(), 0);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    assert.equal(syntheticCanvas.feedbackWrites.length, feedbackWrites);
+    await feedback.getByRole("button", { name: "Cancel preview" }).click();
+    assert.equal(await postFeedback.isVisible(), false);
+    assert.equal(syntheticCanvas.feedbackWrites.length, feedbackWrites);
+    await previewFeedback.click();
+    await postFeedback.click();
+    await feedback.getByText(/^Canvas confirmed comment \d+ on the reviewed submission\./).waitFor();
+    assert.equal(syntheticCanvas.feedbackWrites.length, feedbackWrites + 1);
+    assert.deepEqual(syntheticCanvas.feedbackWrites.at(-1).fields, {
+      "comment[text_comment]": "Explain what each &lt;route&gt; shows. 地图 🌍\nCompare both legends &amp; explain why.",
+      "comment[attempt]": "1",
+      "comment[group_comment]": "false",
+    });
+    assert.equal(await feedbackText.inputValue(), "");
+    assert.equal(await postFeedback.isVisible(), false);
+    assert.equal(requests.filter(request => request.endsWith("/api/v1/canvas/feedback/post")).length, 1);
+    assert.ok(requests.every(request => new URL(request).origin === f.origin));
+    assert.doesNotMatch(await feedback.innerText(), /Synthetic prior comment|Synthetic submission body|synthetic-rest-token/);
+    results.push({ name: mobile ? "canvas-feedback-phone" : "canvas-feedback-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
   for (const scenario of [
