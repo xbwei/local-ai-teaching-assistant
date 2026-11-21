@@ -58,6 +58,18 @@ test("assistant Markdown builds headings, nested lists, emphasis and literal cod
   assert.equal(nodes(root, "code")[0].textContent, "a < b");
   assert.equal(nodes(root, "pre")[0].textContent, "<script>literal</script>");
 });
+test("fenced code retains its trailing blank line and HTML blocks stay literal", () => {
+  const root = fixture();
+  const html = '<section\tclass="example">\n**literal**\n</section>';
+  renderMessageText(root, {
+    role: "answer",
+    text: `\`\`\`text\nexample\n\n\`\`\`\n\n${html}`,
+  });
+  assert.equal(nodes(root, "pre")[0].textContent, "example\n\n");
+  assert.equal(nodes(root, "section").length, 0);
+  assert.equal(nodes(root, "strong").length, 0);
+  assert.ok(root.textContent.endsWith(html));
+});
 test("raw HTML, handlers and every link/image protocol remain inert text", () => {
   for (const text of [
     "<script>alert(1)</script>",

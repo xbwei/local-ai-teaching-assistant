@@ -50,6 +50,14 @@
       "classification": "COPY"
     },
     {
+      "path": ".uv-version",
+      "classification": "COPY"
+    },
+    {
+      "path": "AGENTS.md",
+      "classification": "COPY"
+    },
+    {
       "path": "CONTRIBUTING.md",
       "classification": "RECREATE"
     },
@@ -122,8 +130,16 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/api/src/owner-credential.ts",
+      "classification": "COPY"
+    },
+    {
       "path": "apps/api/src/owner-session.ts",
       "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/owner-setup.ts",
+      "classification": "COPY"
     },
     {
       "path": "apps/api/src/teacher-draft.ts",
@@ -184,6 +200,10 @@
     {
       "path": "apps/api/test/owner-canvas.test.mjs",
       "classification": "RECREATE"
+    },
+    {
+      "path": "apps/api/test/owner-fixture.mjs",
+      "classification": "COPY"
     },
     {
       "path": "apps/api/test/public-candidate.test.mjs",
@@ -382,6 +402,14 @@
       "classification": "RECREATE"
     },
     {
+      "path": "docs/RELEASE-NOTES-unreleased.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/RELEASE-NOTES-v0.2.0.md",
+      "classification": "RECREATE"
+    },
+    {
       "path": "docs/SCREENSHOTS.md",
       "classification": "RECREATE"
     },
@@ -407,6 +435,10 @@
     },
     {
       "path": "docs/assets/demo/laita-pi-demo.mp4",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "docs/assets/demo/laita-v020-canvas.gif",
       "classification": "GENERICIZE"
     },
     {
@@ -742,6 +774,10 @@
       "classification": "COPY"
     },
     {
+      "path": "packages/persistence/src/owner-auth.ts",
+      "classification": "COPY"
+    },
+    {
       "path": "packages/persistence/src/policy-state.ts",
       "classification": "GENERICIZE"
     },
@@ -752,6 +788,10 @@
     {
       "path": "packages/persistence/test/history.test.mjs",
       "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/persistence/test/owner-auth.test.mjs",
+      "classification": "COPY"
     },
     {
       "path": "packages/persistence/test/persistence.test.mjs",
@@ -1270,6 +1310,10 @@
       "classification": "RECREATE"
     },
     {
+      "path": "scripts/ci/reviewer-route.test.mjs",
+      "classification": "COPY"
+    },
+    {
       "path": "scripts/ci/test-architecture-contracts.py",
       "classification": "GENERICIZE"
     },
@@ -1286,12 +1330,40 @@
       "classification": "COPY"
     },
     {
+      "path": "scripts/ci/uv-toolchain.test.mjs",
+      "classification": "COPY"
+    },
+    {
       "path": "scripts/ci/validate-application.sh",
       "classification": "GENERICIZE"
     },
     {
       "path": "scripts/ci/workspace-boundaries.test.mjs",
       "classification": "GENERICIZE"
+    },
+    {
+      "path": "scripts/review/README.md",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/review/result.schema.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/review/review.mjs",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/review/reviewer.md",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/review/route.json",
+      "classification": "COPY"
+    },
+    {
+      "path": "scripts/review/settings.json",
+      "classification": "COPY"
     },
     {
       "path": "scripts/smoke-workspace.mjs",

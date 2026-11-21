@@ -17,4 +17,6 @@ The public Teacher tools provide Local course-grounded drafts, an opt-in History
 
 Inventory classification is an import decision, not a claim that external content is MIT-licensed. See [third-party boundaries](../THIRD_PARTY.md).
 
-Delivered-file classification before these two inventory documents: 98 COPY, 183 GENERICIZE, 50 RECREATE.
+The inventory also lists public-native files that predate the update. Their classification describes their public disposition and does not imply an external origin.
+
+The inventory lists 113 COPY, 184 GENERICIZE and 52 RECREATE paths. The two inventory documents are additional RECREATE paths.
