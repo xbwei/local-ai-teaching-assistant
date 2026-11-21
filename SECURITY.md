@@ -2,7 +2,7 @@
 
 LAITA Public V1 is a single-operator application. Keep the reference HTTPS entry and API on loopback. A shared or remote entry requires an independently protected operator network boundary. Local Admin / Teacher / Student sessions require an Owner-initialized passphrase and scope History by role. All roles are the same Owner, not real participant accounts. See [credential and optional Canvas setup](docs/CANVAS.md).
 
-Use only non-sensitive operator-owned practice input. Do not connect real student records, grades, institutional submissions, private institutional material or sensitive research data. Optional Canvas verification reads explicitly configured practice submissions; any submitted practice MongoDB URI is a credential and should be short-lived and least-privilege. Never paste credentials or private records into Chat, public Issues or screenshots. Safety filters are bounded heuristics, not a certification.
+Use only non-sensitive operator-owned practice input. Do not connect real student records, grades, institutional submissions, private institutional material or sensitive research data. Optional Canvas verification reads explicitly configured practice submissions; any submitted practice MongoDB URI is a credential and should be short-lived and least-privileged. Never paste credentials or private records into Chat, public Issues or screenshots. Safety filters are bounded heuristics, not a certification.
 
 OpenAI is optional and explicit. On the macOS reference deployment, keys stay in the operator's Keychain and are consumed through a server-only one-use handle. Configuration contains opaque references and synthetic naming examples only. Do not put API keys in `.env`, JSON, Git, browser storage, SQLite, logs or screenshots.
 
