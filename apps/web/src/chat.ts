@@ -72,6 +72,11 @@ if (
     .catch(() => {
       /* An unconfigured feedback tool leaves Chat available. */
     });
+  void import("./client/teacher-canvas-verification.ts")
+    .then(({ mountCanvasVerification }) => mountCanvasVerification(api))
+    .catch(() => {
+      /* An unconfigured verifier leaves the other tools available. */
+    });
 }
 // Follow message lifetime without retaining old conversations or losing drafts on audio updates.
 const messageFeedback = new WeakMap<Message, HTMLElement>();

@@ -33,6 +33,10 @@ import {
   type CanvasConfiguration,
 } from "./canvas.ts";
 import type { OwnerSessions } from "./owner-session.ts";
+import {
+  createCanvasVerificationHandler,
+  type CanvasVerificationOptions,
+} from "./canvas-verification.ts";
 
 interface CanvasPageSettings {
   origin: string;
@@ -49,10 +53,17 @@ interface CanvasPageSettings {
 export interface CanvasPageOptions {
   settings: () => unknown;
   fetcher?: typeof fetch;
+  verification?: CanvasVerificationOptions;
 }
 
 export function readCanvasPageSettings(file: string | undefined): unknown {
   return readProtectedOwnerJson(file, 4096);
+}
+
+export function readCanvasVerificationSettings(
+  file: string | undefined,
+): unknown {
+  return readProtectedOwnerJson(file, 64 * 1024);
 }
 
 function connection(
@@ -213,7 +224,7 @@ export function createCanvasAuthoringHandlers(
   function currentAccess(
     req: Request,
     actor: NonNullable<ReturnType<typeof authorizeTeacher>>,
-    resource: Resource | "chat",
+    resource: Resource | "chat" | "verification",
     draft?: Draft,
   ) {
     if (!sessions.isCurrent(req, actor.binding))
@@ -643,6 +654,38 @@ export function createCanvasAuthoringHandlers(
     }
   };
 
+  const verification = createCanvasVerificationHandler(
+    options.verification,
+    (req, res) => {
+      const actor = authorizeTeacher(req, res);
+      if (!actor) return;
+      return () => {
+        const { settings, key, launchKeys } = currentAccess(
+          req,
+          actor,
+          "verification",
+        );
+        return {
+          origin: settings.origin,
+          courseId: settings.courseId,
+          teacherId: settings.teacherId,
+          canvasToken: settings.canvasToken,
+          binding: key,
+          launchKeys,
+        };
+      };
+    },
+    () => {
+      if (busy) return;
+      busy = true;
+      return () => {
+        busy = false;
+      };
+    },
+    now,
+    options.fetcher,
+  );
+
   return {
     pages: {
       status: handler("page", "status"),
@@ -665,6 +708,7 @@ export function createCanvasAuthoringHandlers(
       post: handler("feedback", "confirm"),
     },
     chat: chatHandler,
+    verification,
     close: clearPreview,
   };
 }

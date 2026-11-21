@@ -1,4 +1,7 @@
 import {
+  readAssignmentVerificationScope,
+  readAssignmentVerificationResult,
+  type AssignmentVerifier,
   canvasPageId,
   canvasPagePlanId,
   canvasPageTitle,
@@ -476,6 +479,29 @@ export class InputApi {
     return (
       responseRecord(await this.request("/api/v1/canvas/chat", "GET"))
         ?.enabled === true
+    );
+  }
+
+  async canvasVerificationScope() {
+    return readAssignmentVerificationScope(
+      await this.request("/api/v1/canvas/verification", "GET"),
+    );
+  }
+
+  async verifyCanvasSubmission(
+    scope: string,
+    assignmentId: string,
+    provider: AssignmentVerifier,
+    studentId: string,
+    signal: AbortSignal,
+  ) {
+    return readAssignmentVerificationResult(
+      await this.request(
+        "/api/v1/canvas/verification",
+        "POST",
+        JSON.stringify({ scope, assignmentId, provider, studentId }),
+        signal,
+      ),
     );
   }
 

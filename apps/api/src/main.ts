@@ -20,7 +20,10 @@ import {
   initializeRuntimePaths,
 } from "@laita/runtime";
 import { initializePersistence, type Persistence } from "@laita/persistence";
-import { readCanvasPageSettings } from "./canvas-pages.ts";
+import {
+  readCanvasPageSettings,
+  readCanvasVerificationSettings,
+} from "./canvas-pages.ts";
 import { readCanvasConfiguration } from "./canvas.ts";
 import { createApp } from "./app.ts";
 import { createAccessController } from "./access.ts";
@@ -532,6 +535,14 @@ try {
           canvasPages: {
             settings: () =>
               readCanvasPageSettings(process.env.LAITA_CANVAS_REST_FILE),
+            ...(process.env.LAITA_CANVAS_VERIFICATION_FILE && {
+              verification: {
+                settings: () =>
+                  readCanvasVerificationSettings(
+                    process.env.LAITA_CANVAS_VERIFICATION_FILE,
+                  ),
+              },
+            }),
           },
         }
       : {}),

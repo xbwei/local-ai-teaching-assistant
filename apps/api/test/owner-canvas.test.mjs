@@ -1166,6 +1166,8 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
     [() => post(feedbackPath + "/post", "{"), 400],
     [() => f.request(canvasChatPath), 403],
     [() => post(canvasChatPath, "{"), 400],
+    [() => f.request("/api/v1/canvas/verification"), 403],
+    [() => post("/api/v1/canvas/verification", "{"), 400],
   ];
 
   assert.equal((await f.login("teacher")).status, 200);

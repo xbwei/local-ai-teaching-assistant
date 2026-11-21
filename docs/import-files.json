@@ -90,6 +90,14 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/api/src/canvas-verification.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/api/src/canvas-verifier-settings.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "apps/api/src/canvas.ts",
       "classification": "GENERICIZE"
     },
@@ -143,6 +151,14 @@
     },
     {
       "path": "apps/api/test/canvas-fixture.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/api/test/canvas-verification-fixture.mjs",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "apps/api/test/canvas-verification.test.mjs",
       "classification": "RECREATE"
     },
     {
@@ -270,6 +286,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/web/src/client/teacher-canvas-verification.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "apps/web/src/client/teacher-form.ts",
       "classification": "GENERICIZE"
     },
@@ -327,6 +347,10 @@
     },
     {
       "path": "docs/ARCHITECTURE.md",
+      "classification": "RECREATE"
+    },
+    {
+      "path": "docs/CANVAS-VERIFICATION.md",
       "classification": "RECREATE"
     },
     {
@@ -538,6 +562,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "packages/contracts/src/canvas-verification.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "packages/contracts/src/capability-client.ts",
       "classification": "COPY"
     },
@@ -551,6 +579,10 @@
     },
     {
       "path": "packages/contracts/src/configuration-server.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/contracts/src/github-verification.ts",
       "classification": "GENERICIZE"
     },
     {
@@ -790,6 +822,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "packages/providers/src/github-verification.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "packages/providers/src/index.ts",
       "classification": "GENERICIZE"
     },
@@ -823,6 +859,14 @@
     },
     {
       "path": "packages/providers/src/test-support.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/verification-submission.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/verification-support.ts",
       "classification": "GENERICIZE"
     },
     {

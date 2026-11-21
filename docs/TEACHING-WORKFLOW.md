@@ -25,3 +25,5 @@ Use **Canvas Modules** to preview an empty unpublished module or add one approve
 In the same signed Teacher view, open the optional **Canvas Chat plugin** and ask “How many submissions for Map studio?” or “What is the score for Map studio?” using the full title of one approved practice assignment. This answers from one Canvas Test Student sample. [Setup and scope](CANVAS.md#canvas-chat-plugin)
 
 Use **Canvas Test Student feedback** to review the exact assignment, recipient, attempt and text before choosing **Post feedback**. Check the readback. If it is uncertain or unverified, check Canvas directly before trying again. A feedback comment does not update a grade. [Feedback setup and walkthrough](CANVAS.md#canvas-teacher-feedback)
+
+Open **Verify Canvas submissions** to check a configured practice assignment. Rows are keyed by Canvas student ID and show the current attempt and bounded observations. Review unavailable and partial rows in Canvas or the authorized provider before relying on them. [Assignment verification setup and limits](CANVAS-VERIFICATION.md)

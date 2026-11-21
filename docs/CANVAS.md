@@ -226,6 +226,10 @@ Use the same active Teacher token as in step 5. Give it only the necessary scope
 
 Preview, recheck, write and readback use separate Canvas requests. Canvas can change between those requests. A local database recovery does not undo a Canvas comment. Remove `feedback` to disable the tool or before rolling back to a build that predates this field. The local schema and stored History are unchanged.
 
+## Verify assignment submissions
+
+The signed Teacher can optionally run [GitHub assignment verification](CANVAS-VERIFICATION.md) for an explicitly configured roster. Each row checks one current attempt. The Test Student-only Canvas Chat and feedback tools keep their own scope.
+
 ## 8. Disable, remove, rotate or recover
 
 To disable Canvas authoring, remove the REST file and revoke the token through your authorized Canvas setup. The steps below disable the signed launch itself.

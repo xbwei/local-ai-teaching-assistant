@@ -247,3 +247,6 @@ export { OpenAIConfigurationError, OpenAIResponsesAdapter } from "./openai.ts";
 export type { OpenAIAdapterOptions, OpenAIModelCandidate } from "./openai.ts";
 
 export { createCanvasPageClient } from "./canvas-page.ts";
+export { validGitHubExpectation, verifyGitHub } from "./github-verification.ts";
+export type { GitHubExpectation } from "./github-verification.ts";
+export { submissionLinkText } from "./verification-submission.ts";
