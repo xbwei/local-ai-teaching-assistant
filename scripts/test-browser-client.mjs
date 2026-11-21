@@ -1612,7 +1612,9 @@ try {
     const localDiagnostic = historyDialog.locator("details").filter({ hasText: "Find a local diagnostic" });
     await localDiagnostic.locator("summary").click();
     const diagnosticInput = localDiagnostic.getByLabel("Correlation reference");
-    await diagnosticInput.fill(copiedReference);
+    const paddedReference = `  ${copiedReference}  `;
+    await diagnosticInput.fill(paddedReference);
+    assert.equal(await diagnosticInput.inputValue(), paddedReference);
     await localDiagnostic.getByRole("button", { name: "Look up reference" }).click();
     await localDiagnostic.getByText("SUCCESS · RECORDED. Observed stages TTS (SERVER).", { exact: true }).waitFor();
     assert.doesNotMatch(await localDiagnostic.innerText(), /DETAIL_ONLY_ANSWER_189|Scan fixture 0/);

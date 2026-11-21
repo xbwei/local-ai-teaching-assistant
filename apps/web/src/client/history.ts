@@ -140,7 +140,7 @@ export function mountHistory(api: InputApi, root: HTMLElement) {
       const form = element("form");
       const label = element("label", "Correlation reference ");
       const reference = element("input");
-      reference.maxLength = 36;
+      reference.maxLength = 50;
       reference.required = true;
       reference.autocomplete = "off";
       reference.spellcheck = false;
