@@ -6,6 +6,7 @@ import {
 } from "@laita/contracts";
 import type { SecretHandle } from "@laita/runtime";
 import { assignmentAuthoring } from "./canvas-assignment.ts";
+import { canvasChat } from "./canvas-chat.ts";
 import { moduleAuthoring } from "./canvas-module.ts";
 import { canvasResponseId as id } from "./canvas-response.ts";
 
@@ -44,7 +45,11 @@ function bounded<T>(
   });
 }
 
-async function readJson(response: Response, signal: AbortSignal) {
+async function readJson(
+  response: Response,
+  signal: AbortSignal,
+  singleStudentView: boolean,
+): Promise<unknown> {
   if (
     !response.ok ||
     response.headers
@@ -52,7 +57,7 @@ async function readJson(response: Response, signal: AbortSignal) {
       ?.split(";")[0]
       ?.trim()
       .toLowerCase() !== "application/json" ||
-    response.headers.has("link")
+    (response.headers.has("link") && !singleStudentView)
   ) {
     void response.body?.cancel().catch(() => {});
     throw new Error("CANVAS_UNAVAILABLE");
@@ -70,7 +75,7 @@ async function readJson(response: Response, signal: AbortSignal) {
       if (size > 128 * 1024) throw new Error("INVALID_CANVAS_RESPONSE");
       raw += decoder.decode(part.value, { stream: true });
     }
-    return row(JSON.parse(raw + decoder.decode()));
+    return JSON.parse(raw + decoder.decode()) as unknown;
   } catch (error) {
     void reader.cancel().catch(() => {});
     throw error;
@@ -84,14 +89,17 @@ export interface CanvasPageAccess extends PageTarget {
   fetcher?: typeof fetch;
 }
 
+type CanvasContent = { title: string; body?: string };
+interface CanvasWrite {
+  method: "POST" | "PUT";
+  fields: URLSearchParams;
+  beforeDispatch: () => void;
+}
+
 export type CanvasAuthoringRequest = (
   endpoint: string,
-  content?: { title: string; body?: string },
-  write?: {
-    method: "POST" | "PUT";
-    fields: URLSearchParams;
-    beforeDispatch: () => void;
-  },
+  content?: CanvasContent,
+  write?: CanvasWrite,
 ) => Promise<Record<string, unknown>>;
 
 export function createCanvasPageClient(
@@ -109,7 +117,12 @@ export function createCanvasPageClient(
     throw new Error("INVALID_CANVAS_TARGET");
   const coursePath = `/courses/${courseId}`;
 
-  const request: CanvasAuthoringRequest = async (endpoint, content, write) => {
+  async function requestJson(
+    endpoint: string,
+    content?: CanvasContent,
+    write?: CanvasWrite,
+    singleStudentView = false,
+  ) {
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(5000)]);
     deadline.throwIfAborted();
     return refresh().consume(async (token) => {
@@ -144,17 +157,45 @@ export function createCanvasPageClient(
           void late.body?.cancel().catch(() => {});
         },
       );
-      const result = await readJson(response, deadline);
+      const result = await readJson(response, deadline, singleStudentView);
       deadline.throwIfAborted();
       if (JSON.stringify(result).includes(token))
         throw new Error("INVALID_CANVAS_RESPONSE");
       return result;
     });
-  };
+  }
+  const request: CanvasAuthoringRequest = async (endpoint, content, write) =>
+    row(await requestJson(endpoint, content, write));
+
+  async function assertTestStudent(studentId: string) {
+    if (!canvasPageId(studentId) || studentId === teacherId)
+      throw new Error("INVALID_CANVAS_TARGET");
+    const query = new URLSearchParams({
+      "user_ids[]": studentId,
+      "enrollment_type[]": "student_view",
+      "enrollment_state[]": "active",
+      per_page: "2",
+    });
+    // Canvas may send pagination links even for this exact singleton lookup.
+    // The course, type and ID filters fix the candidate, and no link is followed.
+    const result = await requestJson(
+      `${coursePath}/users?${query}`,
+      undefined,
+      undefined,
+      true,
+    );
+    if (
+      !Array.isArray(result) ||
+      result.length !== 1 ||
+      id(row(result[0]).id) !== studentId
+    )
+      throw new Error("INVALID_CANVAS_TARGET");
+  }
 
   return {
     assignments: assignmentAuthoring(courseId, request),
     modules: moduleAuthoring(courseId, request),
+    chat: canvasChat(courseId, request, assertTestStudent),
     async readTarget(draft?: { title: string; body?: string }) {
       const self = await request("/users/self", draft);
       if (id(self.id) !== teacherId) throw new Error("INVALID_CANVAS_TARGET");

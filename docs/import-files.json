@@ -254,11 +254,19 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/web/src/client/teacher-canvas-chat.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "apps/web/src/client/teacher-canvas-modules.ts",
       "classification": "GENERICIZE"
     },
     {
       "path": "apps/web/src/client/teacher-canvas-pages.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "apps/web/src/client/teacher-form.ts",
       "classification": "GENERICIZE"
     },
     {
@@ -751,6 +759,10 @@
     },
     {
       "path": "packages/providers/src/canvas-assignment.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/canvas-chat.ts",
       "classification": "GENERICIZE"
     },
     {

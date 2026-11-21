@@ -1161,6 +1161,8 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
     [() => f.request(modulesPath), 403],
     [() => post(modulesPath + "/preview", "{"), 400],
     [() => post(modulesPath + "/save", "{"), 400],
+    [() => f.request(canvasChatPath), 403],
+    [() => post(canvasChatPath, "{"), 400],
   ];
 
   assert.equal((await f.login("teacher")).status, 200);
@@ -1502,6 +1504,7 @@ test("Canvas Page returns honest readback results and never retries a dispatched
 
 const assignmentsPath = "/api/v1/canvas/assignments";
 const modulesPath = "/api/v1/canvas/modules";
+const canvasChatPath = "/api/v1/canvas/chat";
 const createAssignment = {
   kind: "CREATE",
   title: "Map lab 地图",
@@ -2042,4 +2045,219 @@ test("Canvas Modules reports readback mismatch and uncertain writes without repl
   assert.deepEqual(await (await save(create)).json(), { status: "UNCERTAIN" });
   assert.equal((await save(create)).status, 409);
   assert.equal(synthetic.moduleWrites.length, 2);
+});
+
+const countCanvas = "How many submissions for Synthetic draft?";
+const scoreCanvas = "What is the score for Synthetic draft?";
+
+async function canvasChatEntries(synthetic) {
+  const entries = await pageEntries(synthetic, canvasChatPath);
+  const ask = (
+    question,
+    { selected = entries.canvasCookie, signal, extra = {} } = {},
+  ) =>
+    entries.f.request(canvasChatPath, {
+      method: "POST",
+      headers: authenticated(selected, { "content-type": "application/json" }),
+      body: JSON.stringify({ question, ...extra }),
+      ...(signal && { signal }),
+    });
+  const answer = async (question) => {
+    const res = await ask(question);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("cache-control"), "no-store");
+    return (await res.json()).text;
+  };
+  return { ...entries, ask, answer };
+}
+
+test("Canvas Chat is opt-in and returns only one approved assignment's Test Student observation", async (t) => {
+  const disabled = canvasPageFixture();
+  const inactive = await canvasChatEntries(disabled);
+  t.after(() => inactive.f.close());
+  assert.equal((await inactive.request("")).status, 503);
+  assert.equal((await inactive.ask(countCanvas)).status, 503);
+  assert.deepEqual(disabled.calls, []);
+
+  const synthetic = canvasPageFixture({ chat: true });
+  const { f, ask, answer, request } = await canvasChatEntries(synthetic);
+  t.after(() => f.close());
+  assert.deepEqual(await (await request("")).json(), { enabled: true });
+  for (const role of ["admin", "teacher", "student"]) {
+    assert.equal((await f.login(role)).status, 200);
+    assert.equal(
+      (await ask(countCanvas, { selected: f.cookie() })).status,
+      403,
+    );
+  }
+  assert.equal(
+    (await ask(countCanvas, { extra: { userId: "73010" } })).status,
+    400,
+  );
+  assert.equal((await ask("x".repeat(281))).status, 400);
+  assert.match(
+    await answer("Give me the whole class’s grades."),
+    /one approved assignment/,
+  );
+  assert.deepEqual(synthetic.calls, []);
+
+  const course = "/courses/" + canvas.courseId;
+  assert.match(
+    await answer(countCanvas),
+    /^1 submission for Synthetic draft.*configured Test Student/,
+  );
+  assert.deepEqual(synthetic.calls, [
+    ["GET", "/users/self"],
+    ["GET", course],
+    ["GET", course + "/assignments/81"],
+    ["GET", course + "/users"],
+    ["GET", course + "/assignments/81/submissions/73009"],
+  ]);
+  const score = await answer(scoreCanvas);
+  assert.match(
+    score,
+    /^Score for Synthetic draft is 6\.5 of 7 points.*configured Test Student/,
+  );
+  assert.doesNotMatch(
+    score,
+    /73009|Synthetic submission body|Synthetic Test Student/,
+  );
+  assert.equal(
+    synthetic.calls.filter(([method]) => method !== "GET").length,
+    0,
+  );
+
+  synthetic.remote.submission.score = 0;
+  assert.match(await answer(scoreCanvas), /is 0 of 7 points/);
+  synthetic.remote.submission.grade_matches_current_submission = false;
+  assert.match(await answer(scoreCanvas), /^Score unavailable/);
+  Object.assign(synthetic.remote.submission, {
+    workflow_state: "submitted",
+    score: null,
+  });
+  assert.match(await answer(scoreCanvas), /is ungraded/);
+  synthetic.remote.submission.excused = true;
+  assert.match(await answer(countCanvas), /Test Student is excused/);
+  Object.assign(synthetic.remote.submission, {
+    excused: false,
+    attempt: null,
+    submitted_at: null,
+    submission_type: null,
+    workflow_state: "unsubmitted",
+  });
+  assert.match(await answer(countCanvas), /^0 submissions/);
+  synthetic.remote.submission.missing = true;
+  assert.match(
+    await answer(countCanvas),
+    /^0 submissions.*marks this assignment missing/,
+  );
+});
+
+test("Canvas Chat rejects unknown or ambiguous titles, other accounts, and unsupported assignment or submission evidence", async (t) => {
+  const synthetic = canvasPageFixture({ chat: true });
+  const { f, ask, answer } = await canvasChatEntries(synthetic);
+  t.after(() => f.close());
+  const touchedSubmission = () =>
+    synthetic.calls.some(([, endpoint]) => endpoint.includes("/submissions/"));
+  const unavailable = async () => {
+    const response = await ask(scoreCanvas);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      code: "CANVAS_CHAT_UNAVAILABLE",
+    });
+  };
+
+  assert.match(
+    await answer("How many submissions for Draft?"),
+    /identify one approved assignment/,
+  );
+  const first = synthetic.assignmentRows.get("81");
+  synthetic.assignmentRows.set("82", {
+    ...first,
+    id: 82,
+    name: "SYNTHETIC DRAFT",
+  });
+  synthetic.settings.chat.assignmentIds.push("82");
+  assert.match(await answer(countCanvas), /identify one approved assignment/);
+  synthetic.settings.chat.assignmentIds = ["81"];
+
+  for (const fields of [
+    { published: false },
+    { group_category_id: 90 },
+    { is_quiz_assignment: true },
+    { submission_types: ["external_tool"] },
+    { course_id: 42002 },
+  ]) {
+    synthetic.remote.assignmentRead = (row) => ({ ...row, ...fields });
+    await unavailable();
+  }
+  synthetic.remote.assignmentRead = (row) => row;
+  for (const studentView of [
+    [],
+    [{ id: 73010 }],
+    [{ id: 73009 }, { id: 73010 }],
+  ]) {
+    synthetic.remote.studentView = studentView;
+    await unavailable();
+  }
+  synthetic.remote.studentView = [{ id: 73009 }];
+  assert.equal(touchedSubmission(), false);
+  synthetic.remote.actorId = "73010";
+  await unavailable();
+  synthetic.remote.actorId = canvas.userId;
+  assert.equal(touchedSubmission(), false);
+
+  const original = { ...synthetic.remote.submission };
+  for (const fields of [
+    { assignment_id: 82 },
+    { user_id: 73010 },
+    { assignment_visible: false },
+    { group: { id: 10 } },
+    { submitted_at: null },
+  ]) {
+    synthetic.remote.submission = { ...original, ...fields };
+    await unavailable();
+  }
+});
+
+test("Canvas Chat withholds an in-flight result after scope drift or a cancelled request", async (t) => {
+  const synthetic = canvasPageFixture({ chat: true });
+  const { f, ask, answer } = await canvasChatEntries(synthetic);
+  t.after(() => f.close());
+  synthetic.remote.before = (method, endpoint) => {
+    if (method === "GET" && endpoint.includes("/submissions/"))
+      synthetic.settings.chat.assignmentIds = ["82"];
+  };
+  const changed = await ask(scoreCanvas);
+  assert.equal(changed.status, 503);
+  assert.deepEqual(await changed.json(), { code: "CANVAS_CHAT_UNAVAILABLE" });
+  synthetic.settings.chat.assignmentIds = ["81"];
+
+  const entered = Promise.withResolvers();
+  const disconnected = Promise.withResolvers();
+  synthetic.remote.before = async (method, endpoint, signal) => {
+    if (method !== "GET" || !endpoint.includes("/submissions/")) return;
+    entered.resolve();
+    await new Promise((resolve) =>
+      signal.addEventListener("abort", resolve, { once: true }),
+    );
+    disconnected.resolve();
+  };
+  const controller = new AbortController();
+  const waiting = ask(scoreCanvas, { signal: controller.signal });
+  await entered.promise;
+  const before = synthetic.calls.length;
+  const busy = await ask(countCanvas);
+  assert.equal(busy.status, 409);
+  assert.deepEqual(await busy.json(), { code: "BUSY" });
+  assert.equal(synthetic.calls.length, before);
+  controller.abort();
+  await assert.rejects(waiting, { name: "AbortError" });
+  await disconnected.promise;
+  synthetic.remote.before = undefined;
+  assert.match(await answer(countCanvas), /^1 submission/);
+  assert.equal(
+    synthetic.calls.filter(([method]) => method !== "GET").length,
+    0,
+  );
 });

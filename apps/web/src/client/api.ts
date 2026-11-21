@@ -397,6 +397,27 @@ export class InputApi {
     throw new ClientError();
   }
 
+  async canvasChatEnabled() {
+    return (
+      responseRecord(await this.request("/api/v1/canvas/chat", "GET"))
+        ?.enabled === true
+    );
+  }
+
+  async canvasChat(question: string, signal: AbortSignal) {
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/chat",
+        "POST",
+        JSON.stringify({ question }),
+        signal,
+      ),
+    );
+    if (typeof value?.text === "string" && value.text.length <= 512)
+      return value.text;
+    throw new ClientError();
+  }
+
   async teacherHistoryEnabled() {
     const value = await this.request("/api/v1/teacher-tools/history", "GET");
     return (

@@ -349,6 +349,30 @@
           </button>
         </section>
       </details>
+      <details id="canvas-chat-plugin" class="teacher-tool" hidden>
+        <summary>Canvas Chat plugin</summary>
+        <p id="canvas-chat-scope">
+          Ask for a submission count or score using one approved assignment’s
+          full title. Answers cover the configured Canvas Test Student.
+        </p>
+        <form id="canvas-chat-form" autocomplete="off">
+          <label class="teacher-field" for="canvas-chat-question">
+            Canvas question
+            <input
+              id="canvas-chat-question"
+              type="text"
+              maxlength="280"
+              aria-describedby="canvas-chat-scope"
+              required
+            />
+          </label>
+          <div>
+            <button type="submit">Ask Canvas</button>
+            <button type="button" hidden>Cancel request</button>
+          </div>
+        </form>
+        <p id="canvas-chat-answer" role="status" dir="auto"></p>
+      </details>
       <p id="connection-status" role="status" class="connection-status"></p>
       <main id="learning" hidden>
         <div class="dialogue">
