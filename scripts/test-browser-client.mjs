@@ -165,7 +165,7 @@ try {
   });
   seededHistory.outcome("e".repeat(64), "NO_ANSWER");
   const sampleContext = "5".repeat(64);
-  const syntheticCanvas = canvasPageFixture({ assignments: true });
+  const syntheticCanvas = canvasPageFixture({ assignments: true, modules: true });
   f = await fixture({
     history: persistence.history(),
     persistence,
@@ -425,6 +425,47 @@ try {
     assert.equal(requests.filter(request => request.endsWith("/api/v1/canvas/assignments/save")).length, 3);
     assert.ok(requests.every(request => new URL(request).origin === f.origin));
     results.push({ name: mobile ? "canvas-assignment-phone" : "canvas-assignment-desktop", width, height, status: "PASS", requests: requests.length });
+    const moduleTool = page.locator("#teacher-canvas-modules");
+    const modulePreview = moduleTool.getByRole("region", { name: "Canvas Module preview" });
+    const previewModule = moduleTool.getByRole("button", { name: "Preview Canvas Module change" });
+    syntheticCanvas.moduleRows.get("61").items.length = 0;
+    const moduleWrites = syntheticCanvas.moduleWrites.length;
+    await moduleTool.locator("summary").click();
+    await moduleTool.getByLabel("Module title").fill("Maps 地图");
+    await previewModule.click();
+    await modulePreview.getByText(/Create an empty, unpublished module named/).waitFor();
+    assert.match(await modulePreview.textContent(), /Course 42001.*Teacher 73001/s);
+    assert.match(await modulePreview.textContent(), /Maps 地图/);
+    assert.equal(syntheticCanvas.moduleWrites.length, moduleWrites);
+    await modulePreview.getByRole("button", { name: "Create unpublished module" }).click();
+    await moduleTool.getByText(/Canvas verified module 62/).waitFor();
+    assert.equal(syntheticCanvas.moduleWrites.length, moduleWrites + 1);
+    assert.equal(syntheticCanvas.moduleRows.get("62").published, false);
+
+    const chooseModuleAction = moduleTool.getByLabel("Module action");
+    const addItem = modulePreview.getByRole("button", { name: "Add item to module" });
+    await chooseModuleAction.selectOption("LINK_PAGE");
+    await moduleTool.getByLabel("Destination module").selectOption("61");
+    await moduleTool.getByLabel("Item to add").selectOption("9002");
+    await previewModule.click();
+    await modulePreview.getByText(/Add Page 9002/).waitFor();
+    assert.match(await modulePreview.textContent(), /Maps and examples.*unpublished Module 61/s);
+    await modulePreview.getByRole("button", { name: "Cancel module preview" }).click();
+    assert.equal(await modulePreview.isVisible(), false);
+    assert.equal(syntheticCanvas.moduleWrites.length, moduleWrites + 1);
+    await previewModule.click();
+    await addItem.click();
+    await moduleTool.getByText("Canvas verified module item 101.").waitFor();
+    await chooseModuleAction.selectOption("LINK_ASSIGNMENT");
+    await previewModule.click();
+    await modulePreview.getByText(/Add Assignment 81/).waitFor();
+    assert.equal(syntheticCanvas.moduleWrites.length, moduleWrites + 2);
+    await addItem.click();
+    await moduleTool.getByText("Canvas verified module item 102.").waitFor();
+    assert.deepEqual(syntheticCanvas.moduleRows.get("61").items.map(item => item.type), ["Page", "Assignment"]);
+    assert.equal(requests.filter(request => request.endsWith("/api/v1/canvas/modules/save")).length, 3);
+    assert.ok(requests.every(request => new URL(request).origin === f.origin));
+    results.push({ name: mobile ? "canvas-module-phone" : "canvas-module-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
   for (const scenario of [

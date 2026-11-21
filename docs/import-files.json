@@ -254,6 +254,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "apps/web/src/client/teacher-canvas-modules.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "apps/web/src/client/teacher-canvas-pages.ts",
       "classification": "GENERICIZE"
     },
@@ -510,6 +514,10 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "packages/contracts/src/canvas-module.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "packages/contracts/src/canvas-page.ts",
       "classification": "GENERICIZE"
     },
@@ -743,6 +751,10 @@
     },
     {
       "path": "packages/providers/src/canvas-assignment.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/canvas-module.ts",
       "classification": "GENERICIZE"
     },
     {

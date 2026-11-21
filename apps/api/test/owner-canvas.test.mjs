@@ -1158,6 +1158,9 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
     [() => f.request(assignmentsPath), 403],
     [() => post(assignmentsPath + "/preview", "{"), 400],
     [() => post(assignmentsPath + "/save", "{"), 400],
+    [() => f.request(modulesPath), 403],
+    [() => post(modulesPath + "/preview", "{"), 400],
+    [() => post(modulesPath + "/save", "{"), 400],
   ];
 
   assert.equal((await f.login("teacher")).status, 200);
@@ -1498,6 +1501,7 @@ test("Canvas Page returns honest readback results and never retries a dispatched
 });
 
 const assignmentsPath = "/api/v1/canvas/assignments";
+const modulesPath = "/api/v1/canvas/modules";
 const createAssignment = {
   kind: "CREATE",
   title: "Map lab 地图",
@@ -1511,8 +1515,8 @@ const renameAssignment = {
   assignmentId: "81",
   title: "Updated lab",
 };
-async function assignmentEntries(synthetic) {
-  const entries = await pageEntries(synthetic, assignmentsPath);
+async function assignmentEntries(synthetic, path = assignmentsPath) {
+  const entries = await pageEntries(synthetic, path);
   const save = (plan, draft = plan.draft, signal) =>
     entries.request(
       "save",
@@ -1806,4 +1810,236 @@ test("Canvas Assignment reports mismatched readback and ambiguous writes without
     "PUT",
     `/courses/${canvas.courseId}/assignments/81`,
   ]);
+});
+
+const createModule = { kind: "CREATE_MODULE", title: "Studio 地图 🌍" };
+const linkPage = { kind: "LINK_PAGE", moduleId: "61", contentId: "9002" };
+const linkAssignment = {
+  kind: "LINK_ASSIGNMENT",
+  moduleId: "61",
+  contentId: "81",
+};
+
+test("Canvas Modules is opt-in and sends one exact reviewed change per confirmation", async (t) => {
+  const original = canvasPageFixture();
+  const inactive = await assignmentEntries(original, modulesPath);
+  t.after(() => inactive.f.close());
+  assert.equal((await inactive.request("")).status, 503);
+  assert.equal(
+    (await inactive.request("preview", { draft: createModule })).status,
+    503,
+  );
+  assert.deepEqual(original.calls, []);
+
+  const synthetic = canvasPageFixture({ modules: true });
+  const { f, request, preview, save } = await assignmentEntries(
+    synthetic,
+    modulesPath,
+  );
+  t.after(() => f.close());
+  assert.deepEqual(
+    await (await request("")).json(),
+    synthetic.settings.modules,
+  );
+  for (const role of ["admin", "teacher", "student"]) {
+    assert.equal((await f.login(role)).status, 200);
+    assert.equal(
+      (await request("preview", { draft: createModule }, f.cookie())).status,
+      403,
+    );
+  }
+  for (const draft of [
+    { ...createModule, published: true },
+    { ...linkPage, pageUrl: "example" },
+    { ...createModule, title: "Invalid\u202e" },
+  ]) {
+    assert.equal((await request("preview", { draft })).status, 400);
+  }
+  for (const draft of [
+    { ...linkPage, moduleId: "62" },
+    { ...linkPage, contentId: "9001" },
+    { ...linkAssignment, contentId: "82" },
+  ]) {
+    assert.equal((await request("preview", { draft })).status, 403);
+  }
+  assert.deepEqual(synthetic.calls, []);
+
+  const course = "/courses/" + canvas.courseId;
+  const create = await preview(createModule);
+  assert.equal(create.moduleSubject, undefined);
+  assert.deepEqual(create.draft, createModule);
+  assert.deepEqual(synthetic.calls, [
+    ["GET", "/users/self"],
+    ["GET", course],
+  ]);
+  assert.equal(
+    (await save(create, { ...createModule, title: "Changed" })).status,
+    409,
+  );
+  assert.deepEqual(await (await save(create)).json(), {
+    status: "VERIFIED",
+    resourceId: "62",
+  });
+  assert.deepEqual(synthetic.moduleWrites[0], {
+    endpoint: course + "/modules",
+    fields: { "module[name]": createModule.title },
+  });
+  assert.equal(synthetic.moduleRows.get("62").published, false);
+  assert.equal((await save(create)).status, 409);
+
+  const page = await preview(linkPage);
+  assert.deepEqual(page.moduleSubject, {
+    moduleId: "61",
+    moduleName: "Studio module",
+    resourceName: "Maps and examples",
+    resourcePublished: true,
+  });
+  assert.equal(synthetic.moduleWrites.length, 1);
+  assert.deepEqual(await (await save(page)).json(), {
+    status: "VERIFIED",
+    resourceId: "101",
+  });
+  assert.equal((await request("preview", { draft: linkPage })).status, 503);
+  const assignment = await preview(linkAssignment);
+  assert.equal(assignment.moduleSubject.resourceName, "Synthetic draft");
+  assert.equal(synthetic.moduleWrites.length, 2);
+  assert.deepEqual(await (await save(assignment)).json(), {
+    status: "VERIFIED",
+    resourceId: "102",
+  });
+  assert.deepEqual(synthetic.moduleWrites.slice(1), [
+    {
+      endpoint: course + "/modules/61/items",
+      fields: {
+        "module_item[type]": "Page",
+        "module_item[page_url]": "maps-and-examples",
+      },
+    },
+    {
+      endpoint: course + "/modules/61/items",
+      fields: {
+        "module_item[type]": "Assignment",
+        "module_item[content_id]": "81",
+      },
+    },
+  ]);
+});
+
+test("Canvas Modules rejects incomplete or changed module, resource and authority before dispatch", async (t) => {
+  const synthetic = canvasPageFixture({ modules: true });
+  const { f, clock, canvasCookie, request, preview, save } =
+    await assignmentEntries(synthetic, modulesPath);
+  t.after(() => f.close());
+  const module = synthetic.moduleRows.get("61");
+  const assignment = synthetic.assignmentRows.get("81");
+  const rejected = async (draft) => {
+    const response = await request("preview", { draft });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { code: "SERVICE_UNAVAILABLE" });
+  };
+  for (const modify of [
+    (row) => ({ ...row, published: true }),
+    (row) => ({ ...row, course_id: 42002 }),
+    (row) => ({ ...row, items: undefined }),
+    (row) => ({ ...row, items_count: 1 }),
+  ]) {
+    synthetic.remote.moduleRead = modify;
+    await rejected(linkPage);
+  }
+  synthetic.remote.moduleRead = (row) => row;
+  for (const change of [
+    { is_quiz_assignment: true },
+    { submission_types: ["external_tool"] },
+    { course_id: 42002 },
+  ]) {
+    const original = { ...assignment };
+    Object.assign(assignment, change);
+    await rejected(linkAssignment);
+    Object.assign(assignment, original);
+  }
+  synthetic.linkedPage.title = canvas.sharedSecret;
+  await rejected(linkPage);
+  synthetic.linkedPage.title = "Maps and examples";
+  synthetic.linkedPage.url = canvas.consumerKey;
+  await rejected(linkPage);
+  synthetic.linkedPage.url = "maps-and-examples";
+
+  let plan = await preview(linkPage);
+  module.items.push({
+    id: 100,
+    module_id: 61,
+    position: 1,
+    type: "SubHeader",
+    published: false,
+  });
+  assert.equal((await save(plan)).status, 409);
+  plan = await preview(linkPage);
+  synthetic.linkedPage.url = "revised-maps-and-examples";
+  assert.equal((await save(plan)).status, 409);
+  plan = await preview(linkPage);
+  synthetic.remote.before = (method, endpoint) => {
+    if (method === "GET" && endpoint.endsWith("/pages/page_id:9002"))
+      synthetic.settings.modules.pageIds = [];
+  };
+  assert.equal((await save(plan)).status, 409);
+  synthetic.remote.before = undefined;
+  synthetic.settings.modules.pageIds = ["9002"];
+  assert.deepEqual(synthetic.moduleWrites, []);
+
+  plan = await preview(linkPage);
+  const otherPreview = await f.request(pagesPath + "/preview", {
+    method: "POST",
+    headers: authenticated(canvasCookie, {
+      "content-type": "application/json",
+    }),
+    body: JSON.stringify({ draft: authoredDraft }),
+  });
+  assert.equal(otherPreview.status, 200);
+  assert.equal((await save(plan)).status, 409);
+  plan = await preview(linkPage);
+  clock.now += 300_001;
+  assert.equal((await save(plan)).status, 409);
+
+  plan = await preview(linkPage);
+  const entered = Promise.withResolvers();
+  const disconnected = Promise.withResolvers();
+  synthetic.remote.before = async (method, endpoint, signal) => {
+    if (method !== "GET" || !endpoint.endsWith("/pages/page_id:9002")) return;
+    entered.resolve();
+    await new Promise((resolve) =>
+      signal.addEventListener("abort", resolve, { once: true }),
+    );
+    disconnected.resolve();
+  };
+  const controller = new AbortController();
+  const response = save(plan, plan.draft, controller.signal);
+  await entered.promise;
+  controller.abort();
+  await assert.rejects(response, { name: "AbortError" });
+  await disconnected.promise;
+  assert.deepEqual(synthetic.moduleWrites, []);
+});
+
+test("Canvas Modules reports readback mismatch and uncertain writes without replay", async (t) => {
+  const synthetic = canvasPageFixture({ modules: true });
+  const { f, preview, save } = await assignmentEntries(synthetic, modulesPath);
+  t.after(() => f.close());
+  const plan = await preview(linkPage);
+  synthetic.remote.afterModuleWrite = (item) => {
+    item.page_url = "different-example";
+  };
+  assert.deepEqual(await (await save(plan)).json(), {
+    status: "UNVERIFIED",
+    resourceId: "101",
+  });
+  assert.equal((await save(plan)).status, 409);
+  assert.equal(synthetic.moduleWrites.length, 1);
+
+  const create = await preview(createModule);
+  synthetic.remote.afterModuleWrite = () => {
+    throw new Error("Synthetic connection loss after commit");
+  };
+  assert.deepEqual(await (await save(create)).json(), { status: "UNCERTAIN" });
+  assert.equal((await save(create)).status, 409);
+  assert.equal(synthetic.moduleWrites.length, 2);
 });

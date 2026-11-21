@@ -6,18 +6,7 @@ import {
   type CanvasAssignmentSubject,
 } from "@laita/contracts";
 import { canvasResponseId } from "./canvas-response.ts";
-
-interface RequestAssignment {
-  (
-    endpoint: string,
-    draft: { title: string; body?: string },
-    write?: {
-      method: "POST" | "PUT";
-      fields: URLSearchParams;
-      beforeDispatch: () => void;
-    },
-  ): Promise<Record<string, unknown>>;
-}
+import type { CanvasAuthoringRequest } from "./canvas-page.ts";
 
 function assignmentDate(value: unknown) {
   if (value === null) return null;
@@ -28,7 +17,7 @@ function assignmentDate(value: unknown) {
 
 export function assignmentAuthoring(
   courseId: string,
-  request: RequestAssignment,
+  request: CanvasAuthoringRequest,
 ) {
   const course = `/courses/${courseId}`;
   const path = (id: string) => {

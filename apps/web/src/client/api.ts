@@ -7,6 +7,11 @@ import {
   type CanvasAssignmentDraft,
   type CanvasAssignmentPreview,
   type CanvasAssignmentResult,
+  readCanvasModuleDraft,
+  readCanvasModuleScope,
+  type CanvasModuleDraft,
+  type CanvasModulePreview,
+  type CanvasModuleResult,
   readCanvasPageDraft,
   sameCanvasPageDraft,
   type CanvasPageDraft,
@@ -317,6 +322,78 @@ export class InputApi {
       canvasPageId(value.assignmentId)
     )
       return { status: value.status, assignmentId: value.assignmentId };
+    throw new ClientError();
+  }
+
+  async canvasModuleScope() {
+    return readCanvasModuleScope(
+      await this.request("/api/v1/canvas/modules", "GET"),
+    );
+  }
+
+  async previewCanvasModule(
+    draft: CanvasModuleDraft,
+    signal: AbortSignal,
+  ): Promise<CanvasModulePreview> {
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/modules/preview",
+        "POST",
+        JSON.stringify({ draft }),
+        signal,
+      ),
+    );
+    const target = readCanvasTarget(value?.target);
+    if (
+      !canvasPagePlanId(value?.planId) ||
+      JSON.stringify(readCanvasModuleDraft(value.draft)) !==
+        JSON.stringify(draft)
+    )
+      throw new ClientError();
+    const plan = { planId: value.planId, target, draft };
+    if (draft.kind === "CREATE_MODULE") {
+      if (value.moduleSubject !== undefined) throw new ClientError();
+      return plan;
+    }
+    const subject = responseRecord(value.moduleSubject);
+    if (
+      !subject ||
+      subject.moduleId !== draft.moduleId ||
+      !canvasPageTitle(subject.moduleName) ||
+      !canvasPageTitle(subject.resourceName) ||
+      typeof subject.resourcePublished !== "boolean"
+    )
+      throw new ClientError();
+    return {
+      ...plan,
+      moduleSubject: {
+        moduleId: draft.moduleId,
+        moduleName: subject.moduleName,
+        resourceName: subject.resourceName,
+        resourcePublished: subject.resourcePublished,
+      },
+    };
+  }
+
+  async saveCanvasModule(
+    preview: CanvasModulePreview,
+    signal: AbortSignal,
+  ): Promise<CanvasModuleResult> {
+    const { planId, draft } = preview;
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/modules/save",
+        "POST",
+        JSON.stringify({ confirm: true, planId, draft }),
+        signal,
+      ),
+    );
+    if (value?.status === "UNCERTAIN") return { status: "UNCERTAIN" };
+    if (
+      (value?.status === "VERIFIED" || value?.status === "UNVERIFIED") &&
+      canvasPageId(value.resourceId)
+    )
+      return { status: value.status, resourceId: value.resourceId };
     throw new ClientError();
   }
 

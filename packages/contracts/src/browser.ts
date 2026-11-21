@@ -17,3 +17,4 @@ export * from "./history.ts";
 
 export * from "./canvas-page.ts";
 export * from "./canvas-assignment.ts";
+export * from "./canvas-module.ts";

@@ -296,6 +296,59 @@
           </button>
         </section>
       </details>
+      <details id="teacher-canvas-modules" class="teacher-tool" hidden>
+        <summary>Canvas Modules</summary>
+        <p id="canvas-module-status" role="status"></p>
+        <form id="canvas-module-form" autocomplete="off">
+          <label class="teacher-field">
+            Module action
+            <select id="canvas-module-kind">
+              <option value="CREATE_MODULE">
+                Create an unpublished module
+              </option>
+              <option value="LINK_PAGE">Add an approved page</option>
+              <option value="LINK_ASSIGNMENT">
+                Add an approved assignment
+              </option>
+            </select>
+          </label>
+          <label class="teacher-field">
+            Module title
+            <input
+              id="canvas-module-title"
+              type="text"
+              maxlength="250"
+              required
+            />
+          </label>
+          <label class="teacher-field" hidden>
+            Destination module
+            <select id="canvas-module-id" disabled></select>
+          </label>
+          <label class="teacher-field" hidden>
+            Item to add
+            <select id="canvas-module-content" disabled></select>
+          </label>
+          <button type="submit">Preview Canvas Module change</button>
+          <button id="canvas-module-abort" type="button" hidden>
+            Cancel preview request
+          </button>
+        </form>
+        <section
+          id="canvas-module-preview"
+          aria-label="Canvas Module preview"
+          hidden
+        >
+          <p id="canvas-module-target"></p>
+          <p id="canvas-module-change"></p>
+          <button id="canvas-module-confirm" type="button">
+            Apply reviewed change
+          </button>
+          <button id="canvas-module-cancel" type="button">
+            Cancel module preview
+          </button>
+        </section>
+      </details>
       <p id="connection-status" role="status" class="connection-status"></p>
       <main id="learning" hidden>
         <div class="dialogue">
