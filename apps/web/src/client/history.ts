@@ -1,5 +1,6 @@
 import {
   historyStages,
+  type HistoryDiagnostic,
   type HistoryFilter,
   type HistoryPage,
   type ConversationPage,
@@ -134,6 +135,53 @@ export function mountHistory(api: InputApi, root: HTMLElement) {
     status.setAttribute("role", "status");
     root.replaceChildren(header);
     const conversation = params.get("conversation");
+    if (conversation === null && document.body.dataset.ownerRole === "admin") {
+      const diagnostic = element("details");
+      const form = element("form");
+      const label = element("label", "Correlation reference ");
+      const reference = element("input");
+      reference.maxLength = 50;
+      reference.required = true;
+      reference.autocomplete = "off";
+      reference.spellcheck = false;
+      label.append(reference);
+      const lookup = element("button", "Look up reference");
+      lookup.type = "submit";
+      const result = element("p");
+      result.setAttribute("role", "status");
+      reference.oninput = () => {
+        result.textContent = "";
+      };
+      form.append(label, lookup, result);
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        if (lookup.disabled) return;
+        reference.disabled = lookup.disabled = true;
+        result.textContent = "Looking up the local record…";
+        try {
+          const { diagnostic } = await api.historyRequest<{
+            diagnostic: HistoryDiagnostic | null;
+          }>("diagnostic", { reference: reference.value.trim() });
+          result.textContent = diagnostic
+            ? `${diagnostic.outcome} · ${diagnostic.recording}. Observed stages ${diagnostic.stages.map(({ stage, origin }) => `${stage} (${origin})`).join(", ") || "none"}.`
+            : "No matching diagnostic in the recent History window.";
+        } catch {
+          result.textContent =
+            "Lookup unavailable. Check the full correlation reference and your Admin session.";
+        } finally {
+          reference.disabled = lookup.disabled = false;
+        }
+      };
+      diagnostic.append(
+        element("summary", "Find a local diagnostic"),
+        element(
+          "p",
+          "Copy the correlation reference from Execution trace / identifiers in a History record.",
+        ),
+        form,
+      );
+      root.append(diagnostic);
+    }
     if (conversation !== null) {
       root.append(
         link("Back to results", resultsParams),

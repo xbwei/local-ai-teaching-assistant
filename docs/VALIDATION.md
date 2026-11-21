@@ -53,3 +53,7 @@ The synthetic API checks opt-in, signed Teacher and rate limits, exact Test Stud
 ## Canvas assignment verification
 
 Synthetic API tests check 30 configured students for GitHub and 30 for MongoDB. They cover active enrollment, current submission drift, a wrong student or provider target, absent attempts, partial evidence, bounded admission and cancellation. MongoDB command and pinned driver option tests use a mock reader and construct the driver without connecting. Desktop and phone Chromium cover the two class-sized queues and cancellation with synthetic fixtures. Live Canvas, GitHub and Atlas provider permissions and behavior require separate acceptance.
+
+## Admin diagnostics
+
+Synthetic API tests check successful Admin lookup, rejection for other roles, including signed Canvas Teacher, invalid references and the metadata-only response. SQLite tests cover the recent ordinal window, ambiguous and invalid retained records, stage limits and read-only operation. Chromium exercises opening a retained record, copying its correlation reference, displaying bounded stage metadata and handling a missing match. Teacher and Student History omit the lookup control.

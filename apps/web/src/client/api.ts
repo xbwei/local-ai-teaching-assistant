@@ -545,7 +545,7 @@ export class InputApi {
     throw new ClientError();
   }
   async historyRequest<T>(
-    action: "query" | "conversation" | "feedback" | "review",
+    action: "query" | "conversation" | "feedback" | "review" | "diagnostic",
     value: unknown,
   ): Promise<T> {
     return (await this.request(

@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { migrate, migrations } from "../dist/migrations.js";
-import { createHistoryRepository } from "../dist/history.js";
+import {
+  createHistoryRepository,
+  HistoryValidationError,
+} from "../dist/history.js";
 const id = () => randomBytes(32).toString("hex");
 const begin = (
   store,
@@ -100,6 +103,76 @@ test("complete typed and voice text, answers, source identity and feedback survi
   begin(store, id(), "New conversation");
   assert.equal(store.conversation(c).turns.length, 2);
 });
+test("Admin diagnostic bounds retained metadata, rejects ambiguity and leaves the archive unchanged", (t) => {
+  const { db, store } = fixture(t);
+  const conversation = id();
+  const record = (reference) => {
+    const turn = id();
+    store.begin({
+      id: turn,
+      conversation,
+      text: "Synthetic archived question",
+      inputType: "TYPED",
+      correlation: reference,
+    });
+    return turn;
+  };
+  const archived = randomUUID();
+  const reference = randomUUID();
+  record(archived);
+  const observed = record(reference);
+  db.prepare("UPDATE history_turns SET ordinal = 2001 WHERE id = ?").run(
+    record(null),
+  );
+  const insert = db.prepare(
+    "INSERT INTO history_events(turn, ordinal, document) VALUES (?, ?, ?)",
+  );
+  for (let ordinal = 1; ordinal <= 257; ordinal++)
+    insert.run(
+      observed,
+      ordinal,
+      JSON.stringify({
+        stage: ordinal === 1 ? "INPUT" : "DELIVERY",
+        origin: ordinal === 1 ? "SERVER" : "BROWSER",
+        outcome: "Synthetic event details excluded from diagnostics",
+      }),
+    );
+
+  const admin = createHistoryRepository(db, { role: "admin" });
+  const changes = () => db.prepare("SELECT total_changes() AS n").get().n;
+  const before = changes();
+  for (const repo of [
+    store,
+    createHistoryRepository(db, { role: "teacher" }),
+    createHistoryRepository(db, { role: "student" }),
+  ])
+    assert.throws(() => repo.diagnostic(reference), HistoryValidationError);
+  assert.equal(admin.diagnostic(archived), null);
+  const diagnostic = admin.diagnostic(reference);
+  assert.equal(diagnostic.stages.length, 256);
+  assert.deepEqual(diagnostic.stages[0], { stage: "INPUT", origin: "SERVER" });
+  assert.deepEqual(diagnostic.stages.at(-1), {
+    stage: "DELIVERY",
+    origin: "BROWSER",
+  });
+  assert.equal(changes(), before);
+
+  db.prepare(
+    "UPDATE history_events SET document = ? WHERE turn = ? AND ordinal = 1",
+  ).run(
+    JSON.stringify({ stage: "Unavailable legacy stage", origin: "SERVER" }),
+    observed,
+  );
+  assert.equal(admin.diagnostic(reference), null);
+  db.prepare("DELETE FROM history_events WHERE turn = ? AND ordinal = 1").run(
+    observed,
+  );
+  assert.ok(admin.diagnostic(reference));
+  record(reference);
+  record(reference);
+  assert.equal(admin.diagnostic(reference), null);
+});
+
 test("feedback upsert binds exact conversation/turn/Compare leg, owner review remains separate", (t) => {
   const { store } = fixture(t),
     c = id(),

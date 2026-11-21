@@ -25,7 +25,7 @@ Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teac
 - **Check a Canvas sample:** the optional [Canvas Chat plugin](docs/CANVAS.md#canvas-chat-plugin) answers read-only submission and score questions for one approved assignment and the course’s configured Test Student.
 - **Verify practice submissions:** the optional [GitHub and MongoDB verifiers](docs/CANVAS-VERIFICATION.md) check a configured course roster and show bounded observations per current attempt.
 - **Post Canvas feedback:** preview and explicitly post one [plain-text comment](docs/CANVAS.md#canvas-teacher-feedback) to the configured Canvas Test Student’s supported submission.
-- **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review.
+- **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review. Admin can [look up a retained turn by correlation reference](docs/HISTORY.md#admin-diagnostic-lookup).
 - **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.
 - **Use local roles:** Owner Admin / Teacher / Student views with scoped History, all operated by the same Owner.
 - **Optional Canvas Teacher authoring:** launch from one configured course. With separate REST access, preview and explicitly create unpublished Pages, Assignments and Modules, rename an approved Assignment, or add an approved Page or Assignment to an unpublished Module. LAITA checks the result in Canvas.

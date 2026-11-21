@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
@@ -284,6 +284,80 @@ test("valid signed Canvas launch enters Teacher without password; scoped History
     200,
     "standalone survives disabling Canvas",
   );
+});
+
+test("Admin diagnostic requires a local Admin session and projects only retained stages", async (t) => {
+  const f = await fixture({
+    autoLogin: false,
+    canvas: () => canvas,
+    authNow: () => now,
+    history: true,
+  });
+  t.after(() => f.close());
+  const reference = randomUUID();
+  const turn = "b".repeat(64);
+  const store = f.persistence.history({ role: "teacher" });
+  store.begin({
+    id: turn,
+    conversation: "c".repeat(64),
+    inputType: "TYPED",
+    text: "Synthetic question excluded from diagnostics",
+    correlation: reference,
+  });
+  store.event(turn, {
+    stage: "INPUT",
+    origin: "SERVER",
+    outcome: "RECEIVED",
+    at: new Date().toISOString(),
+    durationMs: 17,
+  });
+  const lookup = (identity, value = { reference }, route = "diagnostic") =>
+    f.request(`/api/v1/history/${route}`, {
+      method: "POST",
+      headers: authenticated(identity, { "content-type": "application/json" }),
+      body: JSON.stringify(value),
+    });
+  assert.equal((await lookup("")).status, 401);
+  for (const role of ["teacher", "student"]) {
+    const signedIn = await f.login(role);
+    assert.equal(signedIn.status, 200);
+    assert.equal((await lookup(cookie(signedIn))).status, 403);
+    assert.equal(
+      (await lookup(cookie(signedIn), { reference }, "DIAGNOSTIC/")).status,
+      403,
+    );
+  }
+  const signedCanvas = await launch(f);
+  assert.equal(signedCanvas.status, 303);
+  assert.equal((await lookup(cookie(signedCanvas))).status, 403);
+  const signedAdmin = await f.login("admin");
+  assert.equal(signedAdmin.status, 200);
+  const admin = cookie(signedAdmin);
+  for (const value of [
+    {},
+    { reference, turn },
+    { reference: reference + "\n" },
+    { reference: 7 },
+  ])
+    assert.equal((await lookup(admin, value)).status, 400);
+  const observed = await lookup(admin);
+  assert.equal(observed.status, 200);
+  assert.equal(observed.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await observed.json(), {
+    diagnostic: {
+      recording: "RECORDED",
+      outcome: "PENDING",
+      stages: [{ stage: "INPUT", origin: "SERVER" }],
+    },
+  });
+  assert.deepEqual(
+    await (await lookup(admin, { reference: randomUUID() })).json(),
+    {
+      diagnostic: null,
+    },
+  );
+  assert.equal(f.calls(), 0);
+  assert.ok(!JSON.stringify(f.logs).includes(reference));
 });
 
 for (const [name, changes] of [

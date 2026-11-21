@@ -5,6 +5,7 @@ import {
   type HistoryRepository,
 } from "@laita/persistence";
 import {
+  correlationIdPattern,
   isInputRef,
   type HistoryRef,
   type HistoryStage,
@@ -140,6 +141,7 @@ const boundedText = (v: unknown, max = 2000) =>
   typeof v === "string" && v.length <= max && (!v.trim() || !!classifyInput(v));
 const integer = (v: unknown) =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+const correlationReference = new RegExp(correlationIdPattern, "u");
 export function installHistoryRoutes(
   app: Express,
   store: HistoryRepository,
@@ -153,10 +155,12 @@ export function installHistoryRoutes(
 ) {
   const repositories = new WeakMap<Request, HistoryRepository>();
   const students = new WeakSet<Request>();
+  const admins = new WeakSet<Request>();
   app.use("/api/v1/history", (req, res, next) => {
     const identity = authenticate(req, res);
     if (!identity) return;
     if (identity.historyScope?.role === "student") students.add(req);
+    if (identity.historyScope?.role === "admin") admins.add(req);
     const scoped = identity.historyScope
       ? historyForScope?.(identity.historyScope)
       : store;
@@ -183,7 +187,10 @@ export function installHistoryRoutes(
   ) =>
     app.post(`/api/v1/history/${path}`, (req, res) => {
       // Authorize the matched operation, including Express route aliases.
-      if (path === "review" && students.has(req)) {
+      if (
+        (path === "review" && students.has(req)) ||
+        (path === "diagnostic" && !admins.has(req))
+      ) {
         res.status(403).json({ code: "FORBIDDEN" });
         return;
       }
@@ -207,6 +214,16 @@ export function installHistoryRoutes(
     if (Object.keys(v).some((k) => !keys.includes(k)))
       throw new HistoryValidationError();
   };
+  route("diagnostic", (v, store) => {
+    exact(v, ["reference"]);
+    if (
+      typeof v.reference !== "string" ||
+      v.reference.length !== 36 ||
+      !correlationReference.test(v.reference)
+    )
+      throw new HistoryValidationError();
+    return { diagnostic: store.diagnostic(v.reference) };
+  });
   route("query", (v, store) => {
     exact(v, [
       "before",
