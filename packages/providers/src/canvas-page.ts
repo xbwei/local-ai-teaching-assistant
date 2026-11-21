@@ -5,6 +5,8 @@ import {
   type CanvasPageDraft,
 } from "@laita/contracts";
 import type { SecretHandle } from "@laita/runtime";
+import { assignmentAuthoring } from "./canvas-assignment.ts";
+import { canvasResponseId as id } from "./canvas-response.ts";
 
 interface PageTarget {
   origin: string;
@@ -16,11 +18,6 @@ const row = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("INVALID_CANVAS_RESPONSE");
   return value as Record<string, unknown>;
-};
-const id = (value: unknown) => {
-  const candidate = Number.isSafeInteger(value) ? String(value) : value;
-  if (!canvasPageId(candidate)) throw new Error("INVALID_CANVAS_RESPONSE");
-  return candidate;
 };
 
 function bounded<T>(
@@ -103,30 +100,30 @@ export function createCanvasPageClient(
 
   async function request(
     endpoint: string,
-    draft: CanvasPageDraft,
-    write: boolean,
-    beforeDispatch?: () => void,
+    draft: { title: string; body?: string },
+    write?: {
+      method: "POST" | "PUT";
+      fields: URLSearchParams;
+      beforeDispatch: () => void;
+    },
   ) {
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(5000)]);
     deadline.throwIfAborted();
     return refresh().consume(async (token) => {
-      if (draft.title.includes(token) || draft.body.includes(token))
+      if (
+        draft.title.includes(token) ||
+        draft.body?.includes(token) ||
+        (write &&
+          [...write.fields.values()].some((value) => value.includes(token)))
+      )
         throw new Error("INVALID_DRAFT");
-      const body = write
-        ? new URLSearchParams({
-            "wiki_page[title]": draft.title,
-            "wiki_page[body]": draft.body,
-            "wiki_page[published]": "false",
-            "wiki_page[editing_roles]": "teachers",
-            "wiki_page[notify_of_update]": "false",
-          })
-        : undefined;
+      const body = write?.fields.toString();
       deadline.throwIfAborted();
       // No asynchronous work between the final authority check and dispatch.
-      beforeDispatch?.();
+      write?.beforeDispatch();
       const response = await bounded(
         fetcher(`${origin}/api/v1${endpoint}`, {
-          method: write ? "POST" : "GET",
+          method: write?.method ?? "GET",
           redirect: "error",
           cache: "no-store",
           headers: {
@@ -136,7 +133,7 @@ export function createCanvasPageClient(
               ? { "Content-Type": "application/x-www-form-urlencoded" }
               : {}),
           },
-          ...(body ? { body: body.toString() } : {}),
+          ...(body ? { body } : {}),
           signal: deadline,
         }),
         deadline,
@@ -153,10 +150,11 @@ export function createCanvasPageClient(
   }
 
   return {
-    async readTarget(draft: CanvasPageDraft) {
-      const self = await request("/users/self", draft, false);
+    assignments: assignmentAuthoring(courseId, request),
+    async readTarget(draft: { title: string; body?: string }) {
+      const self = await request("/users/self", draft);
       if (id(self.id) !== teacherId) throw new Error("INVALID_CANVAS_TARGET");
-      const course = await request(coursePath, draft, false);
+      const course = await request(coursePath, draft);
       if (
         id(course.id) !== courseId ||
         course.workflow_state !== "available" ||
@@ -175,12 +173,17 @@ export function createCanvasPageClient(
       return { origin, courseId, teacherId, courseName: course.name };
     },
     async create(draft: CanvasPageDraft, beforeDispatch: () => void) {
-      const created = await request(
-        `${coursePath}/pages`,
-        draft,
-        true,
+      const created = await request(`${coursePath}/pages`, draft, {
+        method: "POST",
+        fields: new URLSearchParams({
+          "wiki_page[title]": draft.title,
+          "wiki_page[body]": draft.body,
+          "wiki_page[published]": "false",
+          "wiki_page[editing_roles]": "teachers",
+          "wiki_page[notify_of_update]": "false",
+        }),
         beforeDispatch,
-      );
+      });
       if (created.course_id !== undefined && id(created.course_id) !== courseId)
         throw new Error("INVALID_CANVAS_TARGET");
       return id(created.page_id);
@@ -190,7 +193,6 @@ export function createCanvasPageClient(
       const page = await request(
         `${coursePath}/pages/page_id:${pageId}`,
         draft,
-        false,
       );
       return (
         id(page.page_id) === pageId &&

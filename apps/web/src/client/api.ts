@@ -2,6 +2,11 @@ import {
   canvasPageId,
   canvasPagePlanId,
   canvasPageTitle,
+  readCanvasAssignmentDraft,
+  readCanvasAssignmentScope,
+  type CanvasAssignmentDraft,
+  type CanvasAssignmentPreview,
+  type CanvasAssignmentResult,
   readCanvasPageDraft,
   sameCanvasPageDraft,
   type CanvasPageDraft,
@@ -22,6 +27,27 @@ const responseRecord = (value: unknown) =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+
+function readCanvasTarget(value: unknown): CanvasPagePreview["target"] {
+  const target = responseRecord(value);
+  if (
+    !target ||
+    typeof target.origin !== "string" ||
+    target.origin.length > 512 ||
+    new URL(target.origin).origin !== target.origin ||
+    !target.origin.startsWith("https://") ||
+    !canvasPageId(target.courseId) ||
+    !canvasPageId(target.teacherId) ||
+    !canvasPageTitle(target.courseName)
+  )
+    throw new ClientError();
+  return {
+    origin: target.origin,
+    courseId: target.courseId,
+    teacherId: target.teacherId,
+    courseName: target.courseName,
+  };
+}
 
 export class ClientError extends Error {
   history?: import("@laita/contracts/browser").HistoryRef;
@@ -172,30 +198,17 @@ export class InputApi {
         signal,
       ),
     );
-    const target = responseRecord(value?.target);
+    const target = readCanvasTarget(value?.target);
     const returnedDraft = responseRecord(value?.draft);
     if (
       !canvasPagePlanId(value?.planId) ||
-      !target ||
-      typeof target.origin !== "string" ||
-      target.origin.length > 512 ||
-      new URL(target.origin).origin !== target.origin ||
-      !target.origin.startsWith("https://") ||
-      !canvasPageId(target.courseId) ||
-      !canvasPageId(target.teacherId) ||
-      !canvasPageTitle(target.courseName) ||
       !sameCanvasPageDraft(readCanvasPageDraft(returnedDraft), draft) ||
       returnedDraft?.body !== draft.body
     )
       throw new ClientError();
     return {
       planId: value.planId,
-      target: {
-        origin: target.origin,
-        courseId: target.courseId,
-        teacherId: target.teacherId,
-        courseName: target.courseName,
-      },
+      target,
       draft,
     };
   }
@@ -220,6 +233,93 @@ export class InputApi {
       return { status: value.status, pageId: value.pageId };
     throw new ClientError();
   }
+  async canvasAssignmentScope() {
+    return readCanvasAssignmentScope(
+      await this.request("/api/v1/canvas/assignments", "GET"),
+    );
+  }
+
+  async previewCanvasAssignment(
+    draft: CanvasAssignmentDraft,
+    signal: AbortSignal,
+  ): Promise<CanvasAssignmentPreview> {
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/assignments/preview",
+        "POST",
+        JSON.stringify({ draft }),
+        signal,
+      ),
+    );
+    const target = readCanvasTarget(value?.target);
+    const subject = responseRecord(value?.subject);
+    if (
+      !canvasPagePlanId(value?.planId) ||
+      !subject ||
+      subject.kind !== draft.kind ||
+      !canvasPageId(subject.id) ||
+      !canvasPageTitle(subject.name) ||
+      JSON.stringify(readCanvasAssignmentDraft(value.draft)) !==
+        JSON.stringify(draft) ||
+      (draft.kind === "CREATE" &&
+        responseRecord(value.draft)?.body !== draft.body)
+    )
+      throw new ClientError();
+    if (draft.kind === "TITLE") {
+      if (
+        subject.id !== draft.assignmentId ||
+        typeof subject.updatedAt !== "string" ||
+        !Number.isFinite(Date.parse(subject.updatedAt)) ||
+        typeof subject.published !== "boolean"
+      )
+        throw new ClientError();
+      return {
+        planId: value.planId,
+        target,
+        draft,
+        subject: {
+          kind: "TITLE",
+          id: subject.id,
+          name: subject.name,
+          updatedAt: subject.updatedAt,
+          published: subject.published,
+        },
+      };
+    }
+    return {
+      planId: value.planId,
+      target,
+      draft,
+      subject: {
+        kind: "CREATE",
+        id: subject.id,
+        name: subject.name,
+      },
+    };
+  }
+
+  async saveCanvasAssignment(
+    preview: CanvasAssignmentPreview,
+    signal: AbortSignal,
+  ): Promise<CanvasAssignmentResult> {
+    const { planId, draft } = preview;
+    const value = responseRecord(
+      await this.request(
+        "/api/v1/canvas/assignments/save",
+        "POST",
+        JSON.stringify({ confirm: true, planId, draft }),
+        signal,
+      ),
+    );
+    if (value?.status === "UNCERTAIN") return { status: "UNCERTAIN" };
+    if (
+      (value?.status === "VERIFIED" || value?.status === "UNVERIFIED") &&
+      canvasPageId(value.assignmentId)
+    )
+      return { status: value.status, assignmentId: value.assignmentId };
+    throw new ClientError();
+  }
+
   async teacherHistoryEnabled() {
     const value = await this.request("/api/v1/teacher-tools/history", "GET");
     return (

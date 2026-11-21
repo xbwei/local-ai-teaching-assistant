@@ -191,6 +191,111 @@
           <button id="canvas-page-cancel" type="button">Cancel preview</button>
         </section>
       </details>
+      <details id="teacher-canvas-assignments" class="teacher-tool" hidden>
+        <summary>Canvas Assignments</summary>
+        <p id="canvas-assignment-status" role="status"></p>
+        <form id="canvas-assignment-form" autocomplete="off">
+          <label class="teacher-field" for="canvas-assignment-kind"
+            >Assignment action
+            <select id="canvas-assignment-kind">
+              <option value="CREATE">Create unpublished assignment</option>
+              <option value="TITLE">Rename approved assignment</option>
+            </select>
+          </label>
+          <label class="teacher-field" for="canvas-assignment-id" hidden
+            >Assignment to rename
+            <select id="canvas-assignment-id" disabled></select>
+          </label>
+          <label class="teacher-field" for="canvas-assignment-title"
+            >Assignment title
+            <input
+              id="canvas-assignment-title"
+              type="text"
+              maxlength="250"
+              required
+            />
+          </label>
+          <fieldset id="canvas-assignment-create">
+            <legend>New assignment settings</legend>
+            <label for="canvas-assignment-body"
+              >Assignment Markdown
+              <textarea
+                id="canvas-assignment-body"
+                rows="6"
+                maxlength="12000"
+                required
+              ></textarea>
+            </label>
+            <label for="canvas-assignment-points"
+              >Points possible
+              <input
+                id="canvas-assignment-points"
+                type="number"
+                min="0"
+                step="any"
+                value="0"
+                required
+              />
+            </label>
+            <label for="canvas-assignment-due"
+              >Due date and time (UTC, optional)
+              <input
+                id="canvas-assignment-due"
+                type="datetime-local"
+                step="1"
+              />
+            </label>
+            <fieldset class="canvas-submission-types">
+              <legend>Submission types</legend>
+              <label
+                ><input
+                  type="checkbox"
+                  name="submission"
+                  value="online_text_entry"
+                  checked
+                />
+                Text Entry</label
+              >
+              <label
+                ><input type="checkbox" name="submission" value="online_url" />
+                Website URL</label
+              >
+              <label
+                ><input
+                  type="checkbox"
+                  name="submission"
+                  value="online_upload"
+                />
+                File Upload</label
+              >
+            </fieldset>
+          </fieldset>
+          <button type="submit">Preview Canvas Assignment</button>
+          <button id="canvas-assignment-abort" type="button" hidden>
+            Cancel preview request
+          </button>
+        </form>
+        <section
+          id="canvas-assignment-preview"
+          aria-label="Canvas Assignment preview"
+          hidden
+        >
+          <p id="canvas-assignment-target"></p>
+          <p id="canvas-assignment-subject"></p>
+          <h2 id="canvas-assignment-preview-title"></h2>
+          <div id="canvas-assignment-preview-body"></div>
+          <details id="canvas-assignment-exact" hidden>
+            <summary>Exact HTML sent to Canvas</summary>
+            <pre id="canvas-assignment-html"></pre>
+          </details>
+          <button id="canvas-assignment-confirm" type="button">
+            Save reviewed assignment
+          </button>
+          <button id="canvas-assignment-cancel" type="button">
+            Cancel assignment preview
+          </button>
+        </section>
+      </details>
       <p id="connection-status" role="status" class="connection-status"></p>
       <main id="learning" hidden>
         <div class="dialogue">
