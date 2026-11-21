@@ -249,4 +249,10 @@ export type { OpenAIAdapterOptions, OpenAIModelCandidate } from "./openai.ts";
 export { createCanvasPageClient } from "./canvas-page.ts";
 export { validGitHubExpectation, verifyGitHub } from "./github-verification.ts";
 export type { GitHubExpectation } from "./github-verification.ts";
+export {
+  mongoSubmission,
+  validMongoExpectation,
+  verifyMongoDB,
+} from "./mongodb-verification.ts";
+export type { MongoExpectation } from "./mongodb-verification.ts";
 export { submissionLinkText } from "./verification-submission.ts";

@@ -32,7 +32,7 @@ export async function mountCanvasVerification(api: InputApi) {
     ...assignments.map(
       (entry, index) =>
         new Option(
-          `GitHub · Assignment ${entry.assignmentId} · ${entry.studentIds.length} students`,
+          `${entry.provider === "GITHUB" ? "GitHub" : "MongoDB"} · Assignment ${entry.assignmentId} · ${entry.studentIds.length} students`,
           String(index),
         ),
     ),

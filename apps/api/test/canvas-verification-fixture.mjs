@@ -4,6 +4,7 @@ import { canvas, canvasNow, canvasPageFixture } from "./canvas-fixture.mjs";
 const token = "synthetic_github_reader_for_fixture";
 const oid = (ch) => ch.repeat(40);
 export const verificationPath = "/api/v1/canvas/verification";
+export const verificationSecretMarker = "synthetic-only-passphrase";
 
 export function canvasVerificationFixture(
   base = canvasPageFixture(),
@@ -19,6 +20,11 @@ export function canvasVerificationFixture(
     pullRequest:
       index === ids.length - 1 ? { number: 2, head: "exercise" } : null,
   }));
+  const mongoStudents = ids.map((id) => ({
+    id,
+    host: `sample-${id}.example.mongodb.net`,
+    database: "practice",
+  }));
   const configuration = {
     origin: canvas.canvasOrigin,
     courseId: canvas.courseId,
@@ -33,6 +39,17 @@ export function canvasVerificationFixture(
         paths: ["README.md"],
         students: githubStudents,
       },
+      {
+        provider: "MONGODB",
+        assignmentId: "182",
+        collections: [
+          {
+            name: "items",
+            fields: [{ path: "label", type: "string", nonempty: true }],
+          },
+        ],
+        students: mongoStudents,
+      },
     ],
   };
   const course = `/api/v1/courses/${canvas.courseId}`;
@@ -41,11 +58,14 @@ export function canvasVerificationFixture(
     membership: (id) => [{ id: Number(id) }],
     inactive: new Set(),
     github: async () => {},
+    mongo: async () => {},
+    activeWorkers: 0,
   };
-  const calls = { canvas: [], github: [] };
+  const calls = { canvas: [], github: [], mongo: [] };
   const gitHubForRepo = new Map(githubStudents.map((x) => [x.repository, x]));
   const gitHubForLogin = new Map(githubStudents.map((x) => [x.githubLogin, x]));
   const gitHubForStudent = new Map(githubStudents.map((x) => [x.id, x]));
+  const mongoForStudent = new Map(mongoStudents.map((x) => [x.id, x]));
 
   const options = {
     ...base.options,
@@ -54,7 +74,7 @@ export function canvasVerificationFixture(
       assert.equal(target.origin, canvas.canvasOrigin);
       const { pathname: p, searchParams: q } = target;
       const sub =
-        /^\/api\/v1\/courses\/42001\/assignments\/(181)\/submissions\/(\d+)$/u.exec(
+        /^\/api\/v1\/courses\/42001\/assignments\/(181|182)\/submissions\/(\d+)$/u.exec(
           p,
         );
       if (p === course + "/users" && q.get("enrollment_type[]") === "student") {
@@ -72,7 +92,10 @@ export function canvasVerificationFixture(
           },
         );
       }
-      if (p === course + "/assignments/181") {
+      if (
+        p === course + "/assignments/181" ||
+        p === course + "/assignments/182"
+      ) {
         assert.equal(init.method, "GET");
         const id = Number(p.split("/").at(-1));
         return Response.json({
@@ -80,7 +103,10 @@ export function canvasVerificationFixture(
           course_id: Number(canvas.courseId),
           published: true,
           group_category_id: null,
-          submission_types: ["online_url", "online_text_entry"],
+          submission_types:
+            id === 181
+              ? ["online_url", "online_text_entry"]
+              : ["online_text_entry"],
         });
       }
       if (sub) {
@@ -89,9 +115,12 @@ export function canvasVerificationFixture(
         const [, a, studentId] = sub;
         assert.ok(ids.includes(studentId));
         calls.canvas.push([a, studentId]);
+        const isGitHub = a === "181";
         const github = gitHubForStudent.get(studentId);
+        const mongo = mongoForStudent.get(studentId);
         const profile = Number(studentId) % 2 === 1;
         const url = `https://github.com/${profile ? github.githubLogin : github.repository}`;
+        const secret = verificationSecretMarker + studentId;
         return Response.json(
           state.source({
             id: Number(studentId) + 4000,
@@ -103,9 +132,14 @@ export function canvasVerificationFixture(
             submitted_at: "2026-11-20T12:00:00Z",
             excused: false,
             missing: false,
-            submission_type: profile ? "online_url" : "online_text_entry",
-            url: profile ? url : null,
-            body: profile ? null : `<p><a href="${url}">${url}</a></p>`,
+            submission_type:
+              isGitHub && profile ? "online_url" : "online_text_entry",
+            url: isGitHub && profile ? url : null,
+            body: isGitHub
+              ? profile
+                ? null
+                : `<p><a href="${url}">${url}</a></p>`
+              : `<p>mongodb+srv://sample:${secret}@${mongo.host}/${mongo.database}</p>`,
           }),
         );
       }
@@ -200,6 +234,41 @@ export function canvasVerificationFixture(
           });
         }
         assert.fail("Unexpected synthetic GitHub endpoint");
+      },
+      mongoDependencies: {
+        async worker(input, signal, check) {
+          ++state.activeWorkers;
+          const { expectation, credential } = input;
+          const { studentId, host, database } = expectation;
+          calls.mongo.push(studentId);
+          try {
+            await check("source");
+            assert.equal(host, mongoForStudent.get(studentId).host);
+            assert.equal(database, "practice");
+            assert.deepEqual(JSON.parse(credential), {
+              username: "sample",
+              password: verificationSecretMarker + studentId,
+            });
+            const override = await state.mongo(studentId, signal);
+            await check("command");
+            return (
+              override ?? {
+                connection: { status: "PRESENT" },
+                database: { status: "PRESENT" },
+                cleanup: "COMPLETE",
+                collections: [
+                  {
+                    status: "PRESENT",
+                    collection: "items",
+                    fields: [{ field: "label", status: "PRESENT" }],
+                  },
+                ],
+              }
+            );
+          } finally {
+            --state.activeWorkers;
+          }
+        },
       },
     },
   };

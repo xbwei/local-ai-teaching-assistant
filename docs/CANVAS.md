@@ -228,7 +228,7 @@ Preview, recheck, write and readback use separate Canvas requests. Canvas can ch
 
 ## Verify assignment submissions
 
-The signed Teacher can optionally run [GitHub assignment verification](CANVAS-VERIFICATION.md) for an explicitly configured roster. Each row checks one current attempt. The Test Student-only Canvas Chat and feedback tools keep their own scope.
+The signed Teacher can optionally run [GitHub and MongoDB assignment verification](CANVAS-VERIFICATION.md) for an explicitly configured roster. Each row checks one current attempt. The Test Student-only Canvas Chat and feedback tools keep their own scope.
 
 ## 8. Disable, remove, rotate or recover
 
