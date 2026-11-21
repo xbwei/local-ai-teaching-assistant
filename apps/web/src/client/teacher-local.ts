@@ -1,53 +1,8 @@
-import { ClientError, type InputApi } from "./api.ts";
+import type { InputApi } from "./api.ts";
+import { bindTeacherForm } from "./teacher-form.ts";
 
 const get = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
-
-function bindForm(
-  form: HTMLFormElement,
-  status: HTMLElement,
-  run: (signal: AbortSignal) => Promise<void>,
-) {
-  const send = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
-  const cancel = form.querySelector<HTMLButtonElement>(
-    'button[type="button"]',
-  )!;
-  let pending: AbortController | undefined;
-  cancel.onclick = () => pending?.abort();
-  form.onsubmit = async (event) => {
-    event.preventDefault();
-    if (pending) return;
-    const controller = new AbortController();
-    pending = controller;
-    send.disabled = true;
-    cancel.hidden = false;
-    status.textContent = "Working…";
-    try {
-      await run(controller.signal);
-    } catch (error) {
-      if (pending !== controller) return;
-      status.textContent = controller.signal.aborted
-        ? "Cancelled."
-        : error instanceof ClientError && [401, 403].includes(error.status)
-          ? "Sign in again as the local Teacher."
-          : "Unavailable. Check the local setup and try again.";
-    } finally {
-      if (pending === controller) {
-        pending = undefined;
-        send.disabled = false;
-        cancel.hidden = true;
-      }
-    }
-  };
-  window.addEventListener("pagehide", () => {
-    pending?.abort();
-    pending = undefined;
-    form.reset();
-    send.disabled = false;
-    cancel.hidden = true;
-    status.textContent = "";
-  });
-}
 
 const draftNotices = {
   SOURCES_UNAVAILABLE: "Course sources are unavailable.",
@@ -72,7 +27,7 @@ export function mountTeacherLocal(api: InputApi) {
     draft.value = "";
     sources.replaceChildren();
   });
-  bindForm(
+  bindTeacherForm(
     get<HTMLFormElement>("teacher-draft-form"),
     draftStatus,
     async (signal) => {
@@ -110,7 +65,7 @@ export function mountTeacherLocal(api: InputApi) {
     .catch(() => {
       // An unconfigured plugin leaves standalone Chat available.
     });
-  bindForm(
+  bindTeacherForm(
     get<HTMLFormElement>("teacher-history-form"),
     historyStatus,
     async (signal) => {

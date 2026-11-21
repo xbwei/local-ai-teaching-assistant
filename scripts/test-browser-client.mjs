@@ -165,7 +165,7 @@ try {
   });
   seededHistory.outcome("e".repeat(64), "NO_ANSWER");
   const sampleContext = "5".repeat(64);
-  const syntheticCanvas = canvasPageFixture({ assignments: true, modules: true });
+  const syntheticCanvas = canvasPageFixture({ assignments: true, modules: true, chat: true });
   f = await fixture({
     history: persistence.history(),
     persistence,
@@ -466,6 +466,24 @@ try {
     assert.equal(requests.filter(request => request.endsWith("/api/v1/canvas/modules/save")).length, 3);
     assert.ok(requests.every(request => new URL(request).origin === f.origin));
     results.push({ name: mobile ? "canvas-module-phone" : "canvas-module-desktop", width, height, status: "PASS", requests: requests.length });
+    const canvasChat = page.locator("#canvas-chat-plugin");
+    const canvasQuestion = canvasChat.getByRole("textbox", { name: "Canvas question" });
+    const askCanvas = canvasChat.getByRole("button", { name: "Ask Canvas" });
+    const browserRequests = requests.length;
+    const providerRequests = syntheticCanvas.calls.length;
+    await canvasChat.locator("summary").click();
+    await canvasQuestion.fill(`How many submissions for ${updatedTitle}?`);
+    await askCanvas.click();
+    await canvasChat.getByText(/^1 submission.*configured Test Student/).waitFor();
+    await canvasQuestion.fill(`What is the score for ${updatedTitle}?`);
+    await askCanvas.click();
+    await canvasChat.getByText(/is 6\.5 of 7 points.*configured Test Student/).waitFor();
+    await canvasQuestion.fill("What are the class grades?");
+    await askCanvas.click();
+    await canvasChat.getByText(/^Ask how many submissions or what score/).waitFor();
+    assert.ok(requests.slice(browserRequests).every(request => request === f.origin + "/api/v1/canvas/chat"));
+    assert.ok(syntheticCanvas.calls.slice(providerRequests).every(([method]) => method === "GET"));
+    results.push({ name: mobile ? "canvas-chat-phone" : "canvas-chat-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
   for (const scenario of [

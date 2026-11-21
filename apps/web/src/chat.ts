@@ -62,6 +62,11 @@ if (
     .catch(() => {
       /* Unavailable Canvas tools leave Chat usable. */
     });
+  void import("./client/teacher-canvas-chat.ts")
+    .then(({ mountCanvasChat }) => mountCanvasChat(api))
+    .catch(() => {
+      /* An unconfigured plugin leaves standalone Chat available. */
+    });
 }
 // Follow message lifetime without retaining old conversations or losing drafts on audio updates.
 const messageFeedback = new WeakMap<Message, HTMLElement>();

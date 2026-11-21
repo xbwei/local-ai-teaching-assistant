@@ -41,3 +41,7 @@ The fake Canvas REST adapter covers unpublished creation and title-only editing 
 ## Canvas Module authoring
 
 The synthetic API tests cover empty unpublished creation and appending one approved Page or supported Assignment. They exercise disabled and unauthorized access, the shared rate limit and confirmation, module and item scope, partial responses, changed item inventory and resource, cancellation before write, and unverified or uncertain results. Desktop and phone Chromium scenarios exercise creation, linking both item types, and cancelling a preview. Live Canvas, native Safari and physical-device acceptance require separate validation.
+
+## Canvas Chat plugin
+
+The synthetic API exercises optional configuration, signed Teacher course and identity, exact-title ambiguity, fixed Test Student membership and submission requests, and rejection of mismatched accounts or unsupported assignment evidence. It covers submitted, absent, missing, excused, ungraded and current or stale score states, as well as rate limiting, access drift and cancellation. Desktop and phone Chromium exercise the count, score and unsupported-question response alongside standalone Chat and other Teacher tools. Canvas calls use a synthetic provider. Live Canvas interoperability and access permissions require separate acceptance.

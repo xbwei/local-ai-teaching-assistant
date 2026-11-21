@@ -1,8 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
-import express, { type RequestHandler } from "express";
+import express, {
+  type Request,
+  type Response,
+  type RequestHandler,
+} from "express";
 import {
   canvasPageId,
   canvasPagePlanId,
+  canvasPageTitle,
   readCanvasAssignmentDraft,
   readCanvasAssignmentScope,
   readCanvasModuleDraft,
@@ -33,6 +38,7 @@ interface CanvasPageSettings {
   canvasToken: string;
   assignments?: CanvasAssignmentScope;
   modules?: CanvasModuleScope;
+  chat?: { testStudentId: string; assignmentIds: string[] };
 }
 
 export interface CanvasPageOptions {
@@ -44,6 +50,25 @@ export function readCanvasPageSettings(file: string | undefined): unknown {
   return readProtectedOwnerJson(file, 4096);
 }
 
+function readChatScope(value: unknown, teacherId: string) {
+  if (!value || typeof value !== "object")
+    throw new Error("INVALID_CHAT_SCOPE");
+  const scope = value as Record<string, unknown>;
+  const { testStudentId, assignmentIds } = scope;
+  if (
+    Object.keys(scope).sort().join(",") !== "assignmentIds,testStudentId" ||
+    !canvasPageId(testStudentId) ||
+    testStudentId === teacherId ||
+    !Array.isArray(assignmentIds) ||
+    assignmentIds.length < 1 ||
+    assignmentIds.length > 12 ||
+    !assignmentIds.every(canvasPageId) ||
+    new Set(assignmentIds).size !== assignmentIds.length
+  )
+    throw new Error("INVALID_CHAT_SCOPE");
+  return { testStudentId, assignmentIds: [...assignmentIds] as string[] };
+}
+
 function connection(
   value: unknown,
   canvas: CanvasConfiguration | undefined,
@@ -53,7 +78,9 @@ function connection(
   const v = value as Record<string, unknown>;
   const permitted = "canvasToken,courseId,expiresAt,origin,teacherId";
   const keys = Object.keys(v)
-    .filter((key) => key !== "assignments" && key !== "modules")
+    .filter(
+      (key) => key !== "assignments" && key !== "modules" && key !== "chat",
+    )
     .sort()
     .join(",");
   if (
@@ -87,6 +114,9 @@ function connection(
     }),
     ...(Object.hasOwn(v, "modules") && {
       modules: readCanvasModuleScope(v.modules),
+    }),
+    ...(Object.hasOwn(v, "chat") && {
+      chat: readChatScope(v.chat, v.teacherId),
     }),
   };
 }
@@ -133,9 +163,9 @@ function readIntent(
   return { draft: checked, planId };
 }
 
-export function createCanvasPageParser(): RequestHandler {
+export function createCanvasPageParser(limit = 128 * 1024): RequestHandler {
   const parse = express.json({
-    limit: 128 * 1024,
+    limit,
     inflate: false,
     strict: true,
   });
@@ -171,67 +201,83 @@ export function createCanvasAuthoringHandlers(
     saved = undefined;
   }
 
+  function authorizeTeacher(req: Request, res: Response) {
+    const actor = sessions.authorize(req, res);
+    if (!actor) return;
+    if (actor.role !== "teacher" || actor.source !== "canvas") {
+      res.status(403).json({ code: "FORBIDDEN" });
+      return;
+    }
+    return actor;
+  }
+
+  function currentAccess(
+    req: Request,
+    actor: NonNullable<ReturnType<typeof authorizeTeacher>>,
+    resource: Resource | "chat",
+    draft?: Draft,
+  ) {
+    if (!sessions.isCurrent(req, actor.binding))
+      throw new Error("INVALID_CANVAS_TARGET");
+    const canvas = launch();
+    if (
+      !canvas ||
+      canvasContext(canvas) !== actor.context ||
+      canvasFingerprint(canvas) !== actor.canvasRevision
+    )
+      throw new Error("INVALID_CANVAS_TARGET");
+    const settings = connection(options.settings(), canvas, now());
+    if (
+      !settings ||
+      (resource === "assignment" && !settings.assignments) ||
+      (resource === "module" && !settings.modules) ||
+      (resource === "chat" && !settings.chat)
+    )
+      throw new Error("CANVAS_UNAVAILABLE");
+    const { assignments, modules, chat, ...rest } = settings;
+    const launchKeys = [canvas.consumerKey, canvas.sharedSecret];
+    if (
+      draft &&
+      launchKeys.some(
+        (secret) =>
+          ("title" in draft && draft.title.includes(secret)) ||
+          ("body" in draft && draft.body.includes(secret)),
+      )
+    )
+      throw new Error("INVALID_DRAFT");
+    return {
+      settings,
+      launchKeys,
+      key: createHash("sha256")
+        .update(
+          JSON.stringify([
+            actor.binding,
+            actor.canvasRevision,
+            rest,
+            assignments?.groupId ?? null,
+            assignments?.editableIds ?? [],
+            modules?.moduleIds ?? null,
+            modules?.pageIds ?? null,
+            modules?.assignmentIds ?? null,
+            chat?.testStudentId ?? null,
+            chat?.assignmentIds ?? null,
+          ]),
+        )
+        .digest("hex"),
+    };
+  }
+
   function handler(
     resource: Resource,
     action: "status" | "preview" | "confirm",
   ): RequestHandler {
     return async (req, res) => {
-      const actor = sessions.authorize(req, res);
+      const actor = authorizeTeacher(req, res);
       if (!actor) return;
-      if (actor.role !== "teacher" || actor.source !== "canvas") {
-        res.status(403).json({ code: "FORBIDDEN" });
-        return;
-      }
       const unavailable = () =>
         res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
       const stale = () => res.status(409).json({ code: "PREVIEW_REQUIRED" });
-      const get = (draft?: Draft) => {
-        if (!sessions.isCurrent(req, actor.binding))
-          throw new Error("INVALID_CANVAS_TARGET");
-        const canvas = launch();
-        if (
-          !canvas ||
-          canvasContext(canvas) !== actor.context ||
-          canvasFingerprint(canvas) !== actor.canvasRevision
-        )
-          throw new Error("INVALID_CANVAS_TARGET");
-        const settings = connection(options.settings(), canvas, now());
-        if (
-          !settings ||
-          (resource === "assignment" && !settings.assignments) ||
-          (resource === "module" && !settings.modules)
-        )
-          throw new Error("CANVAS_UNAVAILABLE");
-        const { assignments, modules, ...rest } = settings;
-        const launchKeys = [canvas.consumerKey, canvas.sharedSecret];
-        if (
-          draft &&
-          launchKeys.some(
-            (secret) =>
-              ("title" in draft && draft.title.includes(secret)) ||
-              ("body" in draft && draft.body.includes(secret)),
-          )
-        )
-          throw new Error("INVALID_DRAFT");
-        return {
-          settings,
-          launchKeys,
-          key: createHash("sha256")
-            .update(
-              JSON.stringify([
-                actor.binding,
-                actor.canvasRevision,
-                rest,
-                assignments?.groupId ?? null,
-                assignments?.editableIds ?? [],
-                modules?.moduleIds ?? null,
-                modules?.pageIds ?? null,
-                modules?.assignmentIds ?? null,
-              ]),
-            )
-            .digest("hex"),
-        };
-      };
+      const get = (draft?: Draft) => currentAccess(req, actor, resource, draft);
       let initial: ReturnType<typeof get>;
       try {
         initial = get();
@@ -457,6 +503,106 @@ export function createCanvasAuthoringHandlers(
     };
   }
 
+  const chatHandler: RequestHandler = async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const actor = authorizeTeacher(req, res);
+    if (!actor) return;
+    const unavailable = () =>
+      res.status(503).json({ code: "CANVAS_CHAT_UNAVAILABLE" });
+    const get = () => currentAccess(req, actor, "chat");
+    let initial: ReturnType<typeof get>;
+    try {
+      initial = get();
+    } catch {
+      unavailable();
+      return;
+    }
+    if (Object.keys(req.query).length) {
+      res.status(400).json({ code: "INVALID_REQUEST" });
+      return;
+    }
+    if (req.method === "GET") {
+      res.json({ enabled: true });
+      return;
+    }
+    const { body } = req;
+    if (
+      !req.is("json") ||
+      !body ||
+      Object.keys(body).join(",") !== "question" ||
+      typeof body.question !== "string" ||
+      body.question.length > 280 ||
+      Buffer.byteLength(body.question) > 1024
+    ) {
+      res.status(400).json({ code: "INVALID_REQUEST" });
+      return;
+    }
+    const query =
+      /^(how many submissions|what is the score) for (.{1,250}?)\??$/iu.exec(
+        body.question.trim(),
+      );
+    if (!query || !canvasPageTitle(query[2])) {
+      res.json({
+        text: "Ask how many submissions or what score the configured Test Student has for one approved assignment. Use its full title.",
+      });
+      return;
+    }
+    const { origin, courseId, teacherId, chat } = initial.settings;
+    if (!chat) {
+      unavailable();
+      return;
+    }
+    if (busy) {
+      res.status(409).json({ code: "BUSY" });
+      return;
+    }
+    const kind =
+      query[1]!.toLowerCase() === "how many submissions" ? "count" : "score";
+    busy = true;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(15_000),
+    ]);
+    const disconnect = () => controller.abort();
+    res.once("close", disconnect);
+    const assertCurrent = () => {
+      signal.throwIfAborted();
+      const value = get();
+      if (value.key !== initial.key) throw new Error("INVALID_CANVAS_TARGET");
+      return value;
+    };
+    try {
+      const client = createCanvasPageClient(
+        {
+          origin,
+          courseId,
+          teacherId,
+          refresh: () =>
+            createSecretHandleForProvider(assertCurrent().settings.canvasToken),
+          ...(options.fetcher ? { fetcher: options.fetcher } : {}),
+        },
+        signal,
+      );
+      await client.readTarget();
+      const observation = await client.chat({ title: query[2], kind }, chat);
+      const { launchKeys, settings } = assertCurrent();
+      if (
+        observation &&
+        [...launchKeys, settings.canvasToken].some((secret) =>
+          observation.name.includes(secret),
+        )
+      )
+        throw new Error("INVALID_CANVAS_TARGET");
+      res.json({ text: canvasChatText(observation, kind) });
+    } catch {
+      if (!res.destroyed) unavailable();
+    } finally {
+      busy = false;
+      res.off("close", disconnect);
+    }
+  };
+
   return {
     pages: {
       status: handler("page", "status"),
@@ -473,6 +619,33 @@ export function createCanvasAuthoringHandlers(
       preview: handler("module", "preview"),
       save: handler("module", "confirm"),
     },
+    chat: chatHandler,
     close: clearPreview,
   };
+}
+
+function canvasChatText(
+  result: Awaited<
+    ReturnType<ReturnType<typeof createCanvasPageClient>["chat"]>
+  >,
+  kind: "count" | "score",
+) {
+  const sample = "Canvas checked only the configured Test Student.";
+  if (!result)
+    return "I couldn’t identify one approved assignment. Use its full title. Canvas Chat covers only one configured Test Student.";
+  const { name, state } = result;
+  if (state === "EXCUSED")
+    return `The Test Student is excused for ${name}. ${sample}`;
+  const missing = result.missing
+    ? " Canvas marks this assignment missing."
+    : "";
+  if (kind === "count")
+    return `${state === "SUBMITTED" ? "1 submission" : "0 submissions"} for ${name}. ${sample}${missing}`;
+  if (state === "SUBMITTED") {
+    if ("score" in result)
+      return `Score for ${name} is ${result.score}${result.pointsPossible === undefined ? "" : ` of ${result.pointsPossible}`} points. ${sample}`;
+    if ("ungraded" in result)
+      return `The submission for ${name} is ungraded. ${sample}`;
+  }
+  return `Score unavailable for ${name}. ${sample}${missing}`;
 }

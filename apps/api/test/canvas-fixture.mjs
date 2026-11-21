@@ -44,7 +44,9 @@ export function signed(url, changes = {}, secret = canvas.sharedSecret) {
 export function canvasPageFixture({
   assignments = false,
   modules = false,
+  chat = false,
 } = {}) {
+  const testStudent = "73009";
   const settings = {
     origin: canvas.canvasOrigin,
     courseId: canvas.courseId,
@@ -56,6 +58,9 @@ export function canvasPageFixture({
     }),
     ...(modules && {
       modules: { moduleIds: ["61"], pageIds: ["9002"], assignmentIds: ["81"] },
+    }),
+    ...(chat && {
+      chat: { testStudentId: testStudent, assignmentIds: ["81"] },
     }),
   };
   const course = {
@@ -85,6 +90,7 @@ export function canvasPageFixture({
         is_quiz_assignment: false,
         description: "<p>Original instructions.</p>",
         assignment_group_id: 72,
+        group_category_id: null,
         points_possible: 7,
         submission_types: ["online_url"],
         due_at: null,
@@ -122,6 +128,21 @@ export function canvasPageFixture({
     afterAssignmentWrite: undefined,
     afterModuleWrite: undefined,
     moduleRead: (value) => value,
+    studentView: [{ id: Number(testStudent), name: "Synthetic Test Student" }],
+    submission: {
+      user_id: Number(testStudent),
+      assignment_id: 81,
+      assignment_visible: true,
+      attempt: 1,
+      submitted_at: "2026-11-20T12:00:00Z",
+      submission_type: "online_url",
+      workflow_state: "graded",
+      grade_matches_current_submission: true,
+      score: 6.5,
+      excused: false,
+      missing: false,
+      body: "Synthetic submission body outside Chat output",
+    },
   };
   const options = {
     settings: () => settings,
@@ -135,17 +156,33 @@ export function canvasPageFixture({
         `Bearer ${settings.canvasToken}`,
       );
       const endpoint = target.pathname.replace("/api/v1", "");
+      const coursePath = `/courses/${canvas.courseId}`;
+      const studentViewPath = `${coursePath}/users`;
+      const submissionPath = `${coursePath}/assignments/81/submissions/${testStudent}`;
       assert.equal(
         target.search,
-        /\/modules\/\d+$/u.test(endpoint) ? "?include%5B%5D=items" : "",
+        endpoint === studentViewPath
+          ? `?user_ids%5B%5D=${testStudent}&enrollment_type%5B%5D=student_view&enrollment_state%5B%5D=active&per_page=2`
+          : endpoint === submissionPath
+            ? "?include%5B%5D=visibility"
+            : /\/modules\/\d+$/u.test(endpoint)
+              ? "?include%5B%5D=items"
+              : "",
       );
       calls.push([init.method, endpoint]);
       await remote.before?.(init.method, endpoint, init.signal);
       if (init.method === "GET" && endpoint === "/users/self")
         return Response.json({ id: remote.actorId });
-      const coursePath = `/courses/${canvas.courseId}`;
       if (init.method === "GET" && endpoint === coursePath)
         return Response.json(remote.course);
+      if (chat && init.method === "GET") {
+        if (endpoint === studentViewPath)
+          return Response.json(remote.studentView, {
+            headers: { Link: `<${url}>; rel="current"` },
+          });
+        if (endpoint === submissionPath)
+          return Response.json(remote.submission);
+      }
       if (init.method === "POST" && endpoint === `${coursePath}/pages`) {
         const fields = Object.fromEntries(new URLSearchParams(init.body));
         writes.push(fields);
@@ -215,7 +252,7 @@ export function canvasPageFixture({
           return Response.json({ id: item.id, module_id: row.id });
         }
       }
-      if (assignments || modules) {
+      if (assignments || modules || chat) {
         if (
           init.method === "GET" &&
           endpoint === `${coursePath}/assignment_groups/72`

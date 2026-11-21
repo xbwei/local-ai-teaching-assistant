@@ -75,7 +75,7 @@ The verifier requires the exact HTTP Canvas Origin, signed `$Canvas.api.domain` 
 
 Finish the signed launch setup first. From your own authorized Canvas environment, obtain a short-lived REST token for the **same Instructor identity** and the one configured course. Use a separate REST token alongside the LTI consumer key and shared secret. Grant the scopes needed for the authoring actions you use, where scoped tokens are supported.
 
-For the Page flow the backend uses these Canvas REST operations. Steps 7 and 8 list the additional operations for Assignments and Modules.
+For the Page flow the backend uses these Canvas REST operations. The Assignment, Module and [Canvas Chat](#canvas-chat-plugin) sections list the operations for those tools.
 
 | Method | Endpoint                                        | Use                                                                             |
 | ------ | ----------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -84,7 +84,7 @@ For the Page flow the backend uses these Canvas REST operations. Steps 7 and 8 l
 | POST   | `/api/v1/courses/:course_id/pages`              | Create one unpublished Page after confirmation                                  |
 | GET    | `/api/v1/courses/:course_id/pages/page_id:<id>` | Verify the created Page by numeric ID                                           |
 
-Create a separate JSON file in the protected configuration directory from step 2. Use a private editor and the same OS account that runs LAITA. Set the file to mode `0600` and keep the directory at `0700`, outside Git and without symlinks. The JSON object requires these five string fields. Steps 7 and 8 describe the optional `assignments` and `modules` objects.
+Create a separate JSON file in the protected configuration directory from step 2. Use a private editor and the same OS account that runs LAITA. Set the file to mode `0600` and keep the directory at `0700`, outside Git and without symlinks. The JSON object requires these five string fields. The optional `assignments`, `modules` and `chat` settings are described below.
 
 | Field         | Value                                                                                          |
 | ------------- | ---------------------------------------------------------------------------------------------- |
@@ -175,6 +175,33 @@ Grant the same Teacher token access to read and manage modules in the selected c
 4. LAITA reads back the module or appended item. If the outcome is unverified, uncertain or interrupted, inspect Modules in Canvas before trying again. LAITA does not retry automatically. A local rollback cannot undo a write accepted by Canvas.
 
 Module publishing, reordering, deletion and other item types remain in Canvas. If you roll back to an earlier LAITA build without Modules, remove the `modules` object before starting that build so it can read the remaining REST settings. See the [Instructure Modules REST API](https://developerdocs.instructure.com/services/canvas/resources/modules).
+
+## Canvas Chat plugin
+
+In your authorized sandbox course, use Canvas **Student View** to create the course’s Test Student. Choose one or more published, individual practice assignments with non-sensitive content. Find their numeric IDs and the Test Student’s numeric ID in your Canvas setup. Add the following optional object to the protected REST JSON using your own IDs. These values are synthetic.
+
+```json
+{
+  "chat": {
+    "testStudentId": "73009",
+    "assignmentIds": ["81"]
+  }
+}
+```
+
+Use 1–15 digit IDs with no leading zero. The Test Student ID must differ from the Instructor’s. Approve one to twelve unique assignment IDs. The supported submission types are Text Entry, Website URL and File Upload. The plugin checks one course, one Test Student and one matching assignment per answer.
+
+The same Instructor token needs permission for the exact course and the following additional read operations. For the membership check LAITA applies fixed Canvas filters for the configured ID, active enrollment and `student_view` type. It uses at most one matching identity and follows no pagination links. Use the existing Teacher’s authorized course permissions. If Canvas denies the checks, the plugin remains unavailable.
+
+| Method | Endpoint | Use |
+| --- | --- | --- |
+| GET | `/api/v1/courses/:course_id/assignments/:id` | Resolve the full title among the explicit allowlist and check assignment type |
+| GET | `/api/v1/courses/:course_id/users` | Confirm the one configured ID is an active Student View user using the fixed filters |
+| GET | `/api/v1/courses/:course_id/assignments/:id/submissions/:user_id` | Read that Test Student’s observation with Canvas assignment visibility |
+
+Launch through the configured course as the Teacher and open **Canvas Chat plugin**. For a synthetic assignment named “Map studio,” submit **How many submissions for Map studio?** or **What is the score for Map studio?** Use the full title when there are similar assignments. The count can be zero or one for this sample. Score answers use the grade for the current supported attempt. The plugin distinguishes missing, ungraded, excused and unavailable observations.
+
+Answers are generated from these narrow Canvas responses without a model. They exclude other students, class totals, submitted content, attachments and comments. The browser output is session-local and outside retained Chat History. Read a missing or ambiguous assignment response as a request to check the full title and approved configuration. The **Cancel request** button stops an in-flight query. Removing `chat` disables the plugin and restores compatibility with earlier LAITA builds if rolling back. [Canvas course users](https://github.com/instructure/canvas-lms/blob/master/app/controllers/courses_controller.rb) · [Canvas submissions](https://developerdocs.instructure.com/services/canvas/resources/submissions)
 
 ## 8. Disable, remove, rotate or recover
 
