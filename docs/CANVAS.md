@@ -1,6 +1,6 @@
 # Optional Canvas course App
 
-This early-adopter reference connects **one Owner, one Canvas course and one Instructor identity** to the existing local Teacher role. Admin, Teacher and Student are three views operated by that same Owner, not three real people. The signed launch enters the same local API, Chat, course grounding, SQLite and History. A separate optional REST configuration lets that Canvas Teacher create unpublished Pages and Assignments or rename an approved Assignment. The integration does not provision Canvas accounts or memberships.
+This early-adopter reference connects **one Owner, one Canvas course and one Instructor identity** to the existing local Teacher role. Admin, Teacher and Student are three views operated by that same Owner, not three real people. The signed launch enters the same local API, Chat, course grounding, SQLite and History. A separate optional REST configuration enables unpublished Page, Assignment and Module creation, approved Assignment renaming, and adding approved Pages or Assignments to unpublished Modules. The integration does not provision Canvas accounts or memberships.
 
 ## 1. Install and initialize standalone access
 
@@ -75,7 +75,7 @@ The verifier requires the exact HTTP Canvas Origin, signed `$Canvas.api.domain` 
 
 Finish the signed launch setup first. From your own authorized Canvas environment, obtain a short-lived REST token for the **same Instructor identity** and the one configured course. Use a separate REST token alongside the LTI consumer key and shared secret. Grant the scopes needed for the authoring actions you use, where scoped tokens are supported.
 
-For the Page flow the backend uses these Canvas REST operations. Step 7 lists the additional operations for Assignments.
+For the Page flow the backend uses these Canvas REST operations. Steps 7 and 8 list the additional operations for Assignments and Modules.
 
 | Method | Endpoint                                        | Use                                                                             |
 | ------ | ----------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -84,7 +84,7 @@ For the Page flow the backend uses these Canvas REST operations. Step 7 lists th
 | POST   | `/api/v1/courses/:course_id/pages`              | Create one unpublished Page after confirmation                                  |
 | GET    | `/api/v1/courses/:course_id/pages/page_id:<id>` | Verify the created Page by numeric ID                                           |
 
-Create a separate JSON file in the protected configuration directory from step 2. Use a private editor and the same OS account that runs LAITA. Set the file to mode `0600` and keep the directory at `0700`, outside Git and without symlinks. The JSON object requires these five string fields. The optional `assignments` object is described in step 7.
+Create a separate JSON file in the protected configuration directory from step 2. Use a private editor and the same OS account that runs LAITA. Set the file to mode `0600` and keep the directory at `0700`, outside Git and without symlinks. The JSON object requires these five string fields. Steps 7 and 8 describe the optional `assignments` and `modules` objects.
 
 | Field         | Value                                                                                          |
 | ------------- | ---------------------------------------------------------------------------------------------- |
@@ -141,7 +141,40 @@ The same token needs access to the selected course and caller identity. For crea
 3. Choose **Create unpublished assignment** or **Save assignment title**. LAITA rechecks identity, scope and the previewed target before dispatch. The final payload asks Canvas to send no update notification. Assignment content and grading settings on existing assignments are outside the rename operation.
 4. A verified result comes from reading the saved assignment by ID. If the result is unverified, uncertain or interrupted, inspect Assignments in Canvas before another action. LAITA does not automatically retry writes. Local rollback cannot undo a write already accepted by Canvas.
 
-Preview reads the exact course and selected resource. It makes no external write. The single five-minute preview is shared across the Page and Assignment tools, so a newer preview requires the operator to review again in the other tool. No preview creates a History record. Assignment publishing, deletion, module organization, verification and grading are outside these controls.
+Preview reads the exact course and selected resource. It makes no external write. Pages, Assignments and Modules share one five-minute preview, so a newer preview invalidates the previous one. No preview creates a History record. Assignment publishing, deletion, verification and grading are outside these controls.
+
+## 8. Create and organize unpublished Canvas modules
+
+Add a `modules` object to the same protected REST file. Use numeric IDs from the single configured course. This example uses synthetic IDs.
+
+```json
+{
+  "modules": {
+    "moduleIds": ["61"],
+    "pageIds": ["9002"],
+    "assignmentIds": ["81"]
+  }
+}
+```
+
+Each list allows up to twelve unique IDs of 1–15 digits with no leading zero. Empty lists enable module creation while leaving item links unavailable. A module ID returned by creation must be approved in `moduleIds` before you can add items through LAITA. After changing the file, reload the Teacher view to update the choices. Removing `modules` disables these controls. Other optional authoring settings can be used independently.
+
+Grant the same Teacher token access to read and manage modules in the selected course. For a scoped token, enable the additional operations you use. Canvas returns the linked items with the single-module read.
+
+| Method | Endpoint                                           | Use                                                    |
+| ------ | -------------------------------------------------- | ------------------------------------------------------ |
+| POST   | `/api/v1/courses/:course_id/modules`               | Create one empty unpublished module                    |
+| GET    | `/api/v1/courses/:course_id/modules/:id`           | Check an approved destination and verify the result   |
+| POST   | `/api/v1/courses/:course_id/modules/:id/items`     | Add one approved Page or Assignment                    |
+| GET    | `/api/v1/courses/:course_id/pages/page_id:<id>`    | Resolve an approved Page's current title and slug     |
+| GET    | `/api/v1/courses/:course_id/assignments/:id`        | Check an approved Assignment's identity and type      |
+
+1. Open **Canvas Modules** in the signed Teacher view. Enter a title such as “Map studio” to create a module, or choose one approved destination and one approved item to add.
+2. Choose **Preview Canvas Module change**. Check the course, Teacher, title or item, and destination. Preview only reads. Link previews require an unpublished module with fewer than 25 items and a complete inline item list. Existing duplicate links are rejected. Assignment links support regular Text Entry, Website URL and File Upload assignments. Quizzes, discussions and external tools are outside this flow.
+3. Choose **Create unpublished module** or **Add item to module** once. Each approval covers a single change. A module stays unpublished, and the link adds the existing resource at the end without changing its content or publication settings. LAITA rechecks current authority and the target before dispatch. The final check and write use separate Canvas requests, so concurrent changes in Canvas can still intervene.
+4. LAITA reads back the module or appended item. If the outcome is unverified, uncertain or interrupted, inspect Modules in Canvas before trying again. LAITA does not retry automatically. A local rollback cannot undo a write accepted by Canvas.
+
+Module publishing, reordering, deletion and other item types remain in Canvas. If you roll back to an earlier LAITA build without Modules, remove the `modules` object before starting that build so it can read the remaining REST settings. See the [Instructure Modules REST API](https://developerdocs.instructure.com/services/canvas/resources/modules).
 
 ## 8. Disable, remove, rotate or recover
 

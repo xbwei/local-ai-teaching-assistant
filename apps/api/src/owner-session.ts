@@ -395,7 +395,7 @@ export function createOwnerSessions(options: {
         },
       );
       if (authoring) {
-        const { pages, assignments } = authoring;
+        const { pages, assignments, modules } = authoring;
         const parser = createCanvasPageParser();
         const pagesPath = "/api/v1/canvas/pages";
         app.use(pagesPath, entryLimit);
@@ -407,6 +407,11 @@ export function createOwnerSessions(options: {
         app.get(assignmentsPath, assignments.status);
         app.post(assignmentsPath + "/preview", parser, assignments.preview);
         app.post(assignmentsPath + "/save", parser, assignments.save);
+        const modulesPath = "/api/v1/canvas/modules";
+        app.use(modulesPath, entryLimit);
+        app.get(modulesPath, modules.status);
+        app.post(modulesPath + "/preview", parser, modules.preview);
+        app.post(modulesPath + "/save", parser, modules.save);
       }
       if (teacherDraft)
         app.post(

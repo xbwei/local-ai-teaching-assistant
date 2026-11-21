@@ -41,7 +41,10 @@ export function signed(url, changes = {}, secret = canvas.sharedSecret) {
   return new URLSearchParams(fields).toString();
 }
 
-export function canvasPageFixture({ assignments = false } = {}) {
+export function canvasPageFixture({
+  assignments = false,
+  modules = false,
+} = {}) {
   const settings = {
     origin: canvas.canvasOrigin,
     courseId: canvas.courseId,
@@ -50,6 +53,9 @@ export function canvasPageFixture({ assignments = false } = {}) {
     canvasToken: "synthetic-rest-token-for-fixtures",
     ...(assignments && {
       assignments: { groupId: "72", editableIds: ["81", "82"] },
+    }),
+    ...(modules && {
+      modules: { moduleIds: ["61"], pageIds: ["9002"], assignmentIds: ["81"] },
     }),
   };
   const course = {
@@ -76,6 +82,7 @@ export function canvasPageFixture({ assignments = false } = {}) {
         name: "Synthetic draft",
         updated_at: "2026-11-20T12:00:00Z",
         published: true,
+        is_quiz_assignment: false,
         description: "<p>Original instructions.</p>",
         assignment_group_id: 72,
         points_possible: 7,
@@ -84,6 +91,25 @@ export function canvasPageFixture({ assignments = false } = {}) {
       },
     ],
   ]);
+  const moduleWrites = [];
+  const moduleRows = new Map([
+    [
+      "61",
+      {
+        id: 61,
+        name: "Studio module",
+        published: false,
+        position: 1,
+        items: [],
+      },
+    ],
+  ]);
+  const linkedPage = {
+    page_id: 9002,
+    title: "Maps and examples",
+    url: "maps-and-examples",
+    published: true,
+  };
   let page;
   const remote = {
     actorId: canvas.userId,
@@ -94,13 +120,14 @@ export function canvasPageFixture({ assignments = false } = {}) {
     group: { id: 72, name: "Studio Exercises" },
     assignmentRead: (value) => value,
     afterAssignmentWrite: undefined,
+    afterModuleWrite: undefined,
+    moduleRead: (value) => value,
   };
   const options = {
     settings: () => settings,
     async fetcher(url, init) {
       const target = new URL(url);
       assert.equal(target.origin, canvas.canvasOrigin);
-      assert.equal(target.search, "");
       assert.equal(init.redirect, "error");
       assert.equal(init.cache, "no-store");
       assert.equal(
@@ -108,6 +135,10 @@ export function canvasPageFixture({ assignments = false } = {}) {
         `Bearer ${settings.canvasToken}`,
       );
       const endpoint = target.pathname.replace("/api/v1", "");
+      assert.equal(
+        target.search,
+        /\/modules\/\d+$/u.test(endpoint) ? "?include%5B%5D=items" : "",
+      );
       calls.push([init.method, endpoint]);
       await remote.before?.(init.method, endpoint, init.signal);
       if (init.method === "GET" && endpoint === "/users/self")
@@ -133,7 +164,58 @@ export function canvasPageFixture({ assignments = false } = {}) {
         endpoint === `${coursePath}/pages/page_id:9001`
       )
         return Response.json(remote.readBack(page));
-      if (assignments) {
+      if (modules) {
+        const modulePath = `${coursePath}/modules`;
+        if (
+          init.method === "GET" &&
+          endpoint === `${coursePath}/pages/page_id:9002`
+        )
+          return Response.json(linkedPage);
+        if (init.method === "GET" && endpoint.startsWith(modulePath + "/")) {
+          const row = moduleRows.get(endpoint.slice(modulePath.length + 1));
+          return row
+            ? Response.json(
+                remote.moduleRead({ ...row, items_count: row.items.length }),
+              )
+            : Response.json({}, { status: 404 });
+        }
+        if (init.method === "POST" && endpoint === modulePath) {
+          const fields = Object.fromEntries(new URLSearchParams(init.body));
+          moduleWrites.push({ endpoint, fields });
+          const row = {
+            id: 62,
+            name: fields["module[name]"],
+            position: 2,
+            published: false,
+            items: [],
+          };
+          moduleRows.set("62", row);
+          await remote.afterModuleWrite?.(row);
+          return Response.json({ id: row.id });
+        }
+        if (init.method === "POST" && endpoint === modulePath + "/61/items") {
+          const fields = Object.fromEntries(new URLSearchParams(init.body));
+          moduleWrites.push({ endpoint, fields });
+          const row = moduleRows.get("61");
+          const page = fields["module_item[type]"] === "Page";
+          const item = {
+            id: 101 + row.items.length,
+            module_id: row.id,
+            position: (row.items.at(-1)?.position ?? 0) + 1,
+            type: fields["module_item[type]"],
+            published: page
+              ? linkedPage.published
+              : assignmentRows.get("81").published,
+            ...(page
+              ? { page_url: fields["module_item[page_url]"] }
+              : { content_id: Number(fields["module_item[content_id]"]) }),
+          };
+          row.items.push(item);
+          await remote.afterModuleWrite?.(item);
+          return Response.json({ id: item.id, module_id: row.id });
+        }
+      }
+      if (assignments || modules) {
         if (
           init.method === "GET" &&
           endpoint === `${coursePath}/assignment_groups/72`
@@ -202,5 +284,8 @@ export function canvasPageFixture({ assignments = false } = {}) {
     writes,
     assignmentWrites,
     assignmentRows,
+    moduleWrites,
+    moduleRows,
+    linkedPage,
   };
 }

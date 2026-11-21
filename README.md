@@ -25,7 +25,7 @@ Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teac
 - **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review.
 - **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.
 - **Use local roles:** Owner Admin / Teacher / Student views with scoped History, all operated by the same Owner.
-- **Optional Canvas Teacher authoring:** launch from one configured course. With separate REST access, preview and explicitly create unpublished Pages and Assignments or rename an approved Assignment, then verify the result by ID.
+- **Optional Canvas Teacher authoring:** launch from one configured course. With separate REST access, preview and explicitly create unpublished Pages, Assignments and Modules, rename an approved Assignment, or add an approved Page or Assignment to an unpublished Module. LAITA checks the result in Canvas.
 
 ## Optional Canvas course launch
 

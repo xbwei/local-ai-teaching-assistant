@@ -37,3 +37,7 @@ The synthetic API tests exercise credential file permissions, signed Teacher iso
 ## Canvas Assignment authoring
 
 The fake Canvas REST adapter covers unpublished creation and title-only editing on approved IDs. API tests check the read-only preview, exact course, identity and group or assignment ID, one-time confirmation, target drift, cancellation before dispatch, readback mismatch and ambiguous writes without replay. Synthetic desktop and phone Chromium scenarios exercise both flows alongside Page creation.
+
+## Canvas Module authoring
+
+The synthetic API tests cover empty unpublished creation and appending one approved Page or supported Assignment. They exercise disabled and unauthorized access, the shared rate limit and confirmation, module and item scope, partial responses, changed item inventory and resource, cancellation before write, and unverified or uncertain results. Desktop and phone Chromium scenarios exercise creation, linking both item types, and cancelling a preview. Live Canvas, native Safari and physical-device acceptance require separate validation.

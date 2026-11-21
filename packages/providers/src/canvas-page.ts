@@ -6,6 +6,7 @@ import {
 } from "@laita/contracts";
 import type { SecretHandle } from "@laita/runtime";
 import { assignmentAuthoring } from "./canvas-assignment.ts";
+import { moduleAuthoring } from "./canvas-module.ts";
 import { canvasResponseId as id } from "./canvas-response.ts";
 
 interface PageTarget {
@@ -83,6 +84,16 @@ export interface CanvasPageAccess extends PageTarget {
   fetcher?: typeof fetch;
 }
 
+export type CanvasAuthoringRequest = (
+  endpoint: string,
+  content?: { title: string; body?: string },
+  write?: {
+    method: "POST" | "PUT";
+    fields: URLSearchParams;
+    beforeDispatch: () => void;
+  },
+) => Promise<Record<string, unknown>>;
+
 export function createCanvasPageClient(
   access: CanvasPageAccess,
   signal: AbortSignal,
@@ -98,21 +109,13 @@ export function createCanvasPageClient(
     throw new Error("INVALID_CANVAS_TARGET");
   const coursePath = `/courses/${courseId}`;
 
-  async function request(
-    endpoint: string,
-    draft: { title: string; body?: string },
-    write?: {
-      method: "POST" | "PUT";
-      fields: URLSearchParams;
-      beforeDispatch: () => void;
-    },
-  ) {
+  const request: CanvasAuthoringRequest = async (endpoint, content, write) => {
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(5000)]);
     deadline.throwIfAborted();
     return refresh().consume(async (token) => {
       if (
-        draft.title.includes(token) ||
-        draft.body?.includes(token) ||
+        content?.title.includes(token) ||
+        content?.body?.includes(token) ||
         (write &&
           [...write.fields.values()].some((value) => value.includes(token)))
       )
@@ -147,11 +150,12 @@ export function createCanvasPageClient(
         throw new Error("INVALID_CANVAS_RESPONSE");
       return result;
     });
-  }
+  };
 
   return {
     assignments: assignmentAuthoring(courseId, request),
-    async readTarget(draft: { title: string; body?: string }) {
+    modules: moduleAuthoring(courseId, request),
+    async readTarget(draft?: { title: string; body?: string }) {
       const self = await request("/users/self", draft);
       if (id(self.id) !== teacherId) throw new Error("INVALID_CANVAS_TARGET");
       const course = await request(coursePath, draft);
