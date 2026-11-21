@@ -37,10 +37,14 @@ for (const cloud of [false, true]) {
     const reservation = createServer();
     reservation.listen(0, "127.0.0.1");
     await once(reservation, "listening");
+    // Keep the configured port occupied. The child fixture must bind its own
+    // free port instead of depending on a released reservation.
     config.server.port = reservation.address().port;
-    const closed = once(reservation, "close");
-    reservation.close();
-    await closed;
+    t.after(async () => {
+      const closed = once(reservation, "close");
+      reservation.close();
+      await closed;
+    });
     config.runtimeRoot = path.join(root, "runtime");
     config.access.enabled = true;
     config.access.adminCredentials = [
@@ -65,7 +69,16 @@ for (const cloud of [false, true]) {
     const preload = path.join(root, "synthetic-provider.mjs");
     writeFileSync(
       preload,
-      `globalThis.fetch = async (input, init) => {
+      `import express from ${JSON.stringify(import.meta.resolve("express"))};
+    const listen = express.application.listen;
+    express.application.listen = function (port, host) {
+      if (port !== ${config.server.port} || host !== '127.0.0.1')
+        throw new Error('Unexpected public API listener');
+      const server = listen.call(this, 0, host);
+      server.once('listening', () => process.send({ port: server.address().port }));
+      return server;
+    };
+    globalThis.fetch = async (input, init) => {
       const u = new URL(String(input));
       if (u.origin !== 'http://127.0.0.1:11434') throw new Error('Unexpected network request');
       if (u.pathname === '/api/tags') return Response.json({ models: ['gemma4:12b-mlx','llama3.1:8b'].map(model => ({model,digest:'a'.repeat(64),size:1000})) });
@@ -122,10 +135,14 @@ for (const cloud of [false, true]) {
           APP_CONFIG_JSON: JSON.stringify(config),
           ...(cloud ? { LAITA_HISTORY_SAMPLE_ID: sampleId } : {}),
         },
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
       },
     );
     const exit = once(child, "exit");
+    let port;
+    child.on("message", (message) => {
+      port = message?.port;
+    });
     let output = "",
       errors = "";
     child.stdout.on("data", (b) => {
@@ -137,14 +154,17 @@ for (const cloud of [false, true]) {
     try {
       for (
         let i = 0;
-        i < 100 && !output.includes('"event":"API_STARTED"');
+        i < 100 &&
+        (port === undefined || !output.includes('"event":"API_STARTED"'));
         i++
       ) {
         assert.equal(child.exitCode, null, errors);
         await delay(25);
       }
       assert.match(output, /API_STARTED/);
-      const origin = `http://127.0.0.1:${config.server.port}`;
+      assert.ok(Number.isInteger(port) && port > 0 && port <= 65535);
+      assert.notEqual(port, config.server.port);
+      const origin = `http://127.0.0.1:${port}`;
       assert.equal((await fetch(`${origin}/ready`)).status, 200);
       const headers = {
         "x-forwarded-proto": "https",
