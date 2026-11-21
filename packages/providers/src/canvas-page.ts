@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import {
+  canvasFeedbackSubmittedAt,
   canvasPageId,
   canvasPageTitle,
   safeLessonHtml,
@@ -168,12 +170,15 @@ export function createCanvasPageClient(
   const request: CanvasAuthoringRequest = async (endpoint, content, write) =>
     row(await requestJson(endpoint, content, write));
 
-  async function assertTestStudent(studentId: string) {
+  async function assertCourseStudent(
+    studentId: string,
+    enrollment: "student_view" | "student",
+  ) {
     if (!canvasPageId(studentId) || studentId === teacherId)
       throw new Error("INVALID_CANVAS_TARGET");
     const query = new URLSearchParams({
       "user_ids[]": studentId,
-      "enrollment_type[]": "student_view",
+      "enrollment_type[]": enrollment,
       "enrollment_state[]": "active",
       per_page: "2",
     });
@@ -193,16 +198,87 @@ export function createCanvasPageClient(
       throw new Error("INVALID_CANVAS_TARGET");
   }
 
+  async function verificationSource(assignmentId: string, studentId: string) {
+    const path = `${coursePath}/assignments/${id(assignmentId)}`;
+    const assignment = await request(path);
+    if (
+      id(assignment.id) !== assignmentId ||
+      id(assignment.course_id) !== courseId ||
+      assignment.published !== true ||
+      assignment.group_category_id !== null ||
+      assignment.is_quiz_assignment === true ||
+      assignment.anonymous_grading === true ||
+      assignment.moderated_grading === true ||
+      !Array.isArray(assignment.submission_types)
+    )
+      throw new Error("INVALID_CANVAS_TARGET");
+    await assertCourseStudent(studentId, "student");
+    const s = await request(
+      `${path}/submissions/${id(studentId)}?include%5B%5D=visibility&include%5B%5D=group`,
+    );
+    if (
+      id(s.assignment_id) !== assignmentId ||
+      id(s.user_id) !== studentId ||
+      s.assignment_visible !== true ||
+      (s.excused !== null && s.excused !== false) ||
+      (s.group != null && row(s.group).id !== null)
+    )
+      throw new Error("INVALID_CANVAS_TARGET");
+    if (
+      (s.workflow_state === "unsubmitted" ||
+        (s.workflow_state === "graded" && s.missing === true)) &&
+      s.submitted_at === null &&
+      (s.attempt === null || s.attempt === 0) &&
+      s.submission_type === null
+    )
+      return;
+    const { attempt, submitted_at: submittedAt, submission_type: type } = s;
+    if (
+      typeof attempt !== "number" ||
+      !Number.isSafeInteger(attempt) ||
+      attempt < 1 ||
+      !canvasFeedbackSubmittedAt(submittedAt) ||
+      (type !== "online_text_entry" && type !== "online_url") ||
+      !assignment.submission_types.includes(type) ||
+      s.missing !== false ||
+      (s.workflow_state !== "submitted" &&
+        s.workflow_state !== "graded" &&
+        s.workflow_state !== "pending_review")
+    )
+      throw new Error("INVALID_CANVAS_TARGET");
+    const source = type === "online_text_entry" ? s.body : s.url;
+    if (
+      typeof source !== "string" ||
+      !source.trim() ||
+      Buffer.byteLength(source) > 16_000
+    )
+      throw new Error("INVALID_CANVAS_TARGET");
+    const digest = createHash("sha256")
+      .update(
+        JSON.stringify([
+          id(s.id),
+          assignment.updated_at,
+          assignment.submission_types,
+          attempt,
+          submittedAt,
+          type,
+          source,
+        ]),
+      )
+      .digest("hex");
+    return { attempt, submittedAt, type, source, digest };
+  }
+
   return {
     assignments: assignmentAuthoring(courseId, request),
     modules: moduleAuthoring(courseId, request),
-    chat: canvasChat(courseId, request, assertTestStudent),
-    feedback: feedbackAuthoring(
-      courseId,
-      teacherId,
-      request,
-      assertTestStudent,
+    chat: canvasChat(courseId, request, (studentId) =>
+      assertCourseStudent(studentId, "student_view"),
     ),
+    feedback: feedbackAuthoring(courseId, teacherId, request, (studentId) =>
+      assertCourseStudent(studentId, "student_view"),
+    ),
+    verificationSource,
     async readTarget(draft?: { title: string; body?: string }) {
       const self = await request("/users/self", draft);
       if (id(self.id) !== teacherId) throw new Error("INVALID_CANVAS_TARGET");

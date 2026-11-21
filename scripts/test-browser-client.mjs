@@ -20,6 +20,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { fixture } from "../apps/api/test/browser-fixture.mjs";
 import { canvas, canvasNow, canvasPageFixture, signed } from "../apps/api/test/canvas-fixture.mjs";
+import { canvasVerificationFixture } from "../apps/api/test/canvas-verification-fixture.mjs";
 import { wav } from "../apps/web/src/client/microphone.ts";
 const { chromium } = await import(
   pathToFileURL(process.env.PLAYWRIGHT_MODULE).href
@@ -166,12 +167,13 @@ try {
   seededHistory.outcome("e".repeat(64), "NO_ANSWER");
   const sampleContext = "5".repeat(64);
   const syntheticCanvas = canvasPageFixture({ assignments: true, modules: true, chat: true, feedback: true });
+  const syntheticVerification = canvasVerificationFixture(syntheticCanvas);
   f = await fixture({
     history: persistence.history(),
     persistence,
     canvas: () => canvas,
     authNow: () => canvasNow,
-    canvasPages: syntheticCanvas.options,
+    canvasPages: syntheticVerification.options,
     teacherDraft: async (course, kind, topic) => {
       assert.equal(course, "IA342");
       assert.equal(kind, "ASSIGNMENT");
@@ -520,6 +522,37 @@ try {
     assert.ok(requests.every(request => new URL(request).origin === f.origin));
     assert.doesNotMatch(await feedback.innerText(), /Synthetic prior comment|Synthetic submission body|synthetic-rest-token/);
     results.push({ name: mobile ? "canvas-feedback-phone" : "canvas-feedback-desktop", width, height, status: "PASS", requests: requests.length });
+
+    const verifier = page.locator("#teacher-canvas-verification");
+    const startVerification = verifier.getByRole("button", { name: "Verify configured students" });
+    const cancelVerification = verifier.getByRole("button", { name: "Cancel verification" });
+    const resultRows = verifier.getByRole("listitem");
+    const verificationRequests = requests.length;
+    await verifier.locator("summary").click();
+    await startVerification.click();
+    await verifier.getByText("Verification finished. 30 of 30 results received.").waitFor();
+    assert.equal(await resultRows.count(), 30);
+    assert.equal(await verifier.getByText(/Student \d+ · Observed · Attempt 1/).count(), 30);
+    assert.match(await resultRows.last().textContent(), /Student 74030 · Observed/);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    const entered = Promise.withResolvers();
+    const stopped = Promise.withResolvers();
+    syntheticVerification.state.github = async (_, { signal }) => {
+      entered.resolve();
+      if (!signal.aborted) await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+      stopped.resolve();
+      signal.throwIfAborted();
+    };
+    await startVerification.click();
+    await entered.promise;
+    await cancelVerification.click();
+    await stopped.promise;
+    await verifier.getByText("Verification cancelled. 0 of 30 results received.").waitFor();
+    assert.equal(await verifier.getByText(/Cancelled — unchecked/).count(), 29);
+    assert.doesNotMatch(await verifier.innerText(), /synthetic_github_reader|README.md/);
+    assert.equal(requests.slice(verificationRequests).filter((request) => request === f.origin + "/api/v1/canvas/verification").length, 31);
+    syntheticVerification.state.github = async () => {};
+    results.push({ name: mobile ? "canvas-verification-phone" : "canvas-verification-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
   for (const scenario of [

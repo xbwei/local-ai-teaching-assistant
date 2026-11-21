@@ -49,3 +49,7 @@ The synthetic API exercises optional configuration, signed Teacher course and id
 ## Canvas Teacher feedback
 
 The synthetic API checks opt-in, signed Teacher and rate limits, exact Test Student and submission identity, Unicode and UTF-8 bounds, read-only preview, changed attempt or credential, expiry and cancellation before dispatch. It verifies the exact comment-only form, plain-text escaping, one-use confirmation and independent readback. It covers already-posted submissions, manual posting and rejection when a comment could post an unposted submission. Missing or mismatched receipts and readbacks yield uncertain or unverified results without another write. Desktop and phone Chromium exercise the exact plain-text preview, cancellation, explicit Post and readback alongside the other Teacher tools. Live Canvas permissions, notification behavior, native Safari and physical-device acceptance require separate validation.
+
+## Canvas assignment verification
+
+Synthetic API tests check 30 configured students and cover direct URLs and Canvas Text Entry links, exact repository/PR metadata, active enrollment, changed attempts, wrong student or provider target, absent attempts, partial evidence, bounded admission and cancellation. Desktop and phone Chromium cover the class-sized queue and cancellation with synthetic fixtures. Live Canvas and GitHub provider permissions and behavior require separate acceptance.

@@ -389,6 +389,26 @@
           </button>
         </section>
       </details>
+      <details id="teacher-canvas-verification" class="teacher-tool" hidden>
+        <summary>Verify Canvas submissions</summary>
+        <form id="canvas-verification-form" autocomplete="off">
+          <label class="teacher-field">
+            Approved verification assignment
+            <select id="canvas-verification-assignment"></select>
+          </label>
+          <button type="submit" id="canvas-verification-start">
+            Verify configured students
+          </button>
+          <button type="button" id="canvas-verification-cancel" hidden>
+            Cancel verification
+          </button>
+        </form>
+        <p id="canvas-verification-status" role="status"></p>
+        <ul
+          id="canvas-verification-results"
+          aria-label="Per-student verification results"
+        ></ul>
+      </details>
       <details id="canvas-chat-plugin" class="teacher-tool" hidden>
         <summary>Canvas Chat plugin</summary>
         <p id="canvas-chat-scope">

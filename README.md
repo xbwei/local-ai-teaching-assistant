@@ -23,6 +23,7 @@ Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teac
 - **Draft teaching material:** use the [standalone Teacher tools](docs/TEACHING-WORKFLOW.md) for Local lesson and assignment drafts grounded in supported course sources.
 - **Ask about practice questions:** the opt-in [History Chat plugin](docs/HISTORY.md#teacher-history-plugin) counts and locally summarizes one Test Student sample.
 - **Check a Canvas sample:** the optional [Canvas Chat plugin](docs/CANVAS.md#canvas-chat-plugin) answers read-only submission and score questions for one approved assignment and the course’s configured Test Student.
+- **Verify practice submissions:** the optional [GitHub verifier](docs/CANVAS-VERIFICATION.md) checks a configured course roster and shows bounded observations per current attempt.
 - **Post Canvas feedback:** preview and explicitly post one [plain-text comment](docs/CANVAS.md#canvas-teacher-feedback) to the configured Canvas Test Student’s supported submission.
 - **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review.
 - **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.

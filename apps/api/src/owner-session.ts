@@ -395,7 +395,8 @@ export function createOwnerSessions(options: {
         },
       );
       if (authoring) {
-        const { pages, assignments, modules, feedback, chat } = authoring;
+        const { pages, assignments, modules, feedback, chat, verification } =
+          authoring;
         const parser = createCanvasPageParser();
         const pagesPath = "/api/v1/canvas/pages";
         app.use(pagesPath, entryLimit);
@@ -422,6 +423,10 @@ export function createOwnerSessions(options: {
         app.use(chatPath, entryLimit);
         app.get(chatPath, chat);
         app.post(chatPath, createCanvasPageParser(2048), chat);
+        const verificationPath = "/api/v1/canvas/verification";
+        app.use(verificationPath, entryLimit);
+        app.get(verificationPath, verification);
+        app.post(verificationPath, createCanvasPageParser(2048), verification);
       }
       if (teacherDraft)
         app.post(
