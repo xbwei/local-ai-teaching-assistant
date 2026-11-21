@@ -529,15 +529,18 @@ try {
     const resultRows = verifier.getByRole("listitem");
     const verificationRequests = requests.length;
     await verifier.locator("summary").click();
-    await startVerification.click();
-    await verifier.getByText("Verification finished. 30 of 30 results received.").waitFor();
-    assert.equal(await resultRows.count(), 30);
-    assert.equal(await verifier.getByText(/Student \d+ · Observed · Attempt 1/).count(), 30);
-    assert.match(await resultRows.last().textContent(), /Student 74030 · Observed/);
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    for (const provider of ["0", "1"]) {
+      await verifier.getByLabel("Approved verification assignment").selectOption(provider);
+      await startVerification.click();
+      await verifier.getByText("Verification finished. 30 of 30 results received.").waitFor();
+      assert.equal(await resultRows.count(), 30);
+      assert.equal(await verifier.getByText(/Student \d+ · Observed · Attempt 1/).count(), 30);
+      assert.match(await resultRows.last().textContent(), /Student 74030 · Observed/);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    }
     const entered = Promise.withResolvers();
     const stopped = Promise.withResolvers();
-    syntheticVerification.state.github = async (_, { signal }) => {
+    syntheticVerification.state.mongo = async (_, signal) => {
       entered.resolve();
       if (!signal.aborted) await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
       stopped.resolve();
@@ -549,9 +552,9 @@ try {
     await stopped.promise;
     await verifier.getByText("Verification cancelled. 0 of 30 results received.").waitFor();
     assert.equal(await verifier.getByText(/Cancelled — unchecked/).count(), 29);
-    assert.doesNotMatch(await verifier.innerText(), /synthetic_github_reader|README.md/);
-    assert.equal(requests.slice(verificationRequests).filter((request) => request === f.origin + "/api/v1/canvas/verification").length, 31);
-    syntheticVerification.state.github = async () => {};
+    assert.doesNotMatch(await verifier.innerText(), /example\.mongodb\.net|synthetic-only-passphrase|synthetic_github_reader|README\.md/);
+    assert.equal(requests.slice(verificationRequests).filter((request) => request === f.origin + "/api/v1/canvas/verification").length, 61);
+    syntheticVerification.state.mongo = async () => {};
     results.push({ name: mobile ? "canvas-verification-phone" : "canvas-verification-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();
   }

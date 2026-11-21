@@ -610,6 +610,10 @@
       "classification": "COPY"
     },
     {
+      "path": "packages/contracts/src/mongodb-verification.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "packages/contracts/src/policy-contract.generated.ts",
       "classification": "GENERICIZE"
     },
@@ -830,6 +834,22 @@
       "classification": "GENERICIZE"
     },
     {
+      "path": "packages/providers/src/mongodb-driver-internal.d.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/mongodb-transport.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/mongodb-verification.ts",
+      "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/src/mongodb-worker.ts",
+      "classification": "GENERICIZE"
+    },
+    {
       "path": "packages/providers/src/ollama-live-cli.ts",
       "classification": "GENERICIZE"
     },
@@ -868,6 +888,10 @@
     {
       "path": "packages/providers/src/verification-support.ts",
       "classification": "GENERICIZE"
+    },
+    {
+      "path": "packages/providers/test/assignment-verifier.test.mjs",
+      "classification": "RECREATE"
     },
     {
       "path": "packages/providers/test/ollama-adapter.test.mjs",

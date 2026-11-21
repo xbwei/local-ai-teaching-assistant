@@ -2,10 +2,10 @@ import { canvasFeedbackSubmittedAt } from "./canvas-feedback.ts";
 import { canvasPageId, canvasPagePlanId } from "./canvas-page.ts";
 
 export const verificationClassSize = 40;
-export type AssignmentVerifier = "GITHUB";
+export type AssignmentVerifier = "GITHUB" | "MONGODB";
 export const isAssignmentVerifier = (
   value: unknown,
-): value is AssignmentVerifier => value === "GITHUB";
+): value is AssignmentVerifier => value === "GITHUB" || value === "MONGODB";
 
 export interface AssignmentVerificationScope {
   scope: string;
@@ -19,7 +19,14 @@ export interface AssignmentVerificationScope {
 export const verificationOutcomes = [
   "PRESENT",
   "ABSENT",
+  "EMPTY",
+  "MISSING",
   "UNKNOWN",
+  "PARTIAL",
+  "DENIED",
+  "UNAVAILABLE",
+  "UNSUPPORTED",
+  "UNCHECKED",
   "NOT_REQUIRED",
   "OPEN",
   "CLOSED",
@@ -90,7 +97,7 @@ export function readAssignmentVerificationResult(
     canvasFeedbackSubmittedAt(result.submittedAt) &&
     Array.isArray(result.checks) &&
     result.checks.length >= 1 &&
-    result.checks.length <= 5 &&
+    result.checks.length <= 12 &&
     result.checks.every((state) => verificationOutcomes.includes(state))
   ) {
     return {

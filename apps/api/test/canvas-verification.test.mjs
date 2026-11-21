@@ -5,6 +5,7 @@ import { canvas, signed, canvasNow } from "./canvas-fixture.mjs";
 import {
   canvasVerificationFixture,
   verificationPath,
+  verificationSecretMarker,
 } from "./canvas-verification-fixture.mjs";
 
 async function setup(t, count) {
@@ -51,19 +52,19 @@ async function setup(t, count) {
         scope,
         provider,
         studentId,
-        assignmentId: "181",
+        assignmentId: provider === "GITHUB" ? "181" : "182",
       },
       signal,
     );
   return { synthetic, f, scope, request, post };
 }
 
-test("GitHub verification processes all 30 configured Canvas students without returning credentials or course data", async (t) => {
+test("the Canvas assignment verifiers process all 30 configured students per provider without returning credentials or course data", async (t) => {
   const { synthetic, f, scope, post } = await setup(t);
   const plan = await scope();
   assert.deepEqual(
     plan.assignments.map((x) => x.studentIds),
-    [synthetic.ids],
+    [synthetic.ids, synthetic.ids],
   );
   const results = [];
   for (const { provider, studentIds } of plan.assignments) {
@@ -76,23 +77,27 @@ test("GitHub verification processes all 30 configured Canvas students without re
         state: "OBSERVED",
         attempt: 1,
         submittedAt: "2026-11-20T12:00:00Z",
-        checks: [
-          "PRESENT",
-          id === synthetic.ids.at(-1) ? "OPEN" : "NOT_REQUIRED",
-        ],
+        checks:
+          provider === "GITHUB"
+            ? ["PRESENT", id === synthetic.ids.at(-1) ? "OPEN" : "NOT_REQUIRED"]
+            : ["PRESENT", "PRESENT"],
       });
       results.push(result);
     }
   }
-  assert.equal(results.length, 30);
+  assert.equal(results.length, 60);
+  assert.deepEqual(synthetic.calls.mongo, synthetic.ids);
   assert.equal(synthetic.calls.github.filter((x) => x === "/user").length, 30);
   const output = JSON.stringify([plan, results, f.logs]);
   for (const marker of [
+    verificationSecretMarker,
+    "example.mongodb.net",
     "raw unprojected fixture text",
     "synthetic_github_reader",
     "README.md",
   ])
     assert.ok(!output.includes(marker));
+  assert.equal(synthetic.state.activeWorkers, 0);
 });
 
 test("verifier denies wrong scope and membership, handles absent or moved attempts, and reports partial results", async (t) => {
@@ -106,7 +111,7 @@ test("verifier denies wrong scope and membership, handles absent or moved attemp
   assert.equal((await request()).status, 503);
   synthetic.canvas.remote.actorId = canvas.userId;
   const plan = await scope();
-  const [one, two] = synthetic.ids;
+  const [one, two, three] = synthetic.ids;
   assert.equal((await post("a".repeat(64), "GITHUB", one)).status, 409);
   assert.equal((await post(plan.scope, "GITHUB", "74100")).status, 403);
   assert.equal(
@@ -136,10 +141,22 @@ test("verifier denies wrong scope and membership, handles absent or moved attemp
   });
   synthetic.state.membership = (id) => [{ id: Number(id) }];
   synthetic.state.source = (row) => ({ ...row, user_id: Number(two) });
-  assert.deepEqual(await (await post(plan.scope, "GITHUB", one)).json(), {
+  for (const provider of ["GITHUB", "MONGODB"]) {
+    assert.deepEqual(await (await post(plan.scope, provider, one)).json(), {
+      state: "UNKNOWN",
+      reason: "SOURCE_UNAVAILABLE",
+    });
+  }
+  assert.equal(synthetic.calls.mongo.length, 0);
+  synthetic.state.source = (row) => ({
+    ...row,
+    body: row.body.replace("sample-74001", "sample-74002"),
+  });
+  assert.deepEqual(await (await post(plan.scope, "MONGODB", one)).json(), {
     state: "UNKNOWN",
     reason: "SOURCE_UNAVAILABLE",
   });
+  assert.equal(synthetic.calls.mongo.length, 0);
   synthetic.state.source = (row) => ({
     ...row,
     attempt: null,
@@ -197,8 +214,107 @@ test("verifier denies wrong scope and membership, handles absent or moved attemp
   });
   synthetic.state.source = (row) => row;
 
+  synthetic.state.mongo = () => {
+    synthetic.state.source = (row) => ({ ...row, attempt: 2 });
+  };
+  assert.deepEqual(await (await post(plan.scope, "MONGODB", three)).json(), {
+    state: "UNKNOWN",
+    reason: "ATTEMPT_CHANGED",
+  });
+  assert.equal(synthetic.state.activeWorkers, 0);
   synthetic.configuration.assignments[0].paths.push("exercise.txt");
   assert.equal((await post(plan.scope, "GITHUB", one)).status, 409);
+});
+
+test("verification admits one operation and cancels without leaving an active worker", async (t) => {
+  const { synthetic, scope, post } = await setup(t, 2);
+  const plan = await scope();
+  const entered = Promise.withResolvers();
+  const stopped = Promise.withResolvers();
+  synthetic.state.mongo = async (_, signal) => {
+    entered.resolve();
+    if (!signal.aborted)
+      await new Promise((resolve) =>
+        signal.addEventListener("abort", resolve, { once: true }),
+      );
+    stopped.resolve();
+    signal.throwIfAborted();
+  };
+  const controller = new AbortController();
+  const running = post(
+    plan.scope,
+    "MONGODB",
+    synthetic.ids[0],
+    controller.signal,
+  );
+  await entered.promise;
+  assert.equal(
+    (await post(plan.scope, "GITHUB", synthetic.ids[1])).status,
+    409,
+  );
+  controller.abort();
+  await assert.rejects(running, { name: "AbortError" });
+  await stopped.promise;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(synthetic.state.activeWorkers, 0);
+  assert.equal(synthetic.calls.github.length, 0);
+});
+
+test("MongoDB-only verification withholds changed or incomplete evidence and rejects reused credentials", async (t) => {
+  const { synthetic, scope, post } = await setup(t, 1);
+  const [student] = synthetic.ids;
+  const settings = synthetic.configuration;
+  const [mongo] = settings.assignments.filter((x) => x.provider === "MONGODB");
+  settings.assignments = [mongo];
+  settings.github = null;
+  const plan = await scope();
+  assert.deepEqual(plan.assignments, [
+    { provider: "MONGODB", assignmentId: "182", studentIds: [student] },
+  ]);
+
+  synthetic.state.source = (row) => ({
+    ...row,
+    body: row.body.replace(
+      verificationSecretMarker + student,
+      canvas.sharedSecret,
+    ),
+  });
+  const verify = async (p = plan) => {
+    const response = await post(p.scope, "MONGODB", student);
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  assert.deepEqual(await verify(), {
+    state: "UNKNOWN",
+    reason: "SOURCE_UNAVAILABLE",
+  });
+  assert.deepEqual(synthetic.calls.mongo, []);
+
+  synthetic.state.source = (row) => row;
+  const partial = {
+    connection: { status: "PRESENT" },
+    cleanup: "COMPLETE",
+    collections: [{ status: "PRESENT", countMode: "CAPPED", fields: [] }],
+  };
+  synthetic.state.mongo = () => partial;
+  assert.deepEqual(await verify(), {
+    state: "PARTIAL",
+    attempt: 1,
+    submittedAt: "2026-11-20T12:00:00Z",
+    checks: ["PRESENT"],
+  });
+  synthetic.state.mongo = () => ({ ...partial, cleanup: "FAILED" });
+  assert.deepEqual(await verify(), {
+    state: "UNKNOWN",
+    reason: "PROVIDER_UNAVAILABLE",
+  });
+  synthetic.state.mongo = () => {
+    mongo.students[0].database = "another_practice";
+    return partial;
+  };
+  assert.equal((await post(plan.scope, "MONGODB", student)).status, 409);
+  assert.equal(synthetic.state.activeWorkers, 0);
+  assert.deepEqual(synthetic.calls.github, []);
 });
 
 test("verification admits one operation and cancels the GitHub request without starting the next row", async (t) => {
