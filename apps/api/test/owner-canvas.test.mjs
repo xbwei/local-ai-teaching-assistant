@@ -1691,6 +1691,7 @@ const modulesPath = "/api/v1/canvas/modules";
 const canvasChatPath = "/api/v1/canvas/chat";
 const createAssignment = {
   kind: "CREATE",
+  groupId: "72",
   title: "Map lab 地图",
   body: "<p>Compare <strong>two</strong> synthetic maps.</p>",
   pointsPossible: 4.5,
@@ -1795,6 +1796,152 @@ test("Canvas Assignment group display reads only the configured destination befo
   );
 });
 
+test("Canvas Assignment refreshes bounded same-course choices and saves the Teacher's exact selected group", async (t) => {
+  const synthetic = canvasPageFixture({ assignments: true });
+  delete synthetic.settings.assignments.groupId;
+  const { f, request, preview, save } = await assignmentEntries(synthetic);
+  t.after(() => f.close());
+  const catalog = (selected, signal) =>
+    request(
+      "",
+      undefined,
+      selected,
+      { "x-laita-assignment-group": "catalog" },
+      signal,
+    );
+  assert.equal((await f.login("teacher")).status, 200);
+  assert.equal((await catalog(f.cookie())).status, 403);
+  assert.deepEqual(synthetic.calls, []);
+  assert.deepEqual(await (await request("")).json(), {
+    editableIds: ["81", "82"],
+  });
+  const next = `${canvas.canvasOrigin}/api/v1/courses/${canvas.courseId}/assignment_groups?per_page=50&page=opaque_fixture`;
+  synthetic.remote.assignmentGroups = (url) =>
+    url.searchParams.has("page")
+      ? Response.json([
+          { ...synthetic.remote.otherGroup, extra: "unprojected" },
+        ])
+      : Response.json([synthetic.remote.group], {
+          headers: { Link: `<${next}>; rel="next"` },
+        });
+  const refreshed = await catalog();
+  assert.equal(refreshed.status, 200);
+  assert.equal(refreshed.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await refreshed.json(), {
+    groups: [
+      { id: "72", name: "Studio Exercises" },
+      { id: "73", name: "Studio Projects" },
+    ],
+  });
+  const selected = { ...createAssignment, groupId: "73" };
+  const discarded = await preview(selected);
+  assert.equal((await catalog()).status, 200);
+  assert.equal((await save(discarded)).status, 409);
+  const stale = await preview(selected);
+  synthetic.remote.otherGroup.course_id = "123";
+  assert.equal((await save(stale)).status, 409);
+  delete synthetic.remote.otherGroup.course_id;
+  const plan = await preview(selected);
+  assert.deepEqual(plan.subject, {
+    kind: "CREATE",
+    id: "73",
+    name: "Studio Projects",
+  });
+  assert.equal((await save(plan, { ...selected, groupId: "72" })).status, 409);
+  assert.equal(synthetic.assignmentWrites.length, 0);
+  assert.deepEqual(await (await save(plan)).json(), {
+    status: "VERIFIED",
+    assignmentId: "91",
+  });
+  assert.equal(
+    new URLSearchParams(synthetic.assignmentWrites[0].fields).get(
+      "assignment[assignment_group_id]",
+    ),
+    "73",
+  );
+  assert.equal(synthetic.assignmentRows.get("91").published, false);
+  assert.equal((await save(plan)).status, 409);
+  assert.equal(synthetic.assignmentWrites.length, 1);
+});
+
+test("Canvas Assignment fails closed on unsafe, incomplete or cancelled group data", async (t) => {
+  const synthetic = canvasPageFixture({ assignments: true });
+  const { f, request } = await assignmentEntries(synthetic);
+  t.after(() => f.close());
+  const catalog = (signal) =>
+    request(
+      "",
+      undefined,
+      undefined,
+      { "x-laita-assignment-group": "catalog" },
+      signal,
+    );
+  const path = `/api/v1/courses/${canvas.courseId}/assignment_groups`;
+  for (const next of [
+    `https://other.example.test${path}?per_page=50&page=2`,
+    `${canvas.canvasOrigin}${path.replace(canvas.courseId, "123")}?per_page=50&page=2`,
+    `${canvas.canvasOrigin}${path}?per_page=50&page=2&include%5B%5D=assignments`,
+  ]) {
+    let reads = 0;
+    synthetic.remote.assignmentGroups = () => {
+      reads++;
+      return Response.json([synthetic.remote.group], {
+        headers: { Link: `<${next}>; rel="next"` },
+      });
+    };
+    assert.equal((await catalog()).status, 503);
+    assert.equal(reads, 1);
+  }
+  let pages = 0;
+  synthetic.remote.assignmentGroups = () =>
+    Response.json([{ id: 72 + pages++, name: "Synthetic group" }], {
+      headers: {
+        Link: `<${canvas.canvasOrigin}${path}?per_page=50&page=${pages + 1}>; rel="next"`,
+      },
+    });
+  assert.equal(
+    (await request("preview", { draft: createAssignment })).status,
+    503,
+  );
+  assert.equal(pages, 5);
+
+  synthetic.remote.assignmentGroups = () =>
+    Response.json([{ ...synthetic.remote.group, course_id: "123" }]);
+  assert.equal((await catalog()).status, 503);
+  synthetic.remote.assignmentGroups = () =>
+    Response.json([synthetic.remote.group, synthetic.remote.group]);
+  assert.equal((await catalog()).status, 503);
+  synthetic.remote.assignmentGroups = () => Response.json([]);
+  assert.deepEqual(await (await catalog()).json(), { groups: [] });
+  assert.equal(
+    (await request("preview", { draft: createAssignment })).status,
+    503,
+  );
+  synthetic.remote.assignmentGroups = () => {
+    synthetic.remote.course.enrollments[0].enrollment_state = "inactive";
+    return Response.json([synthetic.remote.group]);
+  };
+  assert.equal((await catalog()).status, 503);
+  synthetic.remote.course.enrollments[0].enrollment_state = "active";
+  const entered = Promise.withResolvers();
+  const stopped = Promise.withResolvers();
+  synthetic.remote.before = async (method, endpoint, signal) => {
+    if (method !== "GET" || !endpoint.endsWith("/assignment_groups")) return;
+    entered.resolve();
+    await new Promise((resolve) =>
+      signal.addEventListener("abort", resolve, { once: true }),
+    );
+    stopped.resolve();
+  };
+  const controller = new AbortController();
+  const pending = catalog(controller.signal);
+  await entered.promise;
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  await stopped.promise;
+  assert.equal(synthetic.assignmentWrites.length, 0);
+});
+
 test("Canvas Assignment authoring is opt-in, strictly scoped, and sends one exact confirmed create or title change", async (t) => {
   const unconfigured = canvasPageFixture();
   const inactive = await assignmentEntries(unconfigured);
@@ -1825,7 +1972,8 @@ test("Canvas Assignment authoring is opt-in, strictly scoped, and sends one exac
 
   for (const draft of [
     { ...createAssignment, published: true },
-    { ...createAssignment, groupId: "73" },
+    { ...createAssignment, groupId: undefined },
+    { ...createAssignment, groupId: "untrusted" },
     { ...createAssignment, submissionTypes: ["external_tool"] },
     { ...createAssignment, dueAt: "2026-02-30T10:30:00.000Z" },
     { ...createAssignment, body: '<p data-note="demo">Draft</p>' },
@@ -1854,6 +2002,7 @@ test("Canvas Assignment authoring is opt-in, strictly scoped, and sends one exac
   assert.deepEqual(synthetic.calls, [
     ["GET", "/users/self"],
     ["GET", `/courses/${canvas.courseId}`],
+    ["GET", `/courses/${canvas.courseId}/assignment_groups`],
     ["GET", `/courses/${canvas.courseId}/assignment_groups/72`],
   ]);
   assert.equal(

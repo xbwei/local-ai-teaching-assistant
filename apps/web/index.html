@@ -245,7 +245,15 @@
           </label>
           <fieldset id="canvas-assignment-create">
             <legend>New assignment settings</legend>
-            <p id="canvas-assignment-group" aria-live="polite"></p>
+            <label for="canvas-assignment-group"
+              >Assignment Group
+              <select id="canvas-assignment-group" required>
+                <option value="">Refresh Assignment Groups to choose</option>
+              </select>
+            </label>
+            <button id="canvas-assignment-refresh-groups" type="button">
+              Refresh Assignment Groups
+            </button>
             <label for="canvas-assignment-format"
               >Assignment body format
               <select id="canvas-assignment-format">

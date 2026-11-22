@@ -3,6 +3,7 @@ import {
   canvasPageTitle,
   safeLessonHtml,
   type CanvasAssignmentDraft,
+  type CanvasAssignmentGroup,
   type CanvasAssignmentSubject,
 } from "@laita/contracts";
 import { canvasResponseId } from "./canvas-response.ts";
@@ -18,6 +19,7 @@ function assignmentDate(value: unknown) {
 export function assignmentAuthoring(
   courseId: string,
   request: CanvasAuthoringRequest,
+  readGroupRows: () => Promise<unknown[]>,
 ) {
   const course = `/courses/${courseId}`;
   const path = (id: string) => {
@@ -33,20 +35,38 @@ export function assignmentAuthoring(
       throw new Error("INVALID_CANVAS_TARGET");
     return row;
   }
-  async function readGroup(groupId: string, draft?: CanvasAssignmentDraft) {
-    if (!canvasPageId(groupId)) throw new Error("INVALID_CANVAS_TARGET");
-    const row = await request(`${course}/assignment_groups/${groupId}`, draft);
+  function groupFrom(value: unknown): CanvasAssignmentGroup {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("INVALID_CANVAS_TARGET");
+    const row = value as Record<string, unknown>;
+    const id = canvasResponseId(row.id);
     if (
-      canvasResponseId(row.id) !== groupId ||
       !canvasPageTitle(row.name) ||
       (row.course_id !== undefined &&
         canvasResponseId(row.course_id) !== courseId)
     )
       throw new Error("INVALID_CANVAS_TARGET");
-    return { id: groupId, name: row.name };
+    return { id, name: row.name };
+  }
+
+  async function readGroup(groupId: string, draft?: CanvasAssignmentDraft) {
+    if (!canvasPageId(groupId)) throw new Error("INVALID_CANVAS_TARGET");
+    const group = groupFrom(
+      await request(`${course}/assignment_groups/${groupId}`, draft),
+    );
+    if (group.id !== groupId) throw new Error("INVALID_CANVAS_TARGET");
+    return group;
+  }
+
+  async function groups() {
+    const result = (await readGroupRows()).map(groupFrom);
+    if (new Set(result.map(({ id }) => id)).size !== result.length)
+      throw new Error("INVALID_CANVAS_TARGET");
+    return result;
   }
 
   return {
+    groups,
     describeGroup(groupId: string) {
       return readGroup(groupId);
     },
@@ -59,7 +79,7 @@ export function assignmentAuthoring(
 
     async preview(
       draft: CanvasAssignmentDraft,
-      groupId: string,
+      previewing: boolean,
     ): Promise<CanvasAssignmentSubject> {
       if (draft.kind === "TITLE") {
         const row = await readAssignment(draft.assignmentId, draft);
@@ -83,7 +103,12 @@ export function assignmentAuthoring(
         };
       }
 
-      return { kind: "CREATE", ...(await readGroup(groupId, draft)) };
+      if (
+        previewing &&
+        !(await groups()).some(({ id }) => id === draft.groupId)
+      )
+        throw new Error("INVALID_CANVAS_TARGET");
+      return { kind: "CREATE", ...(await readGroup(draft.groupId, draft)) };
     },
 
     async write(
@@ -97,6 +122,8 @@ export function assignmentAuthoring(
         "assignment[notify_of_update]": "false",
       });
       if (draft.kind === "CREATE") {
+        if (draft.groupId !== subject.id)
+          throw new Error("INVALID_CANVAS_TARGET");
         fields.set("assignment[description]", draft.body);
         fields.set("assignment[points_possible]", String(draft.pointsPossible));
         fields.set("assignment[assignment_group_id]", subject.id);

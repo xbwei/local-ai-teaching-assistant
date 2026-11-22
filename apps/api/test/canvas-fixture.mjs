@@ -130,6 +130,8 @@ export function canvasPageFixture({
     afterCreate: undefined,
     readBack: (value) => value,
     group: { id: 72, name: "Studio Exercises" },
+    otherGroup: { id: 73, name: "Studio Projects" },
+    assignmentGroups: () => Response.json([remote.group, remote.otherGroup]),
     assignmentRead: (value) => value,
     afterAssignmentWrite: undefined,
     afterModuleWrite: undefined,
@@ -170,23 +172,27 @@ export function canvasPageFixture({
       );
       const endpoint = target.pathname.replace("/api/v1", "");
       const coursePath = `/courses/${canvas.courseId}`;
+      const groupPath = `${coursePath}/assignment_groups`;
       const studentViewPath = `${coursePath}/users`;
       const submissionPath = `${coursePath}/assignments/81/submissions/${testStudent}`;
-      assert.equal(
-        target.search,
-        endpoint === studentViewPath
-          ? `?user_ids%5B%5D=${testStudent}&enrollment_type%5B%5D=student_view&enrollment_state%5B%5D=active&per_page=2`
-          : endpoint === submissionPath && init.method === "GET"
-            ? feedback &&
-              target.searchParams
-                .getAll("include[]")
-                .includes("submission_comments")
-              ? "?include%5B%5D=visibility&include%5B%5D=group&include%5B%5D=submission_comments"
-              : "?include%5B%5D=visibility"
-            : /\/modules\/\d+$/u.test(endpoint)
-              ? "?include%5B%5D=items"
-              : "",
-      );
+      if (endpoint === groupPath) {
+        assert.equal(target.searchParams.get("per_page"), "50");
+      } else
+        assert.equal(
+          target.search,
+          endpoint === studentViewPath
+            ? `?user_ids%5B%5D=${testStudent}&enrollment_type%5B%5D=student_view&enrollment_state%5B%5D=active&per_page=2`
+            : endpoint === submissionPath && init.method === "GET"
+              ? feedback &&
+                target.searchParams
+                  .getAll("include[]")
+                  .includes("submission_comments")
+                ? "?include%5B%5D=visibility&include%5B%5D=group&include%5B%5D=submission_comments"
+                : "?include%5B%5D=visibility"
+              : /\/modules\/\d+$/u.test(endpoint)
+                ? "?include%5B%5D=items"
+                : "",
+        );
       calls.push([init.method, endpoint]);
       await remote.before?.(init.method, endpoint, init.signal);
       if (init.method === "GET" && endpoint === "/users/self")
@@ -302,11 +308,15 @@ export function canvasPageFixture({
         }
       }
       if (assignments || modules || chat || feedback) {
+        if (init.method === "GET" && endpoint === groupPath)
+          return remote.assignmentGroups(target);
         if (
           init.method === "GET" &&
           endpoint === `${coursePath}/assignment_groups/72`
         )
           return Response.json(remote.group);
+        if (init.method === "GET" && endpoint === groupPath + "/73")
+          return Response.json(remote.otherGroup);
         const assignmentPath = `${coursePath}/assignments`;
         const exactId = endpoint.startsWith(assignmentPath + "/")
           ? endpoint.slice(assignmentPath.length + 1)

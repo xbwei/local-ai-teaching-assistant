@@ -626,7 +626,11 @@ try {
     const saveTitle = assignmentPreview.getByRole("button", { name: "Save assignment title" });
     const assignmentWrites = syntheticCanvas.assignmentWrites.length;
     const configuredGroup = tool.locator("#canvas-assignment-group");
-    await tool.getByText("Configured Assignment Group · Studio Exercises (ID 72)", { exact: true }).waitFor();
+    const refreshGroups = tool.getByRole("button", { name: "Refresh Assignment Groups" });
+    await refreshGroups.click();
+    await tool.getByText("Choose the destination group, then preview the assignment.", { exact: true }).waitFor();
+    assert.equal(await configuredGroup.inputValue(), "");
+    await configuredGroup.selectOption({ label: "Studio Projects (ID 73)" });
     assert.equal(await assignmentPreview.isVisible(), false);
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await assignmentTitle.fill("Synthetic studio lab");
@@ -641,6 +645,11 @@ try {
     assert.equal(await assignmentPreview.locator("#canvas-assignment-html").textContent(), literalHtml);
     assert.equal(await assignmentPreview.locator("sample,strong").count(), 0);
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
+    await refreshGroups.click();
+    await tool.getByText("Choose the destination group, then preview the assignment.", { exact: true }).waitFor();
+    assert.equal(await assignmentPreview.isVisible(), false);
+    assert.equal(await configuredGroup.inputValue(), "");
+    await configuredGroup.selectOption("73");
     await tool.getByLabel("Topic or Lab/Week number").fill("Lab 6");
     const criteria = tool.getByLabel("Assessment criteria in the draft");
     assert.equal(await criteria.inputValue(), "no");
@@ -653,13 +662,14 @@ try {
     await tool.getByRole("button", { name: "Apply suggestion to body" }).click();
     assert.equal(await assignmentBody.inputValue(), "## Map lab\n\nCompare two maps. 地图\n\n### Assessment criteria\n\nExplain one visual difference.");
     assert.equal(await assignmentFormat.inputValue(), "markdown");
+    assert.equal(await configuredGroup.inputValue(), "73");
     assert.equal(await createAssignment.isVisible(), false);
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await tool.getByLabel("Points possible").fill("4.5");
     await tool.getByLabel("File Upload").check();
     await tool.getByLabel("Due date and time (UTC, optional)").fill("2026-12-21T10:30");
     await previewAssignment.click();
-    await assignmentPreview.getByText(/^Group 72 · Studio Exercises/).waitFor();
+    await assignmentPreview.getByText(/^Group 73 · Studio Projects/).waitFor();
     assert.match(await assignmentPreview.locator("#canvas-assignment-subject").textContent(), /Unpublished.*4.5 points.*Text Entry, File Upload.*2026-12-21T10:30:00.000Z/);
     await assignmentPreview.getByRole("heading", { name: "Map lab" }).waitFor();
     await assignmentPreview.getByRole("heading", { name: "Assessment criteria" }).waitFor();
@@ -686,6 +696,7 @@ try {
     else assert.match(savedBody, /<h3>Assessment criteria<\/h3>/u);
     const submitted = new URLSearchParams(syntheticCanvas.assignmentWrites.at(-1).fields);
     assert.equal(submitted.get("assignment[description]"), savedBody);
+    assert.equal(submitted.get("assignment[assignment_group_id]"), "73");
     assert.ok([...submitted.keys()].every((key) => !/rubric/iu.test(key)));
 
     await tool.getByLabel("Assignment action").selectOption("TITLE");
