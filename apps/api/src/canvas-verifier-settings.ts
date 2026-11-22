@@ -56,10 +56,10 @@ export function readVerifierSettings(
     throw new Error("INVALID_SCOPE");
   const github = v.github === null ? null : exact(v.github, "expiresAt,token");
   const githubToken = github?.token;
+  const githubExpiresAt = github?.expiresAt;
   if (
     github &&
-    (!canvasFeedbackSubmittedAt(github.expiresAt) ||
-      Date.parse(github.expiresAt) <= now ||
+    (!canvasFeedbackSubmittedAt(githubExpiresAt) ||
       typeof githubToken !== "string" ||
       !/^[A-Za-z0-9_]{20,512}$/u.test(githubToken) ||
       deniedTokens.includes(githubToken))
@@ -156,6 +156,8 @@ export function readVerifierSettings(
   return {
     assignments,
     githubToken: typeof githubToken === "string" ? githubToken : undefined,
-    githubExpiresAt: github?.expiresAt,
+    githubExpiresAt,
+    githubReady:
+      typeof githubExpiresAt === "string" && Date.parse(githubExpiresAt) > now,
   };
 }
