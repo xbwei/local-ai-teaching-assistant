@@ -11,19 +11,47 @@ function mountDemoMemberships(request: AuthRequest, bar: HTMLElement) {
   const heading = document.createElement("summary");
   heading.textContent = "Demo memberships";
   const list = document.createElement("ul");
+  const grant = document.createElement("form");
+  const account = document.createElement("select");
+  const course = document.createElement("select");
+  const accountLabel = document.createElement("label");
+  const courseLabel = document.createElement("label");
+  const submit = document.createElement("button");
+  accountLabel.append("Practice account ", account);
+  courseLabel.append("Course to grant ", course);
+  submit.textContent = "Grant course";
+  grant.append(accountLabel, courseLabel, submit);
+  grant.hidden = true;
   const status = document.createElement("p");
   status.setAttribute("role", "status");
-  panel.append(heading, list, status);
+  panel.append(heading, list, grant, status);
   bar.after(panel);
-  panel.addEventListener("toggle", async () => {
-    if (!panel.open) return;
-    status.textContent = "";
+  let memberships: Membership[] = [];
+  let courses: string[] = [];
+  let savingGrant = false;
+  const availableCourses = (username: string) =>
+    courses.filter(
+      (id) =>
+        !memberships.some(
+          (row) => row.username === username && row.course === id,
+        ),
+    );
+  function updateGrantCourses() {
+    const available = availableCourses(account.value);
+    course.replaceChildren(...available.map((id) => new Option(id, id)));
+    submit.disabled = savingGrant || !available.length;
+  }
+  account.onchange = updateGrantCourses;
+  async function load() {
+    grant.hidden = true;
     try {
       const response = await request("demo-memberships");
       if (!response.ok) throw new Error();
-      const { memberships } = (await response.json()) as {
+      const data = (await response.json()) as {
         memberships: Membership[];
+        courses: string[];
       };
+      ({ memberships, courses } = data);
       list.replaceChildren();
       if (!memberships.length) {
         status.textContent =
@@ -40,7 +68,7 @@ function mountDemoMemberships(request: AuthRequest, bar: HTMLElement) {
           button.textContent = membership.active ? "Revoke" : "Restore";
           button.setAttribute(
             "aria-label",
-            `${button.textContent} ${membership.username}`,
+            `${button.textContent} ${membership.username} · ${membership.course}`,
           );
         }
         display();
@@ -67,11 +95,86 @@ function mountDemoMemberships(request: AuthRequest, bar: HTMLElement) {
         row.append(label, button);
         list.append(row);
       }
+      const usernames = [
+        ...new Set(memberships.map((row) => row.username)),
+      ].filter((name) => availableCourses(name).length);
+      account.replaceChildren(
+        ...usernames.map((name) => new Option(name, name)),
+      );
+      updateGrantCourses();
+      grant.hidden = !usernames.length;
     } catch {
       list.replaceChildren();
       status.textContent = "Demo memberships unavailable.";
     }
+  }
+  panel.addEventListener("toggle", () => {
+    if (!panel.open) return;
+    status.textContent = "";
+    void load();
   });
+  grant.onsubmit = async (event) => {
+    event.preventDefault();
+    if (savingGrant || !course.value) return;
+    savingGrant = account.disabled = course.disabled = submit.disabled = true;
+    status.textContent = "";
+    try {
+      const response = await request("demo-memberships", {
+        action: "grant",
+        username: account.value,
+        course: course.value,
+      });
+      if (!response.ok) throw new Error();
+      const saved = (await response.json()) as Membership;
+      status.textContent = saved.active
+        ? "Course granted."
+        : "This membership is revoked. Use Restore to reactivate it.";
+      await load();
+    } catch {
+      status.textContent =
+        "Grant unavailable. Reopen this panel to check memberships.";
+    } finally {
+      savingGrant = account.disabled = course.disabled = false;
+      updateGrantCourses();
+    }
+  };
+}
+
+async function mountDemoCourse(
+  request: AuthRequest,
+  bar: HTMLElement,
+  current: string,
+) {
+  try {
+    const response = await request("course");
+    if (!response.ok) return;
+    const { courses } = (await response.json()) as { courses: string[] };
+    if (courses.length < 2 || !courses.includes(current)) return;
+    const label = document.createElement("label");
+    const select = document.createElement("select");
+    const status = document.createElement("span");
+    status.setAttribute("role", "status");
+    select.replaceChildren(...courses.map((id) => new Option(id, id)));
+    select.value = current;
+    label.append("Current course ", select);
+    bar.append(label, status);
+    select.onchange = async () => {
+      select.disabled = true;
+      try {
+        const updated = await request("course", { course: select.value });
+        if (!updated.ok) throw new Error();
+        window.location.reload();
+      } catch {
+        select.value = current;
+        status.textContent =
+          "Course switch unavailable. Reload to check the current course.";
+      } finally {
+        select.disabled = false;
+      }
+    };
+  } catch {
+    // The current course remains usable if the course list is unavailable.
+  }
 }
 
 /** The server-issued HttpOnly session is the authority for every view. */
@@ -139,6 +242,8 @@ export async function requireOwnerSession(): Promise<boolean> {
         : document.querySelector<HTMLElement>(".app")!;
     target.prepend(bar);
     if (session.role === "admin") mountDemoMemberships(request, bar);
+    if (session.source === "local" && session.course)
+      void mountDemoCourse(request, bar, session.course);
     document.body.dataset.ownerRole = session.role;
     document.body.dataset.ownerSource = session.source;
     if (session.course) document.body.dataset.demoCourse = session.course;

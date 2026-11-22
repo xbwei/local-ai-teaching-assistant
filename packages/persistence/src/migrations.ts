@@ -58,6 +58,16 @@ export const migrations: readonly Migration[] = Object.freeze([
       "CREATE TABLE demo_memberships (username TEXT PRIMARY KEY CHECK (username IN ('demo-teacher','demo-student')), course TEXT NOT NULL, salt TEXT NOT NULL, verifier TEXT NOT NULL, revision TEXT NOT NULL, active INTEGER NOT NULL CHECK (active IN (0,1))) STRICT",
     ].join(";"),
   }),
+  Object.freeze({
+    version: 7,
+    sql: [
+      "ALTER TABLE demo_memberships RENAME TO demo_accounts",
+      "CREATE TABLE demo_course_memberships (username TEXT NOT NULL REFERENCES demo_accounts(username), course TEXT NOT NULL, active INTEGER NOT NULL CHECK (active IN (0,1)), revision TEXT NOT NULL, PRIMARY KEY(username,course)) STRICT",
+      "INSERT INTO demo_course_memberships (username,course,active,revision) SELECT username,course,active,revision FROM demo_accounts",
+      "ALTER TABLE demo_accounts RENAME COLUMN course TO default_course",
+      "ALTER TABLE demo_accounts DROP COLUMN active",
+    ].join(";"),
+  }),
 ]);
 const schemaObjects = [
   "schema_migrations",
@@ -66,6 +76,7 @@ const schemaObjects = [
   "history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations",
   "canvas_nonces,history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,owner_credential,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations",
   "canvas_nonces,demo_memberships,history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,owner_credential,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations",
+  "canvas_nonces,demo_accounts,demo_course_memberships,history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,owner_credential,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations",
 ];
 const checksum = (sql: string) =>
   createHash("sha256").update(sql).digest("hex");

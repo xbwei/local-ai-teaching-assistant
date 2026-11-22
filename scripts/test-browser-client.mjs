@@ -367,9 +367,61 @@ try {
     results.push({ name, width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
+  const teacherPassphrase = "synthetic browser fixture teacher";
+  const studentPassphrase = "synthetic browser fixture student";
   f.authStore.configureDemo("IA342", ...(await Promise.all(
-    ["synthetic browser fixture teacher", "synthetic browser fixture student"].map(initializeOwnerCredential),
+    [teacherPassphrase, studentPassphrase].map(initializeOwnerCredential),
   )));
+  for (const [name, width, height, mobile] of [
+    ["practice-courses-desktop", 1280, 800, false],
+    ["practice-courses-phone", 390, 844, true],
+  ]) {
+    const context = await browser.newContext({
+      viewport: { width, height },
+      isMobile: mobile,
+      hasTouch: mobile,
+      ignoreHTTPSErrors: true,
+    });
+    const page = await context.newPage();
+    const signIn = async (account, passphrase) => {
+      await page.locator('[name="role"]').selectOption(account);
+      await page.locator('[name="passphrase"]').fill(passphrase);
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await page.locator(".owner-role").waitFor();
+    };
+    const signOut = () => page.getByRole("button", { name: "Sign out / change role" }).click();
+    await page.goto(f.origin);
+    if (!mobile) {
+      await signIn("admin", testPassphrase);
+      const panel = page.locator("details").filter({ hasText: "Demo memberships" });
+      await panel.locator("summary").click();
+      for (const username of ["demo-teacher", "demo-student"]) {
+        await panel.getByLabel("Practice account").selectOption(username);
+        await panel.getByLabel("Course to grant").selectOption("IA340");
+        await panel.getByRole("button", { name: "Grant course" }).click();
+        await panel.getByRole("button", { name: `Revoke ${username} · IA340` }).waitFor();
+      }
+      await signOut();
+    }
+    for (const [username, passphrase, label] of [
+      ["demo-teacher", teacherPassphrase, "Teacher"],
+      ["demo-student", studentPassphrase, "Student"],
+    ]) {
+      await signIn(username, passphrase);
+      const selected = page.getByLabel("Current course");
+      await selected.waitFor();
+      assert.deepEqual(await selected.locator("option").allTextContents(), ["IA340", "IA342"]);
+      assert.equal(await selected.inputValue(), "IA342");
+      await selected.selectOption("IA340");
+      await page.getByText(`Demo · ${label} · IA340`, { exact: true }).waitFor();
+      assert.equal(await selected.inputValue(), "IA340");
+      assert.equal(await page.getByText("Demo memberships", { exact: true }).count(), 0);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+      await signOut();
+    }
+    results.push({ name, width, height, status: "PASS" });
+    await context.close();
+  }
   launchSettings = { ...canvas, demo: { course: "IA342", studentUserId: "73002" } };
   for (const { name, width, height, mobile } of [
     { name: "canvas-page-desktop", width: 1280, height: 800, mobile: false },

@@ -189,14 +189,14 @@ async function main() {
       const studentCredential = await initializeOwnerCredential(student);
       store.configureDemo(course, teacherCredential, studentCredential);
       process.stderr.write(
-        "Demo credentials saved for demo-teacher and demo-student. Existing membership status and History are retained.\n",
+        "Demo credentials and default course saved for demo-teacher and demo-student. Existing course grants and History are retained.\n",
       );
     } else if (ownerCredential) {
       for (const username of demoUsernames) {
-        const membership = store.demoMembership(username);
+        const account = store.demoAccount(username);
         if (
-          membership &&
-          (await verifyOwnerCredential(ownerPassphrase, membership.credential))
+          account &&
+          (await verifyOwnerCredential(ownerPassphrase, account.credential))
         )
           throw new Error(
             "Use an Owner passphrase distinct from the demo accounts.",
