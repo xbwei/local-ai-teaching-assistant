@@ -87,6 +87,8 @@ async function mockOllama(t) {
     abortedTransports: 0,
     interruptedStreamResponses: 0,
     transportRequests: 0,
+    toolCapabilities: ["completion", "tools"],
+    toolCalls: undefined,
   };
   const server = http.createServer(async (incoming, response) => {
     state.transportRequests += 1;
@@ -132,6 +134,13 @@ async function mockOllama(t) {
       if (payload.keep_alive === 0) state.running.delete(payload.model);
       else state.running.add(payload.model);
       return json(response, 200, { model: payload.model, done: true });
+    }
+    if (incoming.method === "POST" && url.pathname === "/api/show") {
+      state.requests.push({
+        path: url.pathname,
+        payload: await body(incoming),
+      });
+      return json(response, 200, { capabilities: state.toolCapabilities });
     }
     if (incoming.method !== "POST" || url.pathname !== "/api/chat") {
       return json(response, 404, { error: "not found" });
@@ -193,6 +202,11 @@ async function mockOllama(t) {
     }
     if (!payload.stream) {
       const result = chat(payload.model);
+      if (payload.tools) {
+        result.message.content =
+          '{"name":"history_count","arguments":{"window":"week"}}';
+        result.message.tool_calls = state.toolCalls;
+      }
       if (scenario === "OVERSIZED_OUTPUT") {
         result.message.content = "x".repeat(2048);
       }
@@ -351,6 +365,86 @@ test("non-streaming success carries exact model, digest, generation, usage and s
     temperature: 0.2,
     top_p: 0.9,
   });
+});
+
+test("Ollama tool selection accepts one advertised native call and ignores assistant text", async (t) => {
+  const mock = await mockOllama(t);
+  const selected = adapter(mock.endpoint);
+  const prompt = {
+    instruction: "Select only the offered History tool.",
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "history_count",
+          description: "Count questions in the sample.",
+          parameters: {
+            type: "object",
+            properties: {
+              window: { type: "string", enum: ["week", "recent"] },
+            },
+            required: ["window"],
+            additionalProperties: false,
+          },
+        },
+      },
+    ],
+  };
+  const call = { name: "history_count", arguments: { window: "recent" } };
+  const entry = { type: "function", function: { ...call, index: 0 } };
+  const ask = () =>
+    selected.invokeWithTools(
+      request("local-a", { timeoutMs: 1000 }),
+      context(),
+      prompt,
+    );
+  mock.state.toolCalls = [entry];
+  const result = await ask();
+  assert.ok(isProviderOutcome(result));
+  assert.equal(result.status, "COMPLETED");
+  assert.deepEqual(JSON.parse(result.output.text), call);
+  assert.equal(result.usage.totalTokens, 5);
+  const [metadata, native] = mock.state.requests;
+  assert.deepEqual(metadata, {
+    path: "/api/show",
+    payload: { model: "local-a" },
+  });
+  assert.equal(native.path, "/api/chat");
+  assert.equal(native.payload.stream, false);
+  assert.deepEqual(native.payload.tools, prompt.tools);
+  assert.deepEqual(native.payload.messages, [
+    { role: "system", content: prompt.instruction },
+    { role: "user", content: "Synthetic prompt" },
+  ]);
+  for (const calls of [
+    undefined,
+    [entry, entry],
+    [{ function: { ...call, name: "unoffered" } }],
+    [{ function: { ...call, arguments: "invalid" } }],
+  ]) {
+    mock.state.toolCalls = calls;
+    const rejected = await ask();
+    assert.equal(rejected.status, "COMPLETED");
+    assert.equal(rejected.output.text, "null");
+  }
+  mock.state.toolCapabilities = ["completion"];
+  const callsBefore = mock.state.requests.filter(
+    ({ path }) => path === "/api/chat",
+  ).length;
+  const unsupported = await ask();
+  assert.ok(isProviderOutcome(unsupported));
+  assert.equal(unsupported.status, "FAILED");
+  assert.equal(unsupported.error.code, "POLICY_DENIED");
+  assert.equal(
+    mock.state.requests.filter(({ path }) => path === "/api/chat").length,
+    callsBefore,
+  );
+  const ordinary = await selected.invoke(
+    request("local-a", { timeoutMs: 1000 }),
+    context(),
+  );
+  assert.equal(ordinary.output.text, "shared result");
+  assert.equal("tools" in mock.state.requests.at(-1).payload, false);
 });
 
 test("resource provenance drops unapproved fields and marks invalid measurements interrupted", async (t) => {

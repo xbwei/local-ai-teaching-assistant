@@ -897,7 +897,11 @@ test("proxy scheme/host casing is equivalent without accepting other authorities
 test("local Teacher History reads only the explicitly selected Test Student sample", async (t) => {
   const context = "5".repeat(64);
   const route = "/api/v1/teacher-tools/history";
+  const phrasedCount =
+    "Give me the tally of questions over the past seven days.";
+  const phrasedSummary = "Which themes came up in the sample lately?";
   let summaries = 0;
+  let reads = 0;
   const f = await fixture({
     autoLogin: false,
     authNow: () => now,
@@ -905,7 +909,20 @@ test("local Teacher History reads only the explicitly selected Test Student samp
     history: true,
     teacherHistory: {
       context,
-      read: () => f.persistence.history({ role: "student", context }),
+      read() {
+        reads++;
+        return f.persistence.history({ role: "student", context });
+      },
+      async select(question) {
+        if (question === phrasedCount)
+          return { name: "history_count", arguments: { window: "recent" } };
+        if (question === phrasedSummary)
+          return { name: "history_summary", arguments: { window: "recent" } };
+        return {
+          name: "history_count",
+          arguments: { window: "recent", sample: "different" },
+        };
+      },
       async summarize(questions) {
         summaries++;
         assert.deepEqual(JSON.parse(questions), [
@@ -996,27 +1013,56 @@ test("local Teacher History reads only the explicitly selected Test Student samp
     ).status,
     403,
   );
-  const count = await ask(
-    teacher,
-    "How many questions in the last seven days?",
-  );
+  const count = await ask(teacher, phrasedCount);
   assert.match((await count.json()).text, /^2 questions recorded/);
   const unsupported = await ask(teacher, "Show all student questions");
   assert.match((await unsupported.json()).text, /one local sample/);
   assert.equal(summaries, 0);
-  const response = await ask(
-    teacher,
-    "What topics did the Test Student ask about?",
-  );
+  assert.equal(reads, 1);
+  const response = await ask(teacher, phrasedSummary);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     text: "The main topic is comparing practice examples.",
   });
   assert.equal(summaries, 1);
+  assert.equal(reads, 2);
   assert.doesNotMatch(
     JSON.stringify(f.logs),
     /practice examples|ordinary practice|separate sample/,
   );
+});
+
+test("Teacher History rechecks the session after tool selection and before reading", async (t) => {
+  let clock = now;
+  const selecting = Promise.withResolvers();
+  const selected = Promise.withResolvers();
+  const f = await fixture({
+    autoLogin: false,
+    authNow: () => clock,
+    teacherHistory: {
+      context: "5".repeat(64),
+      read: () => assert.fail("An expired session must not read History"),
+      select() {
+        selecting.resolve();
+        return selected.promise;
+      },
+      summarize: () =>
+        assert.fail("An expired session must not summarize History"),
+    },
+  });
+  t.after(() => f.close());
+  assert.equal((await f.login("teacher")).status, 200);
+  const pending = f.request("/api/v1/teacher-tools/history", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question: "What is the recent tally?" }),
+  });
+  await selecting.promise;
+  clock += 8 * 3600000;
+  selected.resolve({ name: "history_count", arguments: { window: "recent" } });
+  const denied = await pending;
+  assert.equal(denied.status, 401);
+  assert.deepEqual(await denied.json(), { code: "UNAUTHENTICATED" });
 });
 
 test("Teacher History permits ordinary wording and checks the complete bounded summary", async (t) => {
@@ -1041,6 +1087,15 @@ test("Teacher History permits ordinary wording and checks the complete bounded s
     autoLogin: false,
     teacherHistory: {
       context: "5".repeat(64),
+      async select(question) {
+        return {
+          name:
+            question === "How many questions?"
+              ? "history_count"
+              : "history_summary",
+          arguments: { window: "recent" },
+        };
+      },
       read: () => ({
         sampleQuestions(_since, _until, includeText) {
           return {
@@ -1189,12 +1244,15 @@ test("Teacher routes share the Owner entry budget before parsing or work", async
     },
     teacherHistory: {
       context,
+      async select() {
+        return { name: "history_count", arguments: { window: "recent" } };
+      },
       read() {
         historyReads++;
         return f.persistence.history({ role: "student", context });
       },
       async summarize() {
-        assert.fail("Count must not call the Local model");
+        assert.fail("Count must not invoke the summary model call");
       },
     },
   });

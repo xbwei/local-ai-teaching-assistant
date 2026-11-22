@@ -19,6 +19,23 @@ const MAX_CONTROL_RESPONSE_BYTES = 1024 * 1024;
 const MAX_STREAM_EVENT_BYTES = 256 * 1024;
 const TEXT_ENCODER = new TextEncoder();
 
+export interface OllamaToolPrompt {
+  readonly instruction: string;
+  readonly tools: readonly {
+    readonly type: "function";
+    readonly function: {
+      readonly name: string;
+      readonly description: string;
+      readonly parameters: {
+        readonly type: "object";
+        readonly properties: Readonly<Record<string, object>>;
+        readonly required: readonly string[];
+        readonly additionalProperties: false;
+      };
+    };
+  }[];
+}
+
 export interface OllamaModelCandidate {
   readonly model: string;
   readonly contextTokens: number;
@@ -140,7 +157,11 @@ interface Preflight {
 
 interface ChatResponse {
   readonly model: string;
-  readonly message: { readonly role: string; readonly content: string };
+  readonly message: {
+    readonly role: string;
+    readonly content: string;
+    readonly tool_calls?: unknown;
+  };
   readonly done: true;
   readonly done_reason?: string;
   readonly total_duration?: number;
@@ -526,6 +547,33 @@ function chatResponse(value: unknown): ChatResponse {
   return response as unknown as ChatResponse;
 }
 
+function toolSelection(response: ChatResponse, prompt: OllamaToolPrompt) {
+  const calls = response.message.tool_calls;
+  if (
+    response.done_reason === "length" ||
+    !Array.isArray(calls) ||
+    calls.length !== 1
+  )
+    return "null";
+  const [entry] = calls;
+  const call = entry?.function;
+  if (
+    !call ||
+    (entry.type !== undefined && entry.type !== "function") ||
+    (call.index !== undefined && call.index !== 0) ||
+    !prompt.tools.some((tool) => tool.function.name === call.name) ||
+    !call.arguments ||
+    typeof call.arguments !== "object" ||
+    Array.isArray(call.arguments)
+  )
+    return "null";
+  const selection = JSON.stringify({
+    name: call.name,
+    arguments: call.arguments,
+  });
+  return TEXT_ENCODER.encode(selection).length <= 2048 ? selection : "null";
+}
+
 function runtimeVersion(value: unknown): string {
   const version =
     value && typeof value === "object"
@@ -811,7 +859,7 @@ export class OllamaLocalAdapter implements ProviderAdapter {
   #failure(
     request: ProviderRequest,
     startedAt: number,
-    error: ReturnType<typeof mapError>,
+    error: ProviderFailure["error"] & Pick<ProviderFailure, "status">,
     partialText?: string,
     actual?: ProviderIdentity["actual"],
     now = Date.now,
@@ -979,16 +1027,24 @@ export class OllamaLocalAdapter implements ProviderAdapter {
     };
   }
 
-  #chatBody(request: ProviderRequest, stream: boolean): string {
+  #chatBody(
+    request: ProviderRequest,
+    stream: boolean,
+    toolPrompt?: OllamaToolPrompt,
+  ): string {
     const candidate = this.#candidates.get(request.selection.model);
     if (!candidate) throw new OllamaProtocolError("Candidate disappeared.");
+    const messages = request.input.messages.map(({ role, content }) => ({
+      role: role.toLowerCase(),
+      content,
+    }));
+    if (toolPrompt)
+      messages.unshift({ role: "system", content: toolPrompt.instruction });
     return JSON.stringify({
       model: request.selection.model,
-      messages: request.input.messages.map(({ role, content }) => ({
-        role: role.toLowerCase(),
-        content,
-      })),
+      messages,
       stream,
+      ...(toolPrompt ? { tools: toolPrompt.tools } : {}),
       think: false,
       keep_alive: candidate.keepAliveSeconds,
       options: {
@@ -1007,9 +1063,22 @@ export class OllamaLocalAdapter implements ProviderAdapter {
     });
   }
 
-  async invoke(
+  invoke(request: ProviderRequest, context: ProviderExecutionContext) {
+    return this.#invoke(request, context);
+  }
+
+  invokeWithTools(
     request: ProviderRequest,
     context: ProviderExecutionContext,
+    prompt: OllamaToolPrompt,
+  ) {
+    return this.#invoke(request, context, prompt);
+  }
+
+  async #invoke(
+    request: ProviderRequest,
+    context: ProviderExecutionContext,
+    toolPrompt?: OllamaToolPrompt,
   ): Promise<ProviderOutcome> {
     const now = context.now ?? Date.now;
     const startedAt = now();
@@ -1040,12 +1109,53 @@ export class OllamaLocalAdapter implements ProviderAdapter {
         request.selection.model,
         control.signal,
       );
+      const body = this.#chatBody(request, false, toolPrompt);
+      if (toolPrompt) {
+        const candidate = this.#candidates.get(request.selection.model)!;
+        if (
+          toolPrompt.tools.length < 1 ||
+          toolPrompt.tools.length > 6 ||
+          TEXT_ENCODER.encode(body).length > candidate.maxInputBytes
+        )
+          throw new OllamaProtocolError(
+            "Local tool request exceeded its bound.",
+          );
+        const metadata = await this.#json(
+          "api/show",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ model: request.selection.model }),
+          },
+          control.signal,
+        );
+        const capabilities = (metadata as { capabilities?: unknown } | null)
+          ?.capabilities;
+        if (!Array.isArray(capabilities) || !capabilities.includes("tools")) {
+          this.#state = preflight.residency;
+          return this.#failure(
+            request,
+            startedAt,
+            {
+              status: "FAILED",
+              code: "POLICY_DENIED",
+              source: "POLICY",
+              retry: "DO_NOT_RETRY",
+              message:
+                "The selected Local model does not advertise tool calling.",
+            },
+            undefined,
+            undefined,
+            now,
+          );
+        }
+      }
       const response = await this.#request(
         "api/chat",
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: this.#chatBody(request, false),
+          body,
         },
         control.signal,
       );
@@ -1057,7 +1167,7 @@ export class OllamaLocalAdapter implements ProviderAdapter {
         request,
         value,
         preflight,
-        value.message.content,
+        toolPrompt ? toolSelection(value, toolPrompt) : value.message.content,
         startedAt,
         now(),
         now,

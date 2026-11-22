@@ -189,6 +189,13 @@ try {
     teacherHistory: {
       context: sampleContext,
       read: () => persistence.history({ role: "student", context: sampleContext }),
+      async select(question) {
+        if (question === "Can you tally the past seven days of questions?")
+          return { name: "history_count", arguments: { window: "recent" } };
+        if (question === "Which themes appeared in the sample recently?")
+          return { name: "history_summary", arguments: { window: "recent" } };
+        return null;
+      },
       async summarize(questions) {
         assert.deepEqual(JSON.parse(questions), ["How can I compare two visual explanations?"]);
         return "The sample asks about comparing visual explanations.";
@@ -291,10 +298,10 @@ try {
     await page.getByText("History Chat plugin", { exact: true }).click();
     const historyQuestion = page.getByLabel("History question");
     const ask = page.getByRole("button", { name: "Ask History" });
-    await historyQuestion.fill("How many questions in the last seven days?");
+    await historyQuestion.fill("Can you tally the past seven days of questions?");
     await ask.click();
     await page.getByText(/^1 question recorded for the Test Student sample/).waitFor();
-    await historyQuestion.fill("Summarize recent questions.");
+    await historyQuestion.fill("Which themes appeared in the sample recently?");
     await ask.click();
     await page.getByText("The sample asks about comparing visual explanations.", { exact: true }).waitFor();
     const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
