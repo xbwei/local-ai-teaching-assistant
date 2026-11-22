@@ -873,8 +873,9 @@ try {
     const verifier = page.locator("#teacher-canvas-verification");
     const verificationAssignment = verifier.getByLabel("Approved verification assignment");
     const verificationStudent = verifier.getByLabel("Students to verify");
-    const startVerification = verifier.getByRole("button", { name: "Verify configured students" });
-    const startOneVerification = verifier.getByRole("button", { name: "Verify selected student" });
+    const previewVerification = verifier.getByRole("button", { name: "Preview configured submissions" });
+    const previewOneVerification = verifier.getByRole("button", { name: "Preview selected submission" });
+    const confirmVerification = verifier.locator("#canvas-verification-confirm");
     const cancelVerification = verifier.getByRole("button", { name: "Cancel verification" });
     const resultRows = verifier.getByRole("listitem");
     const verificationRequests = requests.length;
@@ -885,7 +886,13 @@ try {
     ]) {
       await verificationAssignment.selectOption(assignmentIndex);
       assert.equal(await verificationStudent.inputValue(), "all");
-      await startVerification.click();
+      const providerCalls = syntheticVerification.calls.github.length + syntheticVerification.calls.mongo.length;
+      assert.equal(await confirmVerification.isVisible(), false);
+      await previewVerification.click();
+      await verifier.getByText("Preview finished. 30 of 30 ready. Provider checks have not run.").waitFor();
+      assert.equal(await verifier.getByText(/Student \d+ · Ready to verify · Attempt 1/).count(), 30);
+      assert.equal(syntheticVerification.calls.github.length + syntheticVerification.calls.mongo.length, providerCalls);
+      await confirmVerification.click();
       await verifier.getByText("Verification finished. 30 of 30 results received.").waitFor();
       assert.equal(await resultRows.count(), 30);
       assert.equal(await verifier.getByText(/Student \d+ · Observed · Attempt 1/).count(), 30);
@@ -894,12 +901,26 @@ try {
 
       await verificationStudent.selectOption("74030");
       assert.equal(await resultRows.count(), 0);
+      if (provider === "GITHUB") {
+        await previewOneVerification.click();
+        await verifier.getByText("Preview finished. 1 of 1 ready. Provider checks have not run.").waitFor();
+        const beforeDrift = syntheticVerification.calls.github.length;
+        syntheticVerification.state.source = (row) => ({ ...row, attempt: 2 });
+        await confirmVerification.click();
+        await verifier.getByText("Student 74030 · Unknown — the previewed submission changed. Preview again.").waitFor();
+        assert.equal(syntheticVerification.calls.github.length, beforeDrift);
+        assert.equal(await confirmVerification.isVisible(), false);
+        syntheticVerification.state.source = (row) => row;
+      }
+      await previewOneVerification.click();
+      await verifier.getByText("Preview finished. 1 of 1 ready. Provider checks have not run.").waitFor();
       const selectedRequest = page.waitForRequest((request) =>
         request.method() === "POST" && request.url() === `${f.origin}/api/v1/canvas/verification`,
       );
-      await startOneVerification.click();
-      const { scope, ...selection } = (await selectedRequest).postDataJSON();
+      await confirmVerification.click();
+      const { scope, version, ...selection } = (await selectedRequest).postDataJSON();
       assert.match(scope, /^[a-f0-9]{64}$/u);
+      assert.match(version, /^[a-f0-9]{64}$/u);
       assert.deepEqual(selection, { provider, assignmentId, studentId: "74030" });
       await verifier.getByText("Verification finished. 1 of 1 results received.").waitFor();
       assert.equal(await resultRows.count(), 1);
@@ -915,7 +936,9 @@ try {
       stopped.resolve();
       signal.throwIfAborted();
     };
-    await startVerification.click();
+    await previewVerification.click();
+    await verifier.getByText("Preview finished. 30 of 30 ready. Provider checks have not run.").waitFor();
+    await confirmVerification.click();
     await entered.promise;
     assert.equal(await verificationStudent.isDisabled(), true);
     await cancelVerification.click();
@@ -924,7 +947,8 @@ try {
     assert.equal(await verifier.getByText(/Cancelled — unchecked/).count(), 29);
     assert.equal(await verificationStudent.isEnabled(), true);
     assert.doesNotMatch(await verifier.innerText(), /example\.mongodb\.net|synthetic-only-passphrase|synthetic_github_reader|README\.md/);
-    assert.equal(requests.slice(verificationRequests).filter((request) => request === f.origin + "/api/v1/canvas/verification").length, 63);
+    assert.equal(requests.slice(verificationRequests).filter((request) => request === f.origin + "/api/v1/canvas/verification").length, 64);
+    assert.equal(requests.slice(verificationRequests).filter((request) => request === f.origin + "/api/v1/canvas/verification/preview").length, 93);
     syntheticVerification.state.mongo = async () => {};
     results.push({ name: mobile ? "canvas-verification-phone" : "canvas-verification-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();

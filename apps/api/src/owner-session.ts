@@ -753,9 +753,15 @@ export function createOwnerSessions(options: {
         app.get(inventoryPath, inventory);
         app.get(inventoryPath + "/:kind", inventory);
         const verificationPath = "/api/v1/canvas/verification";
+        const verificationParser = createCanvasPageParser(2048);
         app.use(verificationPath, entryLimit);
-        app.get(verificationPath, verification);
-        app.post(verificationPath, createCanvasPageParser(2048), verification);
+        app.get(verificationPath, verification.scope);
+        app.post(
+          verificationPath + "/preview",
+          verificationParser,
+          verification.preview,
+        );
+        app.post(verificationPath, verificationParser, verification.verify);
       }
       if (teacherDraft)
         app.post(

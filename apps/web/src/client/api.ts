@@ -1,5 +1,6 @@
 import {
   readAssignmentVerificationScope,
+  readAssignmentVerificationPreview,
   readAssignmentVerificationResult,
   type AssignmentVerifier,
   canvasPageId,
@@ -561,18 +562,36 @@ export class InputApi {
     );
   }
 
-  async verifyCanvasSubmission(
+  async previewCanvasSubmission(
     scope: string,
     assignmentId: string,
     provider: AssignmentVerifier,
     studentId: string,
     signal: AbortSignal,
   ) {
+    return readAssignmentVerificationPreview(
+      await this.request(
+        "/api/v1/canvas/verification/preview",
+        "POST",
+        JSON.stringify({ scope, assignmentId, provider, studentId }),
+        signal,
+      ),
+    );
+  }
+
+  async verifyCanvasSubmission(
+    scope: string,
+    assignmentId: string,
+    provider: AssignmentVerifier,
+    studentId: string,
+    version: string,
+    signal: AbortSignal,
+  ) {
     return readAssignmentVerificationResult(
       await this.request(
         "/api/v1/canvas/verification",
         "POST",
-        JSON.stringify({ scope, assignmentId, provider, studentId }),
+        JSON.stringify({ scope, assignmentId, provider, studentId, version }),
         signal,
       ),
     );
