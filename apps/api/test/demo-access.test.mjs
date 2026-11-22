@@ -864,3 +864,304 @@ test("bound course refuses other-course grounding before any retrieval or provid
   await run("How can I formulate a research question?");
   assert.equal(runs, 1);
 });
+
+test("Teacher History uses the existing local Demo Student's questions for each active course", async (t) => {
+  const route = "/api/v1/teacher-tools/history";
+  const summaries = [];
+  let selectionCalls = 0;
+  let reads = 0;
+  let summaryUnavailable = false;
+  const f = await fixture({
+    autoLogin: false,
+    canvas: () => paired,
+    authNow: () => canvasNow,
+    history: true,
+    teacherHistory: {
+      read(scope) {
+        reads++;
+        return f.persistence.history(scope);
+      },
+      async select(question) {
+        selectionCalls++;
+        if (question === "Show another student's history.")
+          return {
+            name: "history_count",
+            arguments: { window: "recent", course: "IA342" },
+          };
+        return {
+          name: question.startsWith("Summarize")
+            ? "history_summary"
+            : "history_count",
+          arguments: { window: "recent" },
+        };
+      },
+      async summarize(input) {
+        summaries.push(JSON.parse(input));
+        if (summaryUnavailable) throw new Error("Synthetic Local failure");
+        return summaries.at(-1).length === 1
+          ? "The topic is tides."
+          : "The topics are maps and visual comparisons.";
+      },
+    },
+  });
+  t.after(() => f.close());
+  const get = (cookie) => f.request(route, { headers: { cookie } });
+  const ask = (cookie, question = "How many questions?", options = {}) =>
+    post(f, route, { question, ...options }, cookie);
+  const responseText = async (...args) => {
+    const response = await ask(...args);
+    assert.equal(response.status, 200);
+    return (await response.json()).text;
+  };
+  const otherCourse = async (cookie) => {
+    const response = await post(
+      f,
+      "/api/v1/auth/course",
+      { course: "IA342" },
+      cookie,
+    );
+    assert.equal(response.status, 200);
+    return sessionCookie(response);
+  };
+  const launch = async (changes) => {
+    const path = "/api/v1/canvas/launch";
+    const response = await f.request(path, {
+      method: "POST",
+      headers: {
+        origin: canvas.canvasOrigin,
+        cookie: "",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: signed(f.config.publicOrigin + path, {
+        oauth_nonce: randomUUID(),
+        ...changes,
+      }),
+    });
+    assert.equal(response.status, 303);
+    return sessionCookie(response);
+  };
+  const ownerTeacher = sessionCookie(await f.login("teacher"));
+  assert.equal((await get(ownerTeacher)).status, 404);
+  assert.equal((await ask(ownerTeacher)).status, 404);
+  assert.equal(selectionCalls, 0);
+
+  f.authStore.configureDemo("IA340", ...(await credentials));
+  f.authStore.grantDemoMembership("demo-teacher", "IA342");
+  const teacher = sessionCookie(
+    await login(f, "demo-teacher", teacherPassphrase),
+  );
+  const teacher342 = await otherCourse(
+    sessionCookie(await login(f, "demo-teacher", teacherPassphrase)),
+  );
+  const student = sessionCookie(
+    await login(f, "demo-student", studentPassphrase),
+  );
+  const instructor = await launch();
+  const learner = await launch({
+    roles: "Learner",
+    custom_canvas_user_id: paired.demo.studentUserId,
+  });
+  const admin = sessionCookie(await login(f, "admin", testPassphrase));
+  assert.deepEqual(await (await get(instructor)).json(), { enabled: true });
+  for (const cookie of [teacher342, student, learner, admin]) {
+    assert.equal((await get(cookie)).status, 403);
+    assert.equal((await ask(cookie)).status, 403);
+  }
+  assert.equal(
+    (await ask(instructor, "How many questions in IA342?")).status,
+    403,
+  );
+  assert.equal(
+    (await ask(instructor, "How many questions in IA340 and IA342?")).status,
+    403,
+  );
+  assert.equal(
+    (
+      await ask(instructor, "How many questions?", {
+        course: "IA342",
+        principal: "demo-student",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(selectionCalls, 0);
+  assert.match(
+    await responseText(instructor, "Show another student's history."),
+    /Ask for a recent question count or summary/,
+  );
+  assert.equal(reads, 0);
+
+  assert.match(
+    await responseText(instructor),
+    /^0 questions recorded for the local Demo Student in this course/,
+  );
+  assert.match(
+    await responseText(instructor, "Summarize recent questions."),
+    /^No questions were recorded/,
+  );
+  assert.deepEqual(summaries, []);
+  await saveQuestion(f, learner, "What is a signed-only synthetic question?");
+  await saveQuestion(f, student, "How can tides be compared?");
+  f.authStore.grantDemoMembership("demo-student", "IA342");
+  const student342 = await otherCourse(student);
+  await saveQuestion(f, student342, "How do map layers work?");
+  await saveQuestion(f, student342, "How do I compare two maps?");
+  assert.match(await responseText(teacher), /^1 question recorded/);
+  assert.match(await responseText(instructor), /^1 question recorded/);
+  assert.match(await responseText(teacher342), /^2 questions recorded/);
+  assert.equal(
+    await responseText(instructor, "Summarize recent questions."),
+    "The topic is tides.",
+  );
+  assert.equal(
+    await responseText(teacher342, "Summarize recent questions."),
+    "The topics are maps and visual comparisons.",
+  );
+  assert.deepEqual(summaries, [
+    ["How can tides be compared?"],
+    ["How do I compare two maps?", "How do map layers work?"],
+  ]);
+  summaryUnavailable = true;
+  assert.match(
+    await responseText(instructor, "Summarize recent questions."),
+    /count is still available/,
+  );
+  assert.match(await responseText(instructor), /^1 question recorded/);
+  assert.doesNotMatch(JSON.stringify(f.logs), /tides|map layers|signed-only/);
+});
+
+test(
+  "scoped Teacher History stops reading or returning after revocation, expiry, drift or cancellation",
+  { timeout: 30_000 },
+  async (t) => {
+    const path = "/api/v1/teacher-tools/history";
+    let configuration = paired;
+    let clock = canvasNow;
+    let selecting;
+    let summarizing;
+    let reads = 0;
+    const f = await fixture({
+      autoLogin: false,
+      canvas: () => configuration,
+      authNow: () => clock,
+      history: true,
+      teacherHistory: {
+        read(scope) {
+          reads++;
+          return f.persistence.history(scope);
+        },
+        async select(question, signal) {
+          if (selecting) {
+            const current = selecting;
+            current.entered.resolve(signal);
+            await current.release.promise;
+          }
+          return {
+            name: question.startsWith("Summarize")
+              ? "history_summary"
+              : "history_count",
+            arguments: { window: "recent" },
+          };
+        },
+        async summarize() {
+          summarizing.entered.resolve();
+          await summarizing.release.promise;
+          return "A synthetic result that must not be returned.";
+        },
+      },
+    });
+    t.after(() => f.close());
+    f.authStore.configureDemo("IA340", ...(await credentials));
+    const launch = async () => {
+      const launchPath = "/api/v1/canvas/launch";
+      const response = await f.request(launchPath, {
+        method: "POST",
+        headers: {
+          origin: canvas.canvasOrigin,
+          cookie: "",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: signed(f.config.publicOrigin + launchPath, {
+          oauth_nonce: randomUUID(),
+          oauth_timestamp: String(Math.floor(clock / 1000)),
+        }),
+      });
+      assert.equal(response.status, 303);
+      return sessionCookie(response);
+    };
+    const ask = (cookie, question, signal) =>
+      f.request(path, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ question }),
+        signal,
+      });
+    const paused = () => ({
+      entered: Promise.withResolvers(),
+      release: Promise.withResolvers(),
+    });
+    const active = (who, value) =>
+      f.authStore.setDemoMembershipActive(who, "IA340", value);
+    for (const [invalidate, expected] of [
+      [() => active("demo-student", false), 403],
+      [() => active("demo-teacher", false), 401],
+      [
+        () => {
+          configuration = {
+            ...paired,
+            demo: { ...paired.demo, course: "IA342" },
+          };
+        },
+        401,
+      ],
+      [
+        () => {
+          clock += 8 * 3600000;
+        },
+        401,
+      ],
+    ]) {
+      selecting = paused();
+      const pending = ask(await launch(), "How many questions?");
+      await selecting.entered.promise;
+      invalidate();
+      selecting.release.resolve();
+      assert.equal((await pending).status, expected);
+      assert.equal(reads, 0);
+      configuration = paired;
+      active("demo-student", true);
+      active("demo-teacher", true);
+    }
+    selecting = paused();
+    const cancel = new AbortController();
+    const pending = ask(await launch(), "How many questions?", cancel.signal);
+    const rejected = assert.rejects(pending, { name: "AbortError" });
+    const signal = await selecting.entered.promise;
+    const cancelled = Promise.withResolvers();
+    signal.addEventListener("abort", cancelled.resolve, { once: true });
+    cancel.abort();
+    await rejected;
+    await cancelled.promise;
+    selecting.release.resolve();
+    selecting = undefined;
+
+    const student = sessionCookie(
+      await login(f, "demo-student", studentPassphrase),
+    );
+    await saveQuestion(
+      f,
+      student,
+      "How can one compare different practice examples?",
+    );
+    summarizing = paused();
+    const summary = ask(await launch(), "Summarize recent questions.");
+    await summarizing.entered.promise;
+    active("demo-student", false);
+    active("demo-student", true);
+    summarizing.release.resolve();
+    const response = await summary;
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), { code: "FORBIDDEN" });
+    assert.equal(reads, 1);
+  },
+);

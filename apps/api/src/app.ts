@@ -174,7 +174,7 @@ export function createApp(options: AppOptions = {}) {
         ...(options.ownerAuth ? { store: options.ownerAuth } : {}),
         ...(options.canvas ? { canvas: options.canvas } : {}),
         ...(options.canvasPages ? { canvasPages: options.canvasPages } : {}),
-        ...(options.teacherHistory
+        ...(options.teacherHistory?.context
           ? { sampleHistoryContext: options.teacherHistory.context }
           : {}),
         ...(options.authNow ? { now: options.authNow } : {}),

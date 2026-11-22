@@ -654,12 +654,11 @@ try {
             }),
         }
       : {}),
-    ...(sampleContext
+    ...(successor
       ? {
           teacherHistory: {
-            context: sampleContext,
-            read: () =>
-              persistence!.history({ role: "student", context: sampleContext }),
+            ...(sampleContext ? { context: sampleContext } : {}),
+            read: (scope) => persistence!.history(scope),
             select: (question, signal) =>
               selectTeacherTool("HISTORY_TOOL", question, signal),
             summarize: summarizeTestStudent,

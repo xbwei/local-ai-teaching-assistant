@@ -10,6 +10,7 @@ import {
   createHistoryRepository,
   HistoryValidationError,
 } from "../dist/history.js";
+import { createOwnerAuthRepository } from "../dist/owner-auth.js";
 const id = () => randomBytes(32).toString("hex");
 const begin = (
   store,
@@ -55,6 +56,66 @@ function fixture(t) {
     },
   };
 }
+
+test("named History sample requires matching current grants inside the SQLite read", (t) => {
+  const { db } = fixture(t);
+  const auth = createOwnerAuthRepository(db);
+  const credential = () => ({
+    salt: randomBytes(16).toString("hex"),
+    verifier: id(),
+    revision: randomBytes(16).toString("hex"),
+  });
+  auth.configureDemo("IA340", credential(), credential());
+  const scope = {
+    role: "student",
+    principal: "demo-student",
+    context: "IA340",
+  };
+  const store = createHistoryRepository(db, scope);
+  const grant = () => ({
+    course: "IA340",
+    teacher: auth.demoMembership("demo-teacher", "IA340"),
+    student: auth.demoMembership("demo-student", "IA340"),
+  });
+  const read = (access, repo = store) =>
+    repo.sampleQuestions(
+      "2000-01-01T00:00:00.000Z",
+      "2099-01-01T00:00:00.000Z",
+      true,
+      access,
+    );
+  begin(store, id(), "Bound local question");
+  const original = grant();
+  assert.deepEqual(read(original), {
+    count: 1,
+    partial: false,
+    questions: ["Bound local question"],
+  });
+  assert.throws(() => read(), HistoryValidationError);
+  assert.throws(
+    () =>
+      read(
+        original,
+        createHistoryRepository(db, { ...scope, context: "IA342" }),
+      ),
+    HistoryValidationError,
+  );
+  assert.throws(
+    () =>
+      read(original, createHistoryRepository(db, { ...scope, context: id() })),
+    HistoryValidationError,
+  );
+  auth.setDemoMembershipActive("demo-student", "IA340", false);
+  auth.setDemoMembershipActive("demo-student", "IA340", true);
+  assert.throws(() => read(original), HistoryValidationError);
+  assert.equal(db.isTransaction, false);
+  const refreshed = grant();
+  assert.deepEqual(read(refreshed).questions, ["Bound local question"]);
+  auth.revokeDemoSessions("demo-teacher");
+  assert.throws(() => read(refreshed), HistoryValidationError);
+  assert.equal(db.isTransaction, false);
+});
+
 test("complete typed and voice text, answers, source identity and feedback survive restart; no retention purge", (t) => {
   const f = fixture(t),
     c = id(),
