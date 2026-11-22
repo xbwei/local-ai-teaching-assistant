@@ -1,4 +1,14 @@
-# Owner-provided screenshots and photos
+# Media provenance and public workflow illustrations
+
+## v0.3.0 presentation
+
+The v0.3.0 README and [public workflow tour](DEMO.md) use the existing synthetic phone captures described below. No new model output, application state or interface is drawn into these images. Workflow diagrams explain the public implementation and are labeled separately from screenshots.
+
+Owner-supplied demonstrations reviewed for this release also include a different development configuration. Those recordings show features beyond this public artifact, including separate demo identities, multi-user administration, a Student Canvas entry, other students' History, broader content organization and richer verifier details. They are not embedded as public v0.3.0 feature evidence. A sandbox label describes data, but does not by itself establish that a recording matches the released interface or permissions.
+
+The public app retains one Owner's role views, Instructor-only signed Canvas Teacher launch, a separately configured History sample, one-resource module appends and bounded verifier status output. The release's documentation and public presentation follow that scope. Historical media below remain attributed to their actual capture context.
+
+## Owner-provided screenshots and photos
 
 The Owner supplied seven real images through a synced folder, kept outside Git and read-only. All seven were inspected; five clear images were selected. Only reviewed public-safe derivatives are committed under `docs/assets/screenshots/`. No UI state, response, citation, product wording or behavior was fabricated. No generated replacement screenshot is included.
 

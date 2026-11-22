@@ -4,7 +4,7 @@ Use this optional tool in an authorized practice course with non-sensitive submi
 
 ## Configure one course
 
-Follow the [signed Teacher launch and REST setup](CANVAS.md#5-set-up-optional-canvas-rest-authoring). The REST token must identify the signed Teacher, with permission to read the course, active student enrollment, assignment and individual submissions. Use active **StudentEnrollment** IDs in the configured course. The Test Student scope used by the other Canvas tools remains separate.
+Follow the [signed Teacher launch and REST setup](CANVAS.md#5-set-up-optional-canvas-rest-authoring). The REST token must identify the signed Teacher, with permission to read the course, active student enrollment, assignment and individual submissions. Each `students[].id` is the student's **Canvas user ID**, not an enrollment record ID. LAITA verifies that the user has an active **StudentEnrollment** in the configured course before reading that user's submission. The Test Student scope used by the other Canvas tools remains separate.
 
 Create a private JSON file with the same owner-only directory/file permissions as the Canvas REST file. Export only its path as `LAITA_CANVAS_VERIFICATION_FILE` in the foreground API environment. The API reads the file before use and rejects unknown fields or ambiguous scope. Enter your own values inside the protected file. Fill the example's GitHub token placeholder only in that file.
 
@@ -45,7 +45,11 @@ Create a private JSON file with the same owner-only directory/file permissions a
         }
       ],
       "students": [
-        { "id": "74001", "host": "practice.example.mongodb.net", "database": "practice" }
+        {
+          "id": "74001",
+          "host": "practice.example.mongodb.net",
+          "database": "practice"
+        }
       ]
     }
   ]
@@ -66,7 +70,20 @@ The submission supplies one matching GitHub profile or exact repository URL. LAI
 
 Use a disposable practice database with a short-lived, unique account limited to read access to the approved database. Submit the connection URI only through the authorized Canvas practice assignment. Keep the course and submissions access-controlled, remove practice credentials from Canvas when no longer needed, and revoke or rotate them after use. Never use a production account or a reused password. LAITA processes the exact submission’s URI in request memory. It passes only the validated user/password to an isolated driver worker against the trusted configured seed and approved database. LAITA does not retain or display the URI, credentials, host, database, collection names, field paths or document values in verification outcomes, logs or History. The provider does not receive other course data.
 
-Use an Atlas replica set hostname under `mongodb.net` and simple database, collection and field names. Submit one `mongodb+srv://` URI for the exact configured host and database. A single-host `mongodb://` URI for the same target is accepted as input, and the worker still uses Atlas SRV, public IPv4 and verified TLS. The driver uses the operator-approved target and fixed options and runs only fixed metadata and aggregate checks. Configure at most two collections with up to four named fields each. Output lists each collection observation and its field observations in configured order. Counts are bounded at 1,001 documents and field summaries check at most 101 documents per field. Reaching a cap yields **Partial** even when the sampled values match. A successful connection does not establish authorship. Source and target rechecks and provider reads occur in separate requests, so they cannot make the observation atomic. [MongoDB connection string formats](https://www.mongodb.com/docs/manual/reference/connection-string-formats/)
+Use an Atlas replica set hostname under `mongodb.net` and names accepted by LAITA's bounded verifier grammar:
+
+| Value                       | Accepted form                                                                                                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Username                    | 1–64 ASCII characters; start with a letter, followed by letters, digits, `_` or `-`.                                                                                                         |
+| Password                    | 1–256 JavaScript string code units; no U+0000–U+001F or U+007F control characters. Percent-encode reserved URI characters.                                                                   |
+| Database or collection name | 1–48 ASCII characters; start with a letter, followed by letters, digits or `_`. Hyphens are not accepted. The exact lowercase names `admin`, `local`, `config` and `system` are excluded.    |
+| Field path                  | One to three dot-separated segments; each segment follows the same name grammar and exclusions.                                                                                              |
+| Collections and fields      | One or two distinct collections; one to four distinct field paths per collection. Types are `string`, `number`, `boolean`, `array`, `object` or `date`, with an explicit Boolean `nonempty`. |
+| Connection input            | One URI, at most 2,048 characters, matching the configured Atlas hostname and permitted database path.                                                                                       |
+
+These are LAITA-specific restrictions, not a complete statement of what MongoDB itself supports. Submit one `mongodb+srv://` URI for the exact configured host and database. A single-host `mongodb://` URI for the same target is accepted as input, and the worker still uses Atlas SRV, public IPv4 and verified TLS. Only the documented fixed query options are accepted: `retryWrites=true/false`, `w=majority`, `appName` containing 1–64 ASCII letters/digits/underscores/hyphens, `authSource=admin`, and `tls=true` or `ssl=true`. Duplicate or other query options are rejected. The submitted URI does not configure arbitrary driver behavior.
+
+The driver uses the operator-approved target and fixed options and runs only fixed metadata and aggregate checks. Output lists each collection observation and its field observations in configured order, using bounded status values; it does not expose names, field paths, document values or exact document counts. Internal counting is bounded at 1,001 documents and field summaries check at most 101 documents per field. Reaching a cap yields **Partial** even when the sampled values match. A successful connection does not establish authorship. Source and target rechecks and provider reads occur in separate requests, so they cannot make the observation atomic. [MongoDB connection string formats](https://www.mongodb.com/docs/manual/reference/connection-string-formats/)
 
 ## Run and read the results
 

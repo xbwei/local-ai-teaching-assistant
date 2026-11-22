@@ -382,6 +382,10 @@
       "classification": "RECREATE"
     },
     {
+      "path": "docs/DEMO.md",
+      "classification": "RECREATE"
+    },
+    {
       "path": "docs/DEPLOYMENT.md",
       "classification": "RECREATE"
     },
@@ -402,11 +406,11 @@
       "classification": "RECREATE"
     },
     {
-      "path": "docs/RELEASE-NOTES-unreleased.md",
+      "path": "docs/RELEASE-NOTES-v0.2.0.md",
       "classification": "RECREATE"
     },
     {
-      "path": "docs/RELEASE-NOTES-v0.2.0.md",
+      "path": "docs/RELEASE-NOTES-v0.3.0.md",
       "classification": "RECREATE"
     },
     {

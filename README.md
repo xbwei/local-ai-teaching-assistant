@@ -4,15 +4,31 @@
 
 A teaching assistant that runs locally, keeps a conversation going, answers questions using public course evidence, and lets one operator review saved work. LAITA is an independent faculty-led project, not an official James Madison University service or product.
 
-**LAITA v0.2.0** · [Release notes](docs/RELEASE-NOTES-v0.2.0.md)
+**v0.3.0 release track** · [Release notes](docs/RELEASE-NOTES-v0.3.0.md) · [Published releases](https://github.com/xbwei/local-ai-teaching-assistant/releases)
 
 Public LAITA is an **individual / self-managed** installation for individual instructors and technical early adopters. You manage your own machine, local models, runtime, Owner credential and optional integrations. Core standalone use needs no school-provided server, central SSO or institution-wide provisioning. A future Enterprise offering is a separate future product/repository direction; it is not available today.
 
 ## See it in action
 
-![LAITA v0.2.0 sandbox Canvas course launch and demo](docs/assets/demo/laita-v020-canvas.gif)
+<p align="center">
+  <img src="docs/assets/screenshots/laita-phone-entry.png" width="260" alt="Public LAITA home-screen installation guide in a synthetic phone viewport" />
+  <img src="docs/assets/screenshots/laita-phone-chat.png" width="260" alt="Public LAITA chat and composer in a synthetic phone viewport" />
+</p>
 
-Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teacher data.** [Media provenance and privacy review](docs/SCREENSHOTS.md).
+Public UI, captured in Chromium with synthetic inputs and responses. These images illustrate the online phone interface; they are not a physical-device acceptance result. [Six public workflows](docs/DEMO.md) · [Media provenance](docs/SCREENSHOTS.md).
+
+### What is new in v0.3.0
+
+| Workflow                      | What the public app provides                                                                                                                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phone access                  | A responsive online interface and an optional Safari home-screen entry.                                                                           |
+| Local Teacher tools           | Editable, course-grounded lesson and assignment drafts; a separate History plugin for one configured Test Student sample.                         |
+| Canvas authoring              | Preview, confirm and check unpublished Pages, Assignments and Modules; rename an approved Assignment or append one approved resource to a Module. |
+| Canvas questions and feedback | Read-only Count/Score questions and an explicitly confirmed plain-text comment for the configured Test Student.                                   |
+| Practice verification         | Bounded read-only GitHub and MongoDB checks for each configured student's current Canvas attempt.                                                 |
+| Local support                 | Retained History and a metadata-only diagnostic lookup for the local Admin.                                                                       |
+
+These workflows retain the single-Owner installation model. Canvas and the verifiers are optional; [start with standalone Local](docs/GETTING-STARTED.md).
 
 ## What you can do
 
@@ -44,16 +60,19 @@ Course grounding is separate from Canvas credentials. It uses explicitly support
 
 Follow [Getting started](docs/GETTING-STARTED.md) for prerequisites, installation, configuration, model setup and the first conversation. The reference deployment uses an Apple Silicon Mac, Ollama, Node 24 and an operator-controlled HTTPS entry on loopback. OpenAI is optional.
 
-[Unreleased changes since v0.2.0](docs/RELEASE-NOTES-unreleased.md) lists the supported workflows, a practice walkthrough and upgrade checks.
+[The v0.3.0 notes](docs/RELEASE-NOTES-v0.3.0.md) describe the changes since v0.2.0, upgrade and recovery, and the distinction between synthetic validation and live acceptance.
 
-| Guide                                                          | What it covers                                                                                                               |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| [Local roles and optional Canvas course App](docs/CANVAS.md)   | Hidden Terminal credential setup, standalone roles, signed Instructor launch, unpublished Pages, removal and troubleshooting |
-| [Demo courses / Course-grounded Q&A](docs/COURSE-GROUNDING.md) | Source refresh, visible citations, evidence refusal and substituting supported public course material                        |
-| [OpenAI / Compare](docs/OPENAI.md)                             | Cloud data flow, interactive Keychain setup, enabling, missing credentials, rotation and deletion                            |
-| [History & Review](docs/HISTORY.md)                            | Retained records, feedback, operator review and access limitations                                                           |
-| [Speech and Pi client](docs/SPEECH.md)                         | English/Chinese reference support, local adapters and hardware acceptance                                                    |
-| [Deployment](docs/DEPLOYMENT.md)                               | Operator-owned macOS lifecycle, hardware photos, HTTPS and recovery                                                          |
+| Guide                                                          | What it covers                                                                                                              |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [Local roles and optional Canvas tools](docs/CANVAS.md)        | Owner role setup, signed Instructor launch, Pages, Assignments, Modules, Canvas Chat, feedback, removal and troubleshooting |
+| [Local Teacher workflow](docs/TEACHING-WORKFLOW.md)            | Course-grounded lesson and assignment drafts, editable Markdown and the Test Student History sample                         |
+| [GitHub and MongoDB verification](docs/CANVAS-VERIFICATION.md) | Explicit practice targets, Canvas user IDs, read-only observations, naming limits and unknown/partial results               |
+| [Public workflow tour](docs/DEMO.md)                           | Six public workflows, accurate phone captures and the scope of each optional tool                                           |
+| [Demo courses / Course-grounded Q&A](docs/COURSE-GROUNDING.md) | Source refresh, visible citations, evidence refusal and substituting supported public course material                       |
+| [OpenAI / Compare](docs/OPENAI.md)                             | Cloud data flow, interactive Keychain setup, enabling, missing credentials, rotation and deletion                           |
+| [History & Review](docs/HISTORY.md)                            | Retained records, feedback, operator review and access limitations                                                          |
+| [Speech and Pi client](docs/SPEECH.md)                         | English/Chinese reference support, local adapters and hardware acceptance                                                   |
+| [Deployment](docs/DEPLOYMENT.md)                               | Operator-owned macOS lifecycle, hardware photos, HTTPS and recovery                                                         |
 
 ## Privacy and current limits
 

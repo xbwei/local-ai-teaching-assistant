@@ -19,4 +19,4 @@ Inventory classification is an import decision, not a claim that external conten
 
 The inventory also lists public-native files that predate the update. Their classification describes their public disposition and does not imply an external origin.
 
-The inventory lists 113 COPY, 184 GENERICIZE and 52 RECREATE paths. The two inventory documents are additional RECREATE paths.
+The inventory lists 113 COPY, 184 GENERICIZE and 53 RECREATE paths. The two inventory documents are additional RECREATE paths.
