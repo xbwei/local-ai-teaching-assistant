@@ -1,4 +1,4 @@
-import { ClientError, type InputApi } from "./api.ts";
+import type { InputApi } from "./api.ts";
 
 export interface TeacherChatTool {
   id: string;
@@ -15,34 +15,20 @@ export async function teacherChatTools(
   api: InputApi,
   source: string | undefined,
 ): Promise<TeacherChatTool[]> {
-  if (source === "local") {
-    if (!(await api.teacherHistoryEnabled())) return [];
-    return [
-      {
-        id: "history",
-        label: "History (Local)",
-        scope:
-          "Ask for a question count or summary from the configured Test Student sample.",
-        limit: 200,
-        localModel: true,
-        ask: (question, signal) => api.teacherHistory(question, signal),
-        signIn: "Sign in again as the local Teacher.",
-        unavailable:
-          "History Chat is unavailable. Check the local setup and try again.",
-      },
-    ];
-  }
-  if (source !== "canvas") return [];
-
-  const local = await api.canvasChatEnabled("local").catch((error: unknown) => {
-    if (error instanceof ClientError && [404, 503].includes(error.status))
-      return false;
-    throw error;
-  });
-  if (!local && !(await api.canvasChatEnabled())) return [];
-
-  const routes = local ? (["local", "direct"] as const) : (["direct"] as const);
-  return routes.map((route) => ({
+  if (source !== "local" && source !== "canvas") return [];
+  const [history, local] = await Promise.all([
+    api.teacherHistoryEnabled().catch(() => false),
+    source === "canvas" && api.canvasChatEnabled("local").catch(() => false),
+  ]);
+  const direct =
+    source === "canvas" &&
+    (local || (await api.canvasChatEnabled().catch(() => false)));
+  const routes = local
+    ? (["local", "direct"] as const)
+    : direct
+      ? (["direct"] as const)
+      : [];
+  const tools: TeacherChatTool[] = routes.map((route) => ({
     id: `canvas-${route}`,
     label: route === "local" ? "Canvas (Local)" : "Canvas (Direct)",
     scope:
@@ -56,4 +42,18 @@ export async function teacherChatTools(
     unavailable:
       "Canvas Chat is unavailable. Check the Test Student, assignment permissions and REST setup, then try again.",
   }));
+  if (history)
+    tools.push({
+      id: "history",
+      label: "History (Local)",
+      scope:
+        "Ask for a question count or summary from the authorized local student History.",
+      limit: 200,
+      localModel: true,
+      ask: (question, signal) => api.teacherHistory(question, signal),
+      signIn: "Reopen the authorized Teacher session.",
+      unavailable:
+        "History Chat is unavailable. Check the local setup and try again.",
+    });
+  return tools;
 }

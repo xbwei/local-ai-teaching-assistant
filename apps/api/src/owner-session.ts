@@ -20,6 +20,7 @@ import {
   createTeacherHistoryParser,
   createTeacherHistoryQueryHandler,
   createTeacherHistoryStatusHandler,
+  type TeacherHistoryAccess,
   type TeacherHistoryOptions,
 } from "./teacher-history.ts";
 import {
@@ -202,6 +203,46 @@ export function createOwnerSessions(options: {
       return transport(req) && lookup(req)?.binding === binding;
     } catch {
       return false;
+    }
+  }
+  function authorizeTeacherHistory(
+    req: Request,
+    res: Response,
+  ): TeacherHistoryAccess | false {
+    const actor = authorize(req, res);
+    if (!actor) return false;
+    if (actor.role !== "teacher") return deny(res);
+    if (!actor.demo) {
+      const context = options.sampleHistoryContext;
+      if (actor.source !== "local") return deny(res);
+      if (!context) {
+        res.status(404).json({ code: "NOT_FOUND" });
+        return false;
+      }
+      return { binding: actor.binding, scope: { role: "student", context } };
+    }
+    const { course, membershipRevision, username } = actor.demo;
+    if (username !== "demo-teacher") return deny(res);
+    try {
+      const student = store?.demoMembership("demo-student", course);
+      if (!student?.active || student.role !== "student") return deny(res);
+      return {
+        binding: actor.binding,
+        scope: { role: "student", context: course, principal: "demo-student" },
+        grant: {
+          course,
+          teacher: {
+            revision: membershipRevision,
+            credentialRevision: actor.revision,
+          },
+          student: {
+            revision: student.revision,
+            credentialRevision: student.credentialRevision,
+          },
+        },
+      };
+    } catch {
+      return deny(res, 503);
     }
   }
   const authority = { authorize, isCurrent };
@@ -726,11 +767,17 @@ export function createOwnerSessions(options: {
       if (teacherHistory) {
         const historyPath = "/api/v1/teacher-tools/history";
         app.use(historyPath, entryLimit);
-        app.get(historyPath, createTeacherHistoryStatusHandler(authority));
+        app.get(
+          historyPath,
+          createTeacherHistoryStatusHandler(authorizeTeacherHistory),
+        );
         app.post(
           historyPath,
           createTeacherHistoryParser(),
-          createTeacherHistoryQueryHandler(authority, teacherHistory),
+          createTeacherHistoryQueryHandler(
+            authorizeTeacherHistory,
+            teacherHistory,
+          ),
         );
       }
     },

@@ -205,7 +205,7 @@ try {
     },
     teacherHistory: {
       context: sampleContext,
-      read: () => persistence.history({ role: "student", context: sampleContext }),
+      read: (scope) => persistence.history(scope),
       async select(question) {
         if (question === "Can you tally the past seven days of questions?")
           return { name: "history_count", arguments: { window: "recent" } };
@@ -431,6 +431,11 @@ try {
       await selected.waitFor();
       assert.deepEqual(await selected.locator("option").allTextContents(), ["IA340", "IA342"]);
       assert.equal(await selected.inputValue(), "IA342");
+      if (!mobile && username === "demo-student") {
+        await page.getByLabel("Your question").fill("How do I compare two synthetic map legends?");
+        await page.locator("#composer").getByRole("button", { name: "Send", exact: true }).click();
+        await page.locator("#messages article.answer").first().waitFor();
+      }
       await selected.selectOption("IA340");
       await page.getByText(`${displayName} · ${label} · IA340`, { exact: true }).waitFor();
       assert.equal(await selected.inputValue(), "IA340");
@@ -718,7 +723,7 @@ try {
     const canvasAnswer = page.locator("#conversation #teacher-chat-answer");
     const queryMode = page.getByLabel("Ask about");
     await queryMode.waitFor();
-    assert.deepEqual(await queryMode.locator("option").allTextContents(), ["General chat", "Canvas (Local)", "Canvas (Direct)"]);
+    assert.deepEqual(await queryMode.locator("option").allTextContents(), ["General chat", "Canvas (Local)", "Canvas (Direct)", "History (Local)"]);
     assert.equal(await queryMode.inputValue(), "conversation");
     await queryMode.selectOption("canvas-local");
     assert.equal(await canvasQuestion.getAttribute("maxlength"), "280");
@@ -745,6 +750,19 @@ try {
     ]);
     assert.ok(syntheticCanvas.calls.slice(providerRequests).every(([method]) => method === "GET"));
     assert.equal(await page.locator("#messages article").count(), 0);
+    const canvasReads = syntheticCanvas.calls.length;
+    await queryMode.selectOption("history");
+    assert.equal(await canvasQuestion.getAttribute("maxlength"), "200");
+    await canvasQuestion.fill("Can you tally the past seven days of questions?");
+    await askCanvas.click();
+    await canvasAnswer.getByText(/^1 question recorded for the local Demo Student in this course/).waitFor();
+    assert.equal(syntheticCanvas.calls.length, canvasReads);
+    await queryMode.selectOption("conversation");
+    assert.equal(await canvasAnswer.textContent(), "");
+    await canvasQuestion.fill("Explain a map legend.");
+    await askCanvas.click();
+    await page.locator("#messages article.answer").first().waitFor();
+    assert.equal(syntheticCanvas.calls.length, canvasReads);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
     results.push({ name: mobile ? "canvas-chat-phone" : "canvas-chat-desktop", width, height, status: "PASS", requests: requests.length });
 

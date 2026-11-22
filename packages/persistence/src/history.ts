@@ -12,6 +12,7 @@ import type {
   HistoryTurn,
   ConversationPage,
 } from "@laita/contracts";
+import { createOwnerAuthRepository } from "./owner-auth.ts";
 
 export class HistoryValidationError extends Error {}
 
@@ -21,11 +22,50 @@ export interface HistoryScope {
   principal?: import("./owner-auth.ts").DemoUsername;
 }
 
+interface HistoryMembershipVersion {
+  revision: string;
+  credentialRevision: string;
+}
+
+export interface DemoHistoryGrant {
+  course: string;
+  teacher: HistoryMembershipVersion;
+  student: HistoryMembershipVersion;
+}
+
 /** All SQL is fixed here; callers never receive a connection or raw query seam. */
 export function createHistoryRepository(
   db: DatabaseSync,
   scope?: HistoryScope,
 ) {
+  function sampleQuestions(
+    principal: string,
+    context: string,
+    since: string,
+    until: string,
+    includeText: boolean,
+  ) {
+    const limit = includeText ? 12 : 1001;
+    const rows = db
+      .prepare(
+        `SELECT ${includeText ? "substr(t.text, 1, 2000)" : "NULL"} AS question
+         FROM history_turns t JOIN history_conversations c ON c.id = t.conversation
+         WHERE c.role = 'student' AND c.principal = ? AND c.scope = ? AND t.created >= ? AND t.created <= ?
+           AND t.text IS NOT NULL AND t.recording = 'RECORDED'
+         ORDER BY t.ordinal DESC LIMIT ?`,
+      )
+      .all(principal, context, since, until, limit);
+    // A summary only uses count to distinguish an empty window from rejected text.
+    return {
+      count: Math.min(rows.length, 1000),
+      partial: rows.length > 1000,
+      questions: includeText
+        ? rows.flatMap(({ question }) =>
+            typeof question === "string" ? [question] : [],
+          )
+        : [],
+    };
+  }
   const allowed = (conversation: string) => {
     if (!scope) return;
     const row = db
@@ -340,35 +380,52 @@ export function createHistoryRepository(
       }
       return { recording, outcome: checkedOutcome, stages };
     },
-    sampleQuestions(since: string, until: string, includeText: boolean) {
+    sampleQuestions(
+      since: string,
+      until: string,
+      includeText: boolean,
+      grant?: DemoHistoryGrant,
+    ) {
       const context = scope?.context;
+      if (scope?.role !== "student" || !context)
+        throw new HistoryValidationError("Student History unavailable");
+      if (!grant && !scope.principal && /^[a-f0-9]{64}$/u.test(context))
+        return sampleQuestions("", context, since, until, includeText);
       if (
-        scope?.role !== "student" ||
-        scope.principal ||
-        !context ||
-        !/^[a-f0-9]{64}$/u.test(context)
+        !grant ||
+        grant.course !== context ||
+        scope.principal !== "demo-student" ||
+        !/^[A-Z0-9]{1,32}$/u.test(context)
       )
-        throw new HistoryValidationError("Test Student sample unavailable");
-      const limit = includeText ? 12 : 1001;
-      const rows = db
-        .prepare(
-          `SELECT ${includeText ? "substr(t.text, 1, 2000)" : "NULL"} AS question
-           FROM history_turns t JOIN history_conversations c ON c.id = t.conversation
-           WHERE c.role = 'student' AND c.principal = '' AND c.scope = ? AND t.created >= ? AND t.created <= ?
-             AND t.text IS NOT NULL AND t.recording = 'RECORDED'
-           ORDER BY t.ordinal DESC LIMIT ?`,
+        throw new HistoryValidationError("Student History unavailable");
+      // Read both grants and the questions from one SQLite snapshot so a
+      // concurrent credential or membership update cannot mix their versions.
+      db.exec("BEGIN");
+      try {
+        const auth = createOwnerAuthRepository(db);
+        const teacher = auth.demoMembership("demo-teacher", context);
+        const student = auth.demoMembership("demo-student", context);
+        if (
+          !teacher?.active ||
+          teacher.revision !== grant.teacher.revision ||
+          teacher.credentialRevision !== grant.teacher.credentialRevision ||
+          !student?.active ||
+          student.revision !== grant.student.revision ||
+          student.credentialRevision !== grant.student.credentialRevision
         )
-        .all(context, since, until, limit);
-      // A summary only uses count to distinguish an empty window from rejected text.
-      return {
-        count: Math.min(rows.length, 1000),
-        partial: rows.length > 1000,
-        questions: includeText
-          ? rows.flatMap(({ question }) =>
-              typeof question === "string" ? [question] : [],
-            )
-          : [],
-      };
+          throw new HistoryValidationError("Student History unavailable");
+        const result = sampleQuestions(
+          scope.principal,
+          context,
+          since,
+          until,
+          includeText,
+        );
+        db.exec("COMMIT");
+        return result;
+      } finally {
+        if (db.isTransaction) db.exec("ROLLBACK");
+      }
     },
     list(filter: HistoryFilter): HistoryPage {
       const conditions = ["t.ordinal < ?"],
