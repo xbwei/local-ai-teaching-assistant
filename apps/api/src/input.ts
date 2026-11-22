@@ -2,6 +2,7 @@ import { createHistoryCapture, type HistoryCapture } from "./history.ts";
 import { CoursePreparationError } from "./course-execution.ts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
+import type { CourseId } from "@laita/course-grounding";
 import {
   inputLimits,
   isInputRef,
@@ -42,6 +43,7 @@ export interface InputPorts {
     sessionRef: `session-${string}`,
     trace?: import("@laita/contracts").Trace,
     source?: "TYPED" | "TRANSCRIPT",
+    course?: CourseId,
   ): Promise<unknown>;
 }
 interface Job {
@@ -60,6 +62,7 @@ interface Session {
   media: Map<string, { capture: HistoryCapture; leg: string }>;
   owner: string;
   historyScope?: import("@laita/persistence").HistoryScope;
+  course?: CourseId;
   providerRef: `session-${string}`;
   jobs: Map<string, Job>;
   pending: Set<AbortController>;
@@ -78,6 +81,7 @@ export function installInputRoutes(
     | {
         owner: string;
         historyScope?: import("@laita/persistence").HistoryScope;
+        course?: CourseId;
       },
   limits: Readonly<{
     uploadMs: number;
@@ -853,6 +857,7 @@ export function installInputRoutes(
                 j.capture!.source(source.course, source.lab, source.sources);
             },
             v.source,
+            s.course,
           );
           if (!s.valid || j.controller.signal.aborted) {
             if (isProviderRunResult(value)) j.capture!.result(value, true);

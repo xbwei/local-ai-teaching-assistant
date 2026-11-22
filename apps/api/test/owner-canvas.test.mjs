@@ -430,7 +430,7 @@ test("invalid signature, duplicate form/query parameters, wrong HTTP origin, mis
   assert.equal((await launch(disabled)).status, 503);
 });
 
-test("nonce replay survives SQLite reopen and concurrent repositories; credential rotation invalidates every role", async (t) => {
+test("nonce replay survives SQLite reopen and concurrent repositories; Owner credential rotation invalidates Owner sessions", async (t) => {
   const f = await fixture({
     autoLogin: false,
     canvas: () => canvas,
@@ -498,7 +498,11 @@ test("nonce replay survives SQLite reopen and concurrent repositories; credentia
     .prepare("SELECT name FROM sqlite_schema WHERE type='table'")
     .all()
     .map((x) => x.name);
-  assert.ok(!tables.some((name) => /users|memberships|accounts/u.test(name)));
+  assert.deepEqual(
+    tables.filter((name) => /users|memberships|accounts/u.test(name)),
+    ["demo_memberships"],
+  );
+  assert.deepEqual(repo.listDemoMemberships(), []);
 });
 
 test("Canvas config and generated Paste XML have bounded generic origin, substitutions and top-level navigation", (t) => {

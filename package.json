@@ -46,6 +46,7 @@
     "python:format": "uv run --project python --locked ruff format --config python/pyproject.toml --check scripts/ci/*.py",
     "test:reference-edge": "node --test scripts/test-reference-edge.mjs",
     "owner:setup": "node apps/api/dist/owner-setup.js owner-setup",
+    "demo:setup": "node apps/api/dist/owner-setup.js demo-setup",
     "canvas:setup": "node apps/api/dist/owner-setup.js canvas-setup",
     "canvas:xml": "node apps/api/dist/owner-setup.js canvas-xml",
     "canvas:disable": "node apps/api/dist/owner-setup.js canvas-disable"

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { OwnerSessions } from "./owner-session.ts";
 import type { Request, Response } from "express";
 import type { AccessConfiguration } from "@laita/contracts/server";
@@ -55,14 +56,20 @@ export function createOwnerTransport(
         if (!res.headersSent) res.status(401).json({ code: "UNAUTHENTICATED" });
         return false as const;
       }
+      const context =
+        session.demo && session.source === "canvas"
+          ? createHash("sha256")
+              .update(JSON.stringify([session.context, session.demo.course]))
+              .digest("hex")
+          : session.context;
       return {
         owner: `${session.binding}:${owner}`,
         historyScope: {
           role: session.role,
-          ...(session.context !== undefined
-            ? { context: session.context }
-            : {}),
+          ...(context !== undefined ? { context } : {}),
+          ...(session.demo ? { principal: session.demo.username } : {}),
         },
+        ...(session.demo ? { course: session.demo.course } : {}),
       };
     },
     close() {

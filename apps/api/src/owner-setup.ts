@@ -10,8 +10,12 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { loadConfiguration, initializeRuntimePaths } from "@laita/runtime";
-import { initializePersistence } from "@laita/persistence";
-import { initializeOwnerCredential } from "./owner-credential.ts";
+import { demoUsernames, initializePersistence } from "@laita/persistence";
+import { courseIds } from "@laita/course-grounding";
+import {
+  initializeOwnerCredential,
+  verifyOwnerCredential,
+} from "./owner-credential.ts";
 import {
   assertCanvasDirectory,
   canvasXml,
@@ -64,11 +68,23 @@ function canvasFile(): string {
   assertCanvasDirectory(file);
   return file;
 }
+async function confirmedPassphrase(label: string) {
+  const passphrase = await hidden(
+    `${label} passphrase, at least 15 characters (hidden): `,
+  );
+  if (passphrase !== (await hidden("Repeat passphrase (hidden): ")))
+    throw new Error("Passphrases do not match; no change made.");
+  return passphrase;
+}
 async function main() {
-  const command = process.argv[2];
+  const [command, arg, extra, ...rest] = process.argv.slice(2);
   const c = configuration();
   if (command === "canvas-xml") {
-    process.stdout.write(canvasXml(c.access.publicOrigin) + "\n");
+    if ((arg !== undefined && arg !== "--demo") || extra)
+      throw new Error("Use canvas:xml with optional --demo.");
+    process.stdout.write(
+      canvasXml(c.access.publicOrigin, arg === "--demo") + "\n",
+    );
     return;
   }
   if (command === "canvas-disable") {
@@ -84,17 +100,33 @@ async function main() {
   }
   if (command === "canvas-setup") {
     const file = canvasFile();
+    const course = courseIds.find((value) => value === extra);
+    if (
+      arg !== undefined &&
+      (arg !== "--demo-course" || !course || rest.length)
+    )
+      throw new Error(
+        "Use canvas:setup with optional --demo-course IA340 or IA342.",
+      );
     const values = {
       enabled: true,
       canvasOrigin: await hidden("Canvas HTTPS origin (hidden): "),
       courseId: await hidden("Canvas numeric course ID (hidden): "),
-      userId: await hidden("Owner numeric Canvas user ID (hidden): "),
+      userId: await hidden("Instructor numeric Canvas user ID (hidden): "),
       consumerKey: await hidden(
         "Consumer key, at least 16 characters (hidden): ",
       ),
       sharedSecret: await hidden(
         "Shared secret, at least 32 random characters (hidden): ",
       ),
+      ...(course && {
+        demo: {
+          course,
+          studentUserId: await hidden(
+            "Learner numeric Canvas user ID (hidden): ",
+          ),
+        },
+      }),
     };
     const config = validateCanvasConfiguration(values);
     const fd = openSync(
@@ -116,32 +148,68 @@ async function main() {
     );
     return;
   }
-  if (command !== "owner-setup")
+  if (command !== "owner-setup" && command !== "demo-setup")
     throw new Error(
-      "Choose owner-setup, canvas-setup, canvas-xml or canvas-disable.",
+      "Choose owner-setup, demo-setup, canvas-setup, canvas-xml or canvas-disable.",
     );
-  let passphrase = await hidden(
-    "Owner passphrase, at least 15 characters (hidden): ",
-  );
-  let confirmation = await hidden("Repeat passphrase (hidden): ");
-  if (passphrase !== confirmation)
-    throw new Error("Passphrases do not match; no change made.");
-  const material = await initializeOwnerCredential(passphrase);
-  passphrase = "";
-  confirmation = "";
+  const course = courseIds.find((value) => value === arg);
+  if (command === "demo-setup" && (!course || extra))
+    throw new Error("Use npm run demo:setup -- IA340 or IA342.");
+  if (command === "owner-setup" && arg !== undefined)
+    throw new Error("Use npm run owner:setup without arguments.");
+  // Check the terminal before opening or migrating any database.
+  if (!process.stdin.isTTY || !process.stderr.isTTY)
+    throw new Error("Use an interactive Terminal for hidden credential input.");
+  const ownerPassphrase = course ? "" : await confirmedPassphrase("Owner");
+  const ownerCredential = course
+    ? undefined
+    : await initializeOwnerCredential(ownerPassphrase);
   const paths = initializeRuntimePaths(c.runtimeRoot!);
   if (!paths.ok) throw new Error("Runtime unavailable.");
   const persistence = initializePersistence(paths.value);
   if (!persistence.ok)
     throw new Error("SQLite unavailable. Stop LAITA before maintenance.");
   try {
-    persistence.value.ownerAuth().setCredential(material);
+    const store = persistence.value.ownerAuth();
+    if (course) {
+      const admin = store.credential();
+      if (!admin)
+        throw new Error("Use npm run owner:setup first to initialize Admin.");
+      const teacher = await confirmedPassphrase("Demo Teacher");
+      const student = await confirmedPassphrase("Demo Student");
+      if (
+        teacher === student ||
+        (await verifyOwnerCredential(teacher, admin)) ||
+        (await verifyOwnerCredential(student, admin))
+      )
+        throw new Error(
+          "Use different passphrases for Admin, Demo Teacher and Demo Student.",
+        );
+      const teacherCredential = await initializeOwnerCredential(teacher);
+      const studentCredential = await initializeOwnerCredential(student);
+      store.configureDemo(course, teacherCredential, studentCredential);
+      process.stderr.write(
+        "Demo credentials saved for demo-teacher and demo-student. Existing membership status and History are retained.\n",
+      );
+    } else if (ownerCredential) {
+      for (const username of demoUsernames) {
+        const membership = store.demoMembership(username);
+        if (
+          membership &&
+          (await verifyOwnerCredential(ownerPassphrase, membership.credential))
+        )
+          throw new Error(
+            "Use an Owner passphrase distinct from the demo accounts.",
+          );
+      }
+      store.setCredential(ownerCredential);
+      process.stderr.write(
+        "Owner credential saved for Admin and Owner recovery. Existing Owner sessions are invalidated.\n",
+      );
+    }
   } finally {
     persistence.value.close();
   }
-  process.stderr.write(
-    "Owner credential initialized for Admin / Teacher / Student. Existing role sessions are invalidated.\n",
-  );
 }
 main().catch((error: unknown) => {
   // Validation messages are authored here; never print file, JSON, SQL or raw errors.

@@ -591,6 +591,7 @@ try {
               sessionRef: `session-${string}`,
               trace?: import("@laita/contracts").Trace,
               source?: "TYPED" | "TRANSCRIPT",
+              course?: CourseId,
             ) {
               return executeCourseAware(
                 request,
@@ -598,6 +599,8 @@ try {
                 sessionRef,
                 trace,
                 source,
+                undefined,
+                course,
               );
             },
           },

@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { courseIds, type CourseId } from "@laita/course-grounding";
 import {
   constants,
   closeSync,
@@ -18,15 +19,18 @@ export interface CanvasConfiguration {
   userId: string;
   consumerKey: string;
   sharedSecret: string;
+  demo?: { course: CourseId; studentUserId: string };
 }
 export function validateCanvasConfiguration(
   value: unknown,
 ): CanvasConfiguration {
   if (!value || typeof value !== "object") throw new Error();
   const v = value as Record<string, unknown>;
+  const keys = Object.keys(v).sort().join(",");
   if (
-    Object.keys(v).sort().join(",") !==
-      "canvasOrigin,consumerKey,courseId,enabled,sharedSecret,userId" ||
+    (keys !== "canvasOrigin,consumerKey,courseId,enabled,sharedSecret,userId" &&
+      keys !==
+        "canvasOrigin,consumerKey,courseId,demo,enabled,sharedSecret,userId") ||
     v.enabled !== true
   )
     throw new Error();
@@ -59,6 +63,18 @@ export function validateCanvasConfiguration(
     String(v.consumerKey).length < 16
   )
     throw new Error();
+  if (Object.hasOwn(v, "demo")) {
+    if (!v.demo || typeof v.demo !== "object") throw new Error();
+    const demo = v.demo as Record<string, unknown>;
+    if (
+      Object.keys(demo).sort().join(",") !== "course,studentUserId" ||
+      !courseIds.some((course) => course === demo.course) ||
+      typeof demo.studentUserId !== "string" ||
+      !/^\d{1,32}$/u.test(demo.studentUserId) ||
+      demo.studentUserId === v.userId
+    )
+      throw new Error();
+  }
   return v as unknown as CanvasConfiguration;
 }
 export function assertCanvasDirectory(file: string): void {
@@ -144,13 +160,21 @@ const percent = (value: string) =>
     /[!'()*]/gu,
     (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
   );
-export const canvasContext = (c: CanvasConfiguration) =>
+export const canvasContext = (c: CanvasConfiguration, userId = c.userId) =>
   createHash("sha256")
-    .update(JSON.stringify([c.canvasOrigin, c.courseId, c.userId]))
+    .update(JSON.stringify([c.canvasOrigin, c.courseId, userId]))
     .digest("hex");
 export const canvasFingerprint = (c: CanvasConfiguration) =>
   createHash("sha256")
-    .update(JSON.stringify([canvasContext(c), c.consumerKey, c.sharedSecret]))
+    .update(
+      JSON.stringify([
+        canvasContext(c),
+        c.consumerKey,
+        c.sharedSecret,
+        c.demo?.course,
+        c.demo?.studentUserId,
+      ]),
+    )
     .digest("hex");
 
 /** RFC 5849 form normalization. Preserve every signed field; reject ambiguous duplicates. */
@@ -184,16 +208,21 @@ export function verifyCanvasLaunch(
   )
     return;
   const roles = (get("roles") ?? "").split(",");
-  if (
-    !roles.includes("Instructor") &&
-    !roles.includes("urn:lti:role:ims/lis/Instructor")
-  )
-    return;
+  const instructor = roles.some(
+    (role) =>
+      role === "Instructor" || role === "urn:lti:role:ims/lis/Instructor",
+  );
+  const learner = roles.some(
+    (role) => role === "Learner" || role === "urn:lti:role:ims/lis/Learner",
+  );
+  if (instructor === learner) return;
+  const userId = instructor ? c.userId : c.demo?.studentUserId;
+  if (!userId) return;
   // Canvas substitutions carry the origin and numeric Canvas IDs. All are signed.
   if (
     get("custom_canvas_api_domain") !== new URL(c.canvasOrigin).host ||
     get("custom_canvas_course_id") !== c.courseId ||
-    get("custom_canvas_user_id") !== c.userId
+    get("custom_canvas_user_id") !== userId
   )
     return;
   const normalized = pairs
@@ -224,6 +253,8 @@ export function verifyCanvasLaunch(
   )
     return;
   return {
+    role: instructor ? ("teacher" as const) : ("student" as const),
+    context: canvasContext(c, userId),
     digest: createHash("sha256")
       .update(JSON.stringify([c.consumerKey, nonce]))
       .digest("hex"),
@@ -242,15 +273,15 @@ const xml = (value: string) =>
         "'": "&apos;",
       })[c]!,
   );
-export function canvasXml(publicOrigin: string) {
+export function canvasXml(publicOrigin: string, demo = false) {
   const origin = new URL(publicOrigin);
   if (origin.protocol !== "https:" || origin.origin !== publicOrigin)
     throw new Error();
   return `<?xml version="1.0" encoding="UTF-8"?>
 <cartridge_basiclti_link xmlns="http://www.imsglobal.org/xsd/imslticc_v1p0" xmlns:blti="http://www.imsglobal.org/xsd/imsbasiclti_v1p0" xmlns:lticm="http://www.imsglobal.org/xsd/imslticm_v1p0">
-  <blti:title>LAITA</blti:title><blti:description>Single-owner local teaching assistant</blti:description>
+  <blti:title>LAITA</blti:title><blti:description>Local teaching assistant</blti:description>
   <blti:launch_url>${xml(publicOrigin)}/api/v1/canvas/launch</blti:launch_url>
   <blti:custom><lticm:property name="canvas_api_domain">$Canvas.api.domain</lticm:property><lticm:property name="canvas_course_id">$Canvas.course.id</lticm:property><lticm:property name="canvas_user_id">$Canvas.user.id</lticm:property></blti:custom>
-  <blti:extensions platform="canvas.instructure.com"><lticm:property name="privacy_level">anonymous</lticm:property><lticm:options name="course_navigation"><lticm:property name="url">${xml(publicOrigin)}/api/v1/canvas/launch</lticm:property><lticm:property name="text">LAITA</lticm:property><lticm:property name="visibility">admins</lticm:property><lticm:property name="default">enabled</lticm:property><lticm:property name="windowTarget">_blank</lticm:property></lticm:options></blti:extensions>
+  <blti:extensions platform="canvas.instructure.com"><lticm:property name="privacy_level">anonymous</lticm:property><lticm:options name="course_navigation"><lticm:property name="url">${xml(publicOrigin)}/api/v1/canvas/launch</lticm:property><lticm:property name="text">LAITA</lticm:property><lticm:property name="visibility">${demo ? "members" : "admins"}</lticm:property><lticm:property name="default">enabled</lticm:property><lticm:property name="windowTarget">_blank</lticm:property></lticm:options></blti:extensions>
 </cartridge_basiclti_link>`;
 }

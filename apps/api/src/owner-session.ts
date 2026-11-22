@@ -2,7 +2,13 @@ import { rateLimit, MemoryStore } from "express-rate-limit";
 import { createHash, randomBytes } from "node:crypto";
 import express, { type Express, type Request, type Response } from "express";
 import type { AccessConfiguration } from "@laita/contracts/server";
-import type { HistoryScope, OwnerAuthRepository } from "@laita/persistence";
+import { courseIds, type CourseId } from "@laita/course-grounding";
+import {
+  demoUsernames,
+  type DemoUsername,
+  type HistoryScope,
+  type OwnerAuthRepository,
+} from "@laita/persistence";
 import { verifyOwnerCredential } from "./owner-credential.ts";
 import {
   createTeacherDraftHandler,
@@ -21,7 +27,6 @@ import {
   type CanvasPageOptions,
 } from "./canvas-pages.ts";
 import {
-  canvasContext,
   canvasFingerprint,
   type CanvasConfiguration,
   verifyCanvasLaunch,
@@ -32,6 +37,7 @@ export interface OwnerSession extends HistoryScope {
   revision: string;
   expires: number;
   canvasRevision?: string;
+  demo?: { username: DemoUsername; course: CourseId };
 }
 const cookieName = "__Host-laita-session";
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -46,7 +52,7 @@ export function createOwnerSessions(options: {
   const { access, store } = options;
   const now = options.now ?? Date.now;
   const sessions = new Map<string, OwnerSession>();
-  // One Owner entry, deliberately no per-person/IP profiling. The shared
+  // One protected entry, deliberately no per-person/IP profiling. The shared
   // Express limiter also bounds status/logout and control requests.
   const entryStore = new MemoryStore();
   const entryLimit = rateLimit({
@@ -97,21 +103,30 @@ export function createOwnerSessions(options: {
   };
   const lookup = (req: Request) => {
     const raw = token(req);
-    const session = raw ? sessions.get(sha(raw)) : undefined;
+    if (!raw) return;
+    const binding = sha(raw);
+    const session = sessions.get(binding);
     if (!session) return;
-    const credential = store?.credential();
+    const membership =
+      session.demo && store?.demoMembership(session.demo.username);
+    const revision = session.demo
+      ? membership?.active &&
+        membership.course === session.demo.course &&
+        membership.role === session.role
+        ? membership.credential.revision
+        : undefined
+      : store?.credential()?.revision;
     const canvas = session.source === "canvas" ? options.canvas?.() : undefined;
     if (
-      !credential ||
-      session.revision !== credential.revision ||
+      session.revision !== revision ||
       session.expires <= now() ||
       (session.source === "canvas" &&
         (!canvas || session.canvasRevision !== canvasFingerprint(canvas)))
     ) {
-      sessions.delete(sha(raw!));
+      sessions.delete(binding);
       return;
     }
-    return { ...session, binding: sha(raw!) };
+    return { ...session, binding };
   };
   const forget = (req: Request) => {
     const raw = token(req);
@@ -120,11 +135,18 @@ export function createOwnerSessions(options: {
   function establish(
     req: Request,
     res: Response,
-    value: Pick<OwnerSession, "role" | "source" | "context" | "canvasRevision">,
+    value: Pick<
+      OwnerSession,
+      "role" | "source" | "context" | "canvasRevision" | "demo"
+    >,
     revision: string,
   ) {
     for (const [key, s] of sessions)
-      if (s.expires <= now() || s.revision !== revision) sessions.delete(key);
+      if (
+        s.expires <= now() ||
+        (s.demo?.username === value.demo?.username && s.revision !== revision)
+      )
+        sessions.delete(key);
     const current = token(req);
     if (sessions.size - (current && sessions.has(sha(current)) ? 1 : 0) >= 64) {
       res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
@@ -195,7 +217,10 @@ export function createOwnerSessions(options: {
           res.json({
             role: s.role,
             source: s.source,
-            ...(s.role === "student" &&
+            ...(s.demo ? { course: s.demo.course } : {}),
+            ...(s.source === "local" &&
+            !s.demo &&
+            s.role === "student" &&
             s.context === options.sampleHistoryContext &&
             options.sampleHistoryContext
               ? { sample: true }
@@ -208,6 +233,12 @@ export function createOwnerSessions(options: {
         strict: true,
         type: "application/json",
       });
+      const parseJson: express.RequestHandler = (req, res, next) => {
+        json(req, res, (error) => {
+          if (error) res.status(400).json({ code: "INVALID_REQUEST" });
+          else next();
+        });
+      };
       app.post(
         "/api/v1/auth/login",
         entryLimit,
@@ -224,13 +255,14 @@ export function createOwnerSessions(options: {
             res.status(429).json({ code: "RATE_LIMITED" });
             return;
           }
-          json(req, res, (error) => {
-            if (error) res.status(400).json({ code: "INVALID_REQUEST" });
-            else next();
-          });
+          parseJson(req, res, next);
         },
         async (req, res) => {
           const keys = req.body && Object.keys(req.body).sort().join(",");
+          const named = keys === "passphrase,username";
+          const username = demoUsernames.find(
+            (value) => value === req.body?.username,
+          );
           const sample =
             keys === "passphrase,role,sample" &&
             req.body.role === "student" &&
@@ -239,8 +271,10 @@ export function createOwnerSessions(options: {
           if (
             !req.is("application/json") ||
             !req.body ||
-            (keys !== "passphrase,role" && !sample) ||
-            !["admin", "teacher", "student"].includes(req.body.role) ||
+            (named
+              ? req.body.username !== "admin" && !username
+              : (keys !== "passphrase,role" && !sample) ||
+                !["admin", "teacher", "student"].includes(req.body.role)) ||
             typeof req.body.passphrase !== "string" ||
             Buffer.byteLength(req.body.passphrase) > 1024
           ) {
@@ -255,38 +289,60 @@ export function createOwnerSessions(options: {
           }
           verifying = true;
           try {
-            const credential = store?.credential();
+            const membership = username && store?.demoMembership(username);
+            const credential = username
+              ? membership?.credential
+              : store?.credential();
             if (!credential) {
-              deny(res, 503);
+              deny(res, username ? 401 : 503);
               return;
             }
             const valid = await verifyOwnerCredential(
               req.body.passphrase,
               credential,
             );
-            if (!valid) {
+            const current = username && store?.demoMembership(username);
+            const course = courseIds.find((value) => value === current?.course);
+            if (
+              !valid ||
+              (username
+                ? !current?.active ||
+                  !course ||
+                  current.credential.revision !== credential.revision
+                : store?.credential()?.revision !== credential.revision)
+            ) {
               deny(res, 401);
               return;
             }
-            if (store?.credential()?.revision !== credential.revision) {
-              deny(res, 401);
-              return;
-            }
+            const role = current
+              ? current.role
+              : named
+                ? "admin"
+                : req.body.role;
             if (
               establish(
                 req,
                 res,
                 {
-                  role: req.body.role,
+                  role,
                   source: "local",
-                  ...(req.body.role === "student"
-                    ? { context: sample || "" }
-                    : {}),
+                  ...(current && course
+                    ? {
+                        demo: { username: current.username, course },
+                        context: course,
+                      }
+                    : role === "student"
+                      ? { context: sample || "" }
+                      : {}),
                 },
                 credential.revision,
               )
             )
-              res.json({ role: req.body.role, source: "local" });
+              res.json({
+                role,
+                source: "local",
+                ...(course ? { course } : {}),
+              });
           } catch {
             deny(res, 503);
           } finally {
@@ -306,6 +362,47 @@ export function createOwnerSessions(options: {
           `${cookieName}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
         );
         res.json({ signedOut: true });
+      });
+      const demoMemberships = "/api/v1/auth/demo-memberships";
+      const requireAdmin: express.RequestHandler = (req, res, next) => {
+        const session = authorize(req, res);
+        if (!session) return;
+        if (session.role !== "admin" || session.source !== "local") {
+          deny(res);
+          return;
+        }
+        next();
+      };
+      app.use(demoMemberships, entryLimit, requireAdmin);
+      app.get(demoMemberships, (_req, res) => {
+        res.json({ memberships: store!.listDemoMemberships() });
+      });
+      app.post(demoMemberships, parseJson, requireAdmin, (req, res) => {
+        const value = req.body;
+        const username = demoUsernames.find((name) => name === value?.username);
+        if (
+          !req.is("json") ||
+          !username ||
+          !courseIds.some((course) => course === value.course) ||
+          typeof value.active !== "boolean" ||
+          Object.keys(value).sort().join(",") !== "active,course,username"
+        ) {
+          res.status(400).json({ code: "INVALID_REQUEST" });
+          return;
+        }
+        const updated = store!.setDemoMembershipActive(
+          username,
+          value.course,
+          value.active,
+        );
+        if (!updated) {
+          res.status(404).json({ code: "NOT_FOUND" });
+          return;
+        }
+        if (!updated.active)
+          for (const [key, session] of sessions)
+            if (session.demo?.username === username) sessions.delete(key);
+        res.json(updated);
       });
       const form = express.text({
         inflate: false,
@@ -373,17 +470,39 @@ export function createOwnerSessions(options: {
               deny(res);
               return;
             }
+            const membership =
+              c.demo &&
+              store!.demoMembership(
+                verified.role === "teacher" ? "demo-teacher" : "demo-student",
+              );
+            if (
+              c.demo &&
+              (!membership?.active ||
+                membership.course !== c.demo.course ||
+                membership.role !== verified.role)
+            ) {
+              deny(res);
+              return;
+            }
             if (
               establish(
                 req,
                 res,
                 {
-                  role: "teacher",
+                  role: verified.role,
                   source: "canvas",
-                  context: canvasContext(c),
+                  context: verified.context,
                   canvasRevision: canvasFingerprint(c),
+                  ...(c.demo && membership
+                    ? {
+                        demo: {
+                          username: membership.username,
+                          course: c.demo.course,
+                        },
+                      }
+                    : {}),
                 },
-                credential.revision,
+                membership?.credential.revision ?? credential.revision,
               )
             )
               res.redirect(303, "/");
