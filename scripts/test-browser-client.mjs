@@ -186,7 +186,7 @@ try {
     canvas: () => launchSettings,
     authNow: () => canvasNow,
     canvasPages: syntheticVerification.options,
-    teacherDraft: async (course, kind, topic) => {
+    teacherDraft: async (course, kind, topic, _signal, includeCriteria) => {
       assert.equal(course, "IA342");
       const text = {
         "ASSIGNMENT:Lab 5": "## Practice task\nCompare two visual explanations.",
@@ -194,10 +194,13 @@ try {
         "ASSIGNMENT:Lab 6": "## Map lab\n\nCompare two maps. 地图",
       }[`${kind}:${topic}`];
       assert.ok(text);
+      const suggestion = includeCriteria
+        ? text + "\n\n### Assessment criteria\n\nExplain one visual difference."
+        : text;
       return {
         mode: "LOCAL",
         grounding: { status: "GROUNDED", course, sources: [{ course, path: "docs/example.md", section: topic }] },
-        legs: [{ provider: "LOCAL", provenance: { actualProvider: "LOCAL" }, status: "COMPLETED", output: { text } }],
+        legs: [{ provider: "LOCAL", provenance: { actualProvider: "LOCAL" }, status: "COMPLETED", output: { text: suggestion } }],
       };
     },
     teacherHistory: {
@@ -539,6 +542,7 @@ try {
     assert.equal(syntheticCanvas.writes.length, writes);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
     const pageDraft = page.locator("#teacher-canvas-pages");
+    assert.equal(await pageDraft.getByLabel("Assessment criteria in the draft").count(), 0);
     await pageDraft.getByLabel("Topic or Lab/Week number").fill("Lab 6");
     await pageDraft.getByRole("button", { name: "Generate Local suggestion" }).click();
     await pageDraft.getByText("docs/example.md · Lab 6").waitFor();
@@ -575,11 +579,15 @@ try {
     await assignmentTitle.fill("Synthetic studio lab");
     const assignmentBody = tool.getByLabel("Assignment Markdown");
     await tool.getByLabel("Topic or Lab/Week number").fill("Lab 6");
+    const criteria = tool.getByLabel("Assessment criteria in the draft");
+    assert.equal(await criteria.inputValue(), "no");
+    await criteria.selectOption("yes");
     await tool.getByRole("button", { name: "Generate Local suggestion" }).click();
     await tool.getByText("docs/example.md · Lab 6").waitFor();
     assert.equal(await assignmentBody.inputValue(), "");
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await tool.getByRole("button", { name: "Apply suggestion to body" }).click();
-    assert.equal(await assignmentBody.inputValue(), "## Map lab\n\nCompare two maps. 地图");
+    assert.equal(await assignmentBody.inputValue(), "## Map lab\n\nCompare two maps. 地图\n\n### Assessment criteria\n\nExplain one visual difference.");
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await tool.getByLabel("Points possible").fill("4.5");
     await tool.getByLabel("File Upload").check();
@@ -588,6 +596,7 @@ try {
     await assignmentPreview.getByText(/^Group 72 · Studio Exercises/).waitFor();
     assert.match(await assignmentPreview.locator("#canvas-assignment-subject").textContent(), /Unpublished.*4.5 points.*Text Entry, File Upload.*2026-12-21T10:30:00.000Z/);
     await assignmentPreview.getByRole("heading", { name: "Map lab" }).waitFor();
+    await assignmentPreview.getByRole("heading", { name: "Assessment criteria" }).waitFor();
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await assignmentTitle.fill("Reviewed studio lab");
     assert.equal(await createAssignment.isVisible(), false);
@@ -597,6 +606,11 @@ try {
     await createAssignment.click();
     await tool.getByText("Canvas verified assignment 91.").waitFor();
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites + 1);
+    const savedBody = syntheticCanvas.assignmentRows.get("91").description;
+    assert.match(savedBody, /<h3>Assessment criteria<\/h3>/u);
+    const submitted = new URLSearchParams(syntheticCanvas.assignmentWrites.at(-1).fields);
+    assert.equal(submitted.get("assignment[description]"), savedBody);
+    assert.ok([...submitted.keys()].every((key) => !/rubric/iu.test(key)));
 
     await tool.getByLabel("Assignment action").selectOption("TITLE");
     assert.equal(await tool.getByRole("button", { name: "Generate Local suggestion" }).isVisible(), false);
