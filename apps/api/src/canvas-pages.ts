@@ -27,6 +27,7 @@ import {
   type CanvasTestStudentScope,
   type CanvasModuleDraft,
   type CanvasModuleScope,
+  type CanvasModuleStep,
 } from "@laita/contracts";
 import { createCanvasPageClient } from "@laita/providers";
 import { createSecretHandleForProvider } from "@laita/runtime";
@@ -402,15 +403,20 @@ export function createCanvasAuthoringHandlers(
         res.status(403).json({ code: "FORBIDDEN" });
         return;
       }
-      if (
-        "moduleId" in draft &&
-        (!modules?.moduleIds.includes(draft.moduleId) ||
-          !(
-            draft.kind === "LINK_PAGE" ? modules.pageIds : modules.assignmentIds
-          ).includes(draft.contentId))
-      ) {
-        res.status(403).json({ code: "FORBIDDEN" });
-        return;
+      if ("moduleId" in draft) {
+        const items = draft.kind === "LINK_ORDERED" ? draft.items : [draft];
+        if (
+          !modules?.moduleIds.includes(draft.moduleId) ||
+          !items.every(({ kind, contentId }) =>
+            (kind === "LINK_PAGE"
+              ? modules.pageIds
+              : modules.assignmentIds
+            ).includes(contentId),
+          )
+        ) {
+          res.status(403).json({ code: "FORBIDDEN" });
+          return;
+        }
       }
       const plan = saved;
       const draftKey = createHash("sha256")
@@ -438,15 +444,24 @@ export function createCanvasAuthoringHandlers(
       }
       busy = true;
       const controller = new AbortController();
+      const signal =
+        draft.kind === "LINK_ORDERED"
+          ? AbortSignal.any([controller.signal, AbortSignal.timeout(35_000)])
+          : controller.signal;
       const disconnect = () => controller.abort();
       res.once("close", disconnect);
       let dispatched = false;
       let resourceId: string | undefined;
-      const assertCurrent = () => {
-        controller.signal.throwIfAborted();
+      const orderSteps: CanvasModuleStep[] = [];
+      let orderTargetChecked = false;
+      const assertAccess = () => {
         const details = get(draft);
         if (details.key !== key) throw new Error("INVALID_CANVAS_TARGET");
         return details;
+      };
+      const assertCurrent = () => {
+        signal.throwIfAborted();
+        return assertAccess();
       };
       const sendResult = (
         status: "VERIFIED" | "UNVERIFIED" | "UNCERTAIN",
@@ -480,13 +495,20 @@ export function createCanvasAuthoringHandlers(
               ),
             ...(options.fetcher ? { fetcher: options.fetcher } : {}),
           },
-          controller.signal,
+          signal,
         );
         const current = await client.readTarget(
           "title" in draft ? draft : undefined,
         );
         const link =
-          "moduleId" in draft ? await client.modules.preview(draft) : undefined;
+          draft.kind === "LINK_PAGE" || draft.kind === "LINK_ASSIGNMENT"
+            ? await client.modules.preview(draft)
+            : undefined;
+        const order =
+          draft.kind === "LINK_ORDERED"
+            ? await client.modules.previewOrder(draft)
+            : undefined;
+        const links = link ? [link] : (order?.links ?? []);
         const sample =
           draft.kind === "FEEDBACK" && feedback
             ? await client.feedback.preview(
@@ -509,9 +531,12 @@ export function createCanvasAuthoringHandlers(
               current.courseName.includes(secret) ||
               subject?.name.includes(secret) ||
               sample?.subject.assignmentName.includes(secret) ||
-              link?.subject.moduleName.includes(secret) ||
-              link?.resource.name.includes(secret) ||
-              link?.resource.reference.includes(secret),
+              links.some(
+                ({ subject, resource }) =>
+                  subject.moduleName.includes(secret) ||
+                  resource.name.includes(secret) ||
+                  resource.reference.includes(secret),
+              ),
           )
         )
           throw new Error("INVALID_CANVAS_TARGET");
@@ -519,6 +544,7 @@ export function createCanvasAuthoringHandlers(
           target: current,
           subject,
           link,
+          order,
           sample,
         });
         if (action === "preview") {
@@ -539,6 +565,9 @@ export function createCanvasAuthoringHandlers(
             draft,
             ...(subject && { subject }),
             ...(link && { moduleSubject: link.subject }),
+            ...(order && {
+              orderedSubjects: order.links.map(({ subject }) => subject),
+            }),
             ...(sample && { feedbackSubject: sample.subject }),
           });
           return;
@@ -591,6 +620,31 @@ export function createCanvasAuthoringHandlers(
             sample.subject,
             sample.digest,
           );
+        } else if (draft.kind === "LINK_ORDERED") {
+          if (!order || !plan) throw new Error("INVALID_CANVAS_TARGET");
+          await client.modules.applyOrder(
+            draft,
+            order,
+            orderSteps,
+            async () => {
+              orderTargetChecked = false;
+              const fresh = await client.readTarget();
+              if (JSON.stringify(fresh) !== JSON.stringify(current))
+                throw new Error("INVALID_CANVAS_TARGET");
+              orderTargetChecked = true;
+            },
+            () => {
+              if (!dispatched) beforeDispatch();
+              else {
+                assertCurrent();
+                if (plan.expires <= now()) throw new Error("PREVIEW_REQUIRED");
+              }
+            },
+          );
+          assertAccess();
+          if (!res.destroyed)
+            res.json({ status: "ORDERED", steps: orderSteps });
+          return;
         } else {
           resourceId = await client.modules.write(draft, link, beforeDispatch);
           verified = await client.modules.readBack(resourceId, draft, link);
@@ -607,6 +661,11 @@ export function createCanvasAuthoringHandlers(
           return;
         }
         try {
+          if (orderSteps.length && orderTargetChecked) {
+            assertAccess();
+            res.json({ status: "ORDERED", steps: orderSteps });
+            return;
+          }
           assertCurrent();
           if (resourceId) {
             sendResult("UNVERIFIED", resourceId);

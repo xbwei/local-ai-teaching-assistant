@@ -26,6 +26,7 @@ import {
   type CanvasModuleDraft,
   type CanvasModulePreview,
   type CanvasModuleResult,
+  type CanvasModuleStep,
   readCanvasPageDraft,
   sameCanvasPageDraft,
   type CanvasPageDraft,
@@ -450,27 +451,42 @@ export class InputApi {
       throw new ClientError();
     const plan = { planId: value.planId, target, draft };
     if (draft.kind === "CREATE_MODULE") {
-      if (value.moduleSubject !== undefined) throw new ClientError();
+      if (
+        value.moduleSubject !== undefined ||
+        value.orderedSubjects !== undefined
+      )
+        throw new ClientError();
       return plan;
     }
-    const subject = responseRecord(value.moduleSubject);
-    if (
-      !subject ||
-      subject.moduleId !== draft.moduleId ||
-      !canvasPageTitle(subject.moduleName) ||
-      !canvasPageTitle(subject.resourceName) ||
-      typeof subject.resourcePublished !== "boolean"
-    )
-      throw new ClientError();
-    return {
-      ...plan,
-      moduleSubject: {
+    const readSubject = (entry: unknown) => {
+      const subject = responseRecord(entry);
+      if (
+        !subject ||
+        subject.moduleId !== draft.moduleId ||
+        !canvasPageTitle(subject.moduleName) ||
+        !canvasPageTitle(subject.resourceName) ||
+        typeof subject.resourcePublished !== "boolean"
+      )
+        throw new ClientError();
+      return {
         moduleId: draft.moduleId,
         moduleName: subject.moduleName,
         resourceName: subject.resourceName,
         resourcePublished: subject.resourcePublished,
-      },
+      };
     };
+    if (draft.kind === "LINK_ORDERED") {
+      if (
+        !Array.isArray(value.orderedSubjects) ||
+        value.orderedSubjects.length !== draft.items.length
+      )
+        throw new ClientError();
+      return {
+        ...plan,
+        orderedSubjects: value.orderedSubjects.map(readSubject),
+      };
+    }
+    return { ...plan, moduleSubject: readSubject(value.moduleSubject) };
   }
 
   async saveCanvasModule(
@@ -486,13 +502,32 @@ export class InputApi {
         signal,
       ),
     );
-    if (value?.status === "UNCERTAIN") return { status: "UNCERTAIN" };
-    if (
-      (value?.status === "VERIFIED" || value?.status === "UNVERIFIED") &&
-      canvasPageId(value.resourceId)
-    )
-      return { status: value.status, resourceId: value.resourceId };
-    throw new ClientError();
+    const readStep = (entry: unknown): CanvasModuleStep => {
+      const step = responseRecord(entry);
+      if (step?.status === "UNCERTAIN") return { status: "UNCERTAIN" };
+      if (
+        (step?.status === "VERIFIED" || step?.status === "UNVERIFIED") &&
+        canvasPageId(step.resourceId)
+      )
+        return { status: step.status, resourceId: step.resourceId };
+      throw new ClientError();
+    };
+    if (draft.kind === "LINK_ORDERED" && value?.status === "ORDERED") {
+      if (
+        !Array.isArray(value.steps) ||
+        !value.steps.length ||
+        value.steps.length > draft.items.length
+      )
+        throw new ClientError();
+      const steps = value.steps.map(readStep);
+      if (steps.slice(0, -1).some(({ status }) => status !== "VERIFIED"))
+        throw new ClientError();
+      return { status: "ORDERED", steps };
+    }
+    const result = readStep(value);
+    if (draft.kind === "LINK_ORDERED" && result.status !== "UNCERTAIN")
+      throw new ClientError();
+    return result;
   }
 
   async canvasFeedbackScope() {

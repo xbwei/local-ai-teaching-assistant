@@ -346,6 +346,7 @@
               <option value="LINK_ASSIGNMENT">
                 Add an approved assignment
               </option>
+              <option value="LINK_ORDERED">Add approved items in order</option>
             </select>
           </label>
           <label class="teacher-field">
@@ -365,6 +366,17 @@
             Item to add
             <select id="canvas-module-content" required disabled></select>
           </label>
+          <fieldset id="canvas-module-order-fields" hidden>
+            <legend>Append order</legend>
+            <label class="teacher-field">
+              Approved item for order
+              <select id="canvas-module-order-pick" disabled></select>
+            </label>
+            <button id="canvas-module-order-add" type="button" disabled>
+              Add to order
+            </button>
+            <ol id="canvas-module-order"></ol>
+          </fieldset>
           <button type="submit">Preview Canvas Module change</button>
           <button id="canvas-module-abort" type="button" hidden>
             Cancel preview request
@@ -377,6 +389,7 @@
         >
           <p id="canvas-module-target"></p>
           <p id="canvas-module-change"></p>
+          <ol id="canvas-module-reviewed-order" hidden></ol>
           <button id="canvas-module-confirm" type="button">
             Apply reviewed change
           </button>
