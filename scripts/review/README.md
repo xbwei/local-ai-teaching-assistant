@@ -19,8 +19,10 @@ node scripts/review/review.mjs inspect
 git fetch origin main
 BASE=$(git rev-parse origin/main)
 HEAD=$(git rev-parse HEAD)
-node scripts/review/review.mjs prepare "$BASE" "$HEAD" HIGH_ASSURANCE_ANTIGRAVITY
-node scripts/review/review.mjs review "$BASE" "$HEAD" HIGH_ASSURANCE_ANTIGRAVITY
+PROFILE=CRITICAL_ANTIGRAVITY # Use the profile assigned to this change.
+node scripts/review/review.mjs inspect "$PROFILE"
+node scripts/review/review.mjs prepare "$BASE" "$HEAD" "$PROFILE"
+node scripts/review/review.mjs review "$BASE" "$HEAD" "$PROFILE"
 ```
 
 `inspect` prints machine-independent executable/artifact hashes, requested
@@ -30,15 +32,17 @@ version must match `route.json`; unknown shims and CLI identity changes block.
 `AGY_EXECUTABLE` can locate the installed executable but cannot bypass that check.
 Never replace or repin the executable to satisfy a check.
 
-`route.json` contains invocation configuration and limits, not a qualification
-registry. The supported profile remains `HIGH_ASSURANCE_ANTIGRAVITY`, requesting
-`gemini-4-argon-high` / high under the published workspace instructions. Other
-profiles/routes are unsupported; there is no automatic fallback.
+`route.json` contains the supported invocation settings and limits. The
+published workspace supports `HIGH_ASSURANCE_ANTIGRAVITY` and
+`CRITICAL_ANTIGRAVITY`, each requesting `gemini-4-argon-high` / high.
+An `inspect` without arguments shows the existing High Assurance route.
+`prepare` and `review` require the assigned profile explicitly.
 
 `prepare` requires full commit IDs, a clean checkout including untracked files,
 HEAD equal to the supplied commit, and a base equal to both origin/main and live
 remote main. The base must be an ancestor of HEAD. Its binding includes both
-trees, changed paths, complete diff byte count and SHA-256. The diff includes
+trees, changed paths, complete diff byte count and SHA-256. The selected profile
+is part of the binding the reviewer must echo. The diff includes
 binary patches and deletions, disables external diff/text conversion, and has no
 path filter. Empty, oversized or unsupported-encoding diffs block without
 truncation. Preparation does not invoke review or print the diff.
@@ -79,7 +83,8 @@ adverse results and failures exit 2.
 
 ## Requested and reported information
 
-The receipt distinguishes `requestedModel` / `requestedEffort` from `reported`
+The receipt identifies the profile and its route hash. It distinguishes
+`requestedModel` / `requestedEffort` from `reported`
 native model, effort, agent and permission mode. The supported CLI
 [headless protocol](https://antigravity.google/docs/cli/headless/) reports model,
 agent and permission mode at init. It does not normally supply a separate effort

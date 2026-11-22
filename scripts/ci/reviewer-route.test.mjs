@@ -8,6 +8,7 @@ import {
   sha256,
   routeFiles,
   identity,
+  selectProfile,
   canonicalExecutable,
   bindDiff,
   assertFreshBase,
@@ -65,6 +66,42 @@ const config = {
 };
 const route = () =>
   identity(config, artifacts, config.cliSha256, config.cliVersion);
+const criticalProfile = "CRITICAL_ANTIGRAVITY";
+
+test("both explicit profiles select Argon High and have separate route identities", () => {
+  const routes = JSON.parse(
+    fs.readFileSync(new URL("../review/route.json", import.meta.url)),
+  );
+  const high = selectProfile(routes, config.profile);
+  const critical = selectProfile(routes, criticalProfile);
+  assert.deepEqual(critical, { ...high, profile: criticalProfile });
+  const routeHashes = new Set();
+  for (const selected of [high, critical]) {
+    assert.equal(selected.model, "gemini-4-argon-high");
+    assert.equal(selected.effort, "high");
+    const record = identity(
+      selected,
+      artifacts,
+      selected.cliSha256,
+      selected.cliVersion,
+    );
+    assert.equal(record.profile, selected.profile);
+    routeHashes.add(record.routeSha256);
+  }
+  assert.equal(routeHashes.size, 2);
+  for (const profile of [
+    undefined,
+    "",
+    "STANDARD_ANTIGRAVITY",
+    "CRITICAL",
+    "__proto__",
+    "constructor",
+  ])
+    assert.throws(
+      () => selectProfile(routes, profile),
+      /UNSUPPORTED_REVIEW_PROFILE/,
+    );
+});
 test("canonical discovery resolves symlinks and only the known shim; never executes shims", (t) => {
   const root = temporary(t);
   const binary = path.join(root, "native");
@@ -195,7 +232,7 @@ test("structured result rejects partial coverage, mismatched diff and unexpected
     /INVALID_FINDING/,
   );
 });
-function events(binding, verdict = "PASS") {
+function events(binding, verdict = "PASS", selected = config) {
   const schema = JSON.parse(
     fs.readFileSync(new URL("../review/result.schema.json", import.meta.url)),
   );
@@ -205,7 +242,7 @@ function events(binding, verdict = "PASS") {
       event: "init",
       conversation_id: "synthetic",
       init: {
-        model: config.model,
+        model: selected.model,
         agent: "laita-restricted-reviewer",
         permission_mode: "strict",
         tools: ["view_file", "run_command"],
@@ -236,9 +273,38 @@ function events(binding, verdict = "PASS") {
         },
       },
     },
-    stream: () => streamValidator(config, binding, schema),
+    stream: () => streamValidator(selected, binding, schema),
   };
 }
+test("a critical result requires the exact profile, permission, effort and coverage", () => {
+  const binding = { files: ["synthetic.txt"], profile: criticalProfile };
+  const selected = { ...config, profile: criticalProfile };
+  const wrongPermission = events(binding, "PASS", selected);
+  wrongPermission.init.init.permission_mode = "permissive";
+  assert.throws(
+    () => wrongPermission.stream().accept(wrongPermission.init),
+    /RUNTIME_ROUTE_DRIFT/,
+  );
+  const wrongEffort = events(binding, "PASS", selected);
+  wrongEffort.init.init.effort = "medium";
+  assert.throws(
+    () => wrongEffort.stream().accept(wrongEffort.init),
+    /RUNTIME_ROUTE_DRIFT/,
+  );
+  for (const [patch, error] of [
+    [
+      { binding: { ...binding, profile: config.profile } },
+      /DIFF_BINDING_MISMATCH/,
+    ],
+    [{ coverage: "incomplete" }, /INCONSISTENT_PASS/],
+  ]) {
+    const { init, result, stream } = events(binding, "PASS", selected);
+    const validator = stream();
+    validator.accept(init);
+    Object.assign(result.result.structured_output, patch);
+    assert.throws(() => validator.accept(result), error);
+  }
+});
 test("supported init/step/result accepts PASS and adverse results without extra attestation fields", () => {
   const binding = { files: ["synthetic.txt"] };
   for (const verdict of ["PASS", "FINDINGS", "BLOCKED"]) {
@@ -802,15 +868,47 @@ ${source}
   fs.chmodSync(executable, 0o700);
   return { root, executable };
 }
-function inputBinding(diff) {
+function inputBinding(diff, profile = config.profile) {
   return {
     base: "a".repeat(40),
     head: "b".repeat(40),
     files: ["synthetic.txt"],
     diffBytes: diff.length,
     diffSha256: sha256(diff),
+    profile,
   };
 }
+test("critical review sends and receives the assigned profile in the binding", async (t) => {
+  const diff = Buffer.from("synthetic critical diff");
+  const selected = { ...config, profile: criticalProfile, timeoutMs: 3000 };
+  const binding = inputBinding(diff, selected.profile);
+  const { executable } = fakeCli(
+    t,
+    `
+emit(init);
+readPrompt((prompt) => {
+  if (prompt.binding.profile !== ${JSON.stringify(criticalProfile)}) process.exit(2);
+  emit(result);
+});`,
+  );
+  const { result } = await runReview(
+    executable,
+    selected,
+    binding,
+    diff,
+    "synthetic policy",
+  );
+  assert.equal(result.verdict, "PASS");
+  assert.deepEqual(result.binding, binding);
+  await assert.rejects(
+    runReview(executable, config, binding, diff, "synthetic policy", () => {
+      assert.fail(
+        "Mismatched profile must reject before starting the reviewer",
+      );
+    }),
+    /REVIEW_PROFILE_BINDING_MISMATCH/,
+  );
+});
 test("transport delivers one complete UTF-8 prompt and accepts its bound structured result", async (t) => {
   const diff = Buffer.from(
     "synthetic padding 💡\n".repeat(16000) + "late synthetic marker",
