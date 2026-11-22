@@ -12,6 +12,7 @@ import {
   teacherChatTools,
   type TeacherChatTool,
 } from "./client/teacher-chat.ts";
+import type { CanvasModuleItemSelector } from "./client/teacher-canvas-modules.ts";
 import {
   isVirtualKeyboardOpen,
   isTouchCapable,
@@ -68,8 +69,11 @@ if (
   document.body.dataset.ownerRole === "teacher" &&
   document.body.dataset.ownerSource === "canvas"
 ) {
+  let selectModuleItem: CanvasModuleItemSelector | undefined;
   void import("./client/teacher-canvas-inventory.ts")
-    .then(({ mountCanvasInventory }) => mountCanvasInventory(api))
+    .then(({ mountCanvasInventory }) =>
+      mountCanvasInventory(api, () => selectModuleItem),
+    )
     .catch(() => {
       /* Unavailable inventory leaves the other Teacher tools usable. */
     });
@@ -87,6 +91,9 @@ if (
     });
   void import("./client/teacher-canvas-modules.ts")
     .then(({ mountTeacherCanvasModules }) => mountTeacherCanvasModules(api))
+    .then((select) => {
+      selectModuleItem = select;
+    })
     .catch(() => {
       /* Unavailable Canvas tools leave Chat usable. */
     });

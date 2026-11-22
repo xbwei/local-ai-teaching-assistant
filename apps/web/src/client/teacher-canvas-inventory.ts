@@ -1,5 +1,6 @@
 import { isCanvasInventoryKind } from "@laita/contracts/browser";
 import type { InputApi } from "./api.ts";
+import type { CanvasModuleItemSelector } from "./teacher-canvas-modules.ts";
 import { bindTeacherForm } from "./teacher-form.ts";
 
 const labels = {
@@ -9,7 +10,10 @@ const labels = {
   modules: "Unpublished Module destinations",
 };
 
-export async function mountCanvasInventory(api: InputApi) {
+export async function mountCanvasInventory(
+  api: InputApi,
+  moduleItemSelector: () => CanvasModuleItemSelector | undefined,
+) {
   const kinds = await api.canvasInventoryOptions();
   if (!kinds.length) return;
   const tool = document.getElementById("teacher-canvas-inventory")!;
@@ -37,15 +41,41 @@ export async function mountCanvasInventory(api: InputApi) {
         const { target, entries } = await api.canvasInventory(selected, signal);
         signal.throwIfAborted();
         status.textContent = `${target.courseName} · Course ${target.courseId}`;
+        const action =
+          selected === "pages"
+            ? "LINK_PAGE"
+            : selected === "module-assignments"
+              ? "LINK_ASSIGNMENT"
+              : undefined;
+        const selectItem = kinds.includes("modules")
+          ? moduleItemSelector()
+          : undefined;
         results.replaceChildren(
           ...entries.map(({ id, title, published }) => {
             const entry = document.createElement("li");
+            const label = document.createElement("span");
             const name = document.createElement("bdi");
             name.textContent = title;
-            entry.append(
+            label.append(
               name,
               ` · ID ${id} · ${published ? "Published" : "Unpublished"}`,
             );
+            entry.append(label);
+            if (action && selectItem) {
+              const use = document.createElement("button");
+              use.type = "button";
+              use.textContent = "Use in Modules";
+              use.setAttribute(
+                "aria-label",
+                `Use ${title} (ID ${id}) in Modules`,
+              );
+              use.onclick = () => {
+                if (!selectItem(action, { id, title }))
+                  status.textContent =
+                    "Module selection is unavailable. Finish the current Modules request or reload the approved resources.";
+              };
+              entry.append(" ", use);
+            }
             return entry;
           }),
         );
