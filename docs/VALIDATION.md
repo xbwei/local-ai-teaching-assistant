@@ -25,7 +25,7 @@ Provide validation evidence for each revision, including applicable build, tests
 
 From a clean checkout, install with `npm ci --ignore-scripts`, build, and run the full and runtime-compatibility gates. The reference HTTPS test uses a new synthetic SQLite runtime, initializes the Owner credential and checks role and session boundaries with optional integrations disabled. The browser suite uses a separate synthetic runtime with optional integrations enabled. The Markdown test checks literal code and inert HTML, links and images. Browser cases cover Chat display and Canvas Page and Assignment previews.
 
-For the compatibility check, seed an isolated database using a separately built public v0.2.0 checkout. Save a stopped, version-matched snapshot, open the database with the candidate and verify the Owner credential, scoped History, existing feedback, accounting and all five SQLite migration checksums. Restore the snapshot and open it with v0.2.0 to verify the saved records. See the [operator recovery procedure](DEPLOYMENT.md#explicit-update-and-recovery).
+For the compatibility check, seed an isolated **schema-v5** database using a separately built public v0.2.0 checkout. Save a stopped, version-matched snapshot; open the database with the v0.3.0 candidate and check its **v5 → v8** migration, unchanged checksums for migrations 1–5, additive migrations 6–8, and retained Owner credential, History, feedback and accounting. Restore the **pre-upgrade v5 snapshot** and reopen it with the matching v0.2.0 build to verify the saved records. Do not use a post-migration v8 database with a v0.2.0 binary. See the [operator recovery procedure](DEPLOYMENT.md#explicit-update-and-recovery).
 
 ## Startup and boundary regressions
 
