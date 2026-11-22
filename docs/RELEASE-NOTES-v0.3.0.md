@@ -13,7 +13,7 @@
 
 ## Upgrade and rollback
 
-Follow [Getting Started](GETTING-STARTED.md) for Node/npm/model/setup and [Canvas](CANVAS.md) for separate LTI/REST configuration. The code candidate contains SQLite identity/course migrations; **stop the service and take a version-matched full runtime backup** before upgrading from v0.2.0. A rollback needs the **old compatible database snapshot** and code, not merely an older source checkout with a newer DB. When returning to older Canvas code, restore its static `assignments.groupId` and `modules` configuration as applicable. See [deployment/recovery](DEPLOYMENT.md).
+Follow [Getting Started](GETTING-STARTED.md) for Node/npm/model/setup and [Canvas](CANVAS.md) for separate LTI/REST configuration. The candidate applies SQLite identity/course/account migrations **v6–v8** to a v0.2.0 **schema-v5** database. **Stop the service and take a version-matched full runtime backup** before upgrading. A rollback to v0.2.0 needs that **pre-upgrade v5 snapshot** and matching code/configuration; an older v0.2.0 binary cannot read the migrated v8 database. When returning to older Canvas code, restore its static `assignments.groupId` and `modules` configuration as applicable. See [deployment/recovery](DEPLOYMENT.md).
 
 ## Known limits and approved deferrals
 
