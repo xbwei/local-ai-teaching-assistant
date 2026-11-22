@@ -20,6 +20,7 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
   const createFields = get<HTMLFieldSetElement>("create");
   const title = get<HTMLInputElement>("title");
   const body = get<HTMLTextAreaElement>("body");
+  const format = get<HTMLSelectElement>("format");
   const points = get<HTMLInputElement>("points");
   const due = get<HTMLInputElement>("due");
   const status = get("status");
@@ -38,7 +39,13 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
   editChoice.disabled = scope.editableIds.length === 0;
   let pending: AbortController | undefined;
   let approved: CanvasAssignmentPreview | undefined;
-  const syncDraft = mountCanvasLocalDraft(api, form, body, "ASSIGNMENT");
+  const syncDraft = mountCanvasLocalDraft(
+    api,
+    form,
+    body,
+    format,
+    "ASSIGNMENT",
+  );
 
   function syncForm() {
     const editing = kind.value === "TITLE";
@@ -121,7 +128,7 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
           title: title.value.trim(),
         });
       } else {
-        markup = canvasDraftMarkup(body.value);
+        markup = canvasDraftMarkup(body.value, format.value);
         const dueAt = due.value
           ? new Date(`${due.value}Z`).toISOString()
           : null;
@@ -136,7 +143,7 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
       }
     } catch {
       status.textContent =
-        "Check the title and assignment settings, including the supported Markdown and submission types.";
+        "Check the title, formatted content size and assignment settings.";
       return;
     }
     const controller = new AbortController();

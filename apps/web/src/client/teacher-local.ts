@@ -1,4 +1,5 @@
 import type { InputApi } from "./api.ts";
+import { studentDraft } from "./markdown.ts";
 import { bindTeacherForm } from "./teacher-form.ts";
 
 const get = <T extends HTMLElement>(id: string) =>
@@ -22,6 +23,7 @@ function showDraft(
   draft: HTMLTextAreaElement,
   sources: HTMLElement,
   status: HTMLElement,
+  studentFacing = false,
 ) {
   if (!("text" in result)) {
     status.textContent = Object.hasOwn(draftNotices, result.code)
@@ -29,15 +31,26 @@ function showDraft(
       : "Draft unavailable.";
     return;
   }
-  draft.value = result.text;
+  draft.value = studentFacing ? studentDraft(result.text) : result.text;
   sources.replaceChildren(
-    ...result.sources.map(({ path, section }) => {
+    ...result.sources.map(({ repository, path, section, commit, excerpt }) => {
       const row = document.createElement("li");
-      row.textContent = path + (section ? ` · ${section}` : "");
+      const detail = document.createElement("details");
+      const summary = document.createElement("summary");
+      const revision = document.createElement("p");
+      const quoted = document.createElement("pre");
+      summary.textContent = `${path} · ${section}`;
+      revision.textContent = `${repository} · revision ${commit}`;
+      quoted.textContent = excerpt;
+      quoted.className = "course-source-excerpt";
+      detail.append(summary, revision, quoted);
+      row.append(detail);
       return row;
     }),
   );
-  status.textContent = "Draft ready. Check the sources and edit before use.";
+  status.textContent = draft.value.trim()
+    ? "Draft ready. Check the sources and edit before use."
+    : "No student-facing suggestion was returned. Your editor is unchanged.";
 }
 
 export function mountTeacherLocal(api: InputApi) {
@@ -74,6 +87,7 @@ export function mountCanvasLocalDraft(
   api: InputApi,
   canvasForm: HTMLFormElement,
   body: HTMLTextAreaElement,
+  format: HTMLSelectElement,
   kind: "PAGE" | "ASSIGNMENT",
 ) {
   const course = document.body.dataset.demoCourse;
@@ -110,7 +124,7 @@ export function mountCanvasLocalDraft(
           kind === "ASSIGNMENT" && criteria.value === "yes",
         );
         signal.throwIfAborted();
-        showDraft(result, draft, sources, status);
+        showDraft(result, draft, sources, status, true);
       } finally {
         generating = false;
         syncApply();
@@ -124,13 +138,27 @@ export function mountCanvasLocalDraft(
   draft.oninput = syncApply;
   apply.onclick = () => {
     if (form.hidden || body.matches(":disabled") || apply.disabled) return;
-    if (draft.value.length > body.maxLength) {
+    let content: string;
+    try {
+      content = studentDraft(draft.value);
+    } catch {
+      status.textContent = "Check the suggestion's Markdown before applying.";
+      return;
+    }
+    if (!content) {
+      status.textContent =
+        "No student-facing text to apply. Your editor is unchanged.";
+      return;
+    }
+    if (content.length > body.maxLength) {
       status.textContent = "Shorten the suggestion to fit the Canvas body.";
       return;
     }
-    body.value = draft.value;
+    draft.value = body.value = content;
+    format.value = "markdown";
     body.dispatchEvent(new Event("input", { bubbles: true }));
-    status.textContent = "Suggestion applied. Edit the body and preview again.";
+    status.textContent =
+      "Suggestion applied as Markdown. Edit the body and preview again.";
     body.focus();
   };
   window.addEventListener("pagehide", () => {

@@ -15,6 +15,7 @@ export function mountTeacherCanvasPages(api: InputApi) {
   const form = get<HTMLFormElement>("canvas-page-form");
   const title = get<HTMLInputElement>("canvas-page-title");
   const body = get<HTMLTextAreaElement>("canvas-page-body");
+  const format = get<HTMLSelectElement>("canvas-page-format");
   const previewButton = form.querySelector<HTMLButtonElement>(
     'button[type="submit"]',
   )!;
@@ -40,6 +41,7 @@ export function mountTeacherCanvasPages(api: InputApi) {
     syncDraft?.(true, locked);
     title.disabled =
       body.disabled =
+      format.disabled =
       previewButton.disabled =
       confirm.disabled =
         locked;
@@ -50,7 +52,7 @@ export function mountTeacherCanvasPages(api: InputApi) {
     .then((enabled) => {
       if (!enabled) throw new Error("CANVAS_UNAVAILABLE");
       form.hidden = false;
-      syncDraft = mountCanvasLocalDraft(api, form, body, "PAGE");
+      syncDraft = mountCanvasLocalDraft(api, form, body, format, "PAGE");
       syncDraft?.(true, false);
       status.textContent =
         "Use non-sensitive teaching material. Preview checks the destination. Create sends the reviewed content to Canvas.";
@@ -76,7 +78,7 @@ export function mountTeacherCanvasPages(api: InputApi) {
     event.preventDefault();
     if (pending) return;
     clearPreview();
-    const fragment = canvasDraftMarkup(body.value);
+    const fragment = canvasDraftMarkup(body.value, format.value);
     let draft;
     try {
       draft = readCanvasPageDraft({
@@ -85,7 +87,7 @@ export function mountTeacherCanvasPages(api: InputApi) {
       });
     } catch {
       status.textContent =
-        "Enter a title and a supported Markdown body under the page size limit.";
+        "Enter a title and content within the formatted page size limit.";
       return;
     }
     const controller = new AbortController();
