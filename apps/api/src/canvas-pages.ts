@@ -26,6 +26,7 @@ import {
 } from "@laita/contracts";
 import { createCanvasPageClient } from "@laita/providers";
 import { createSecretHandleForProvider } from "@laita/runtime";
+import { selectCanvasChatCall } from "./canvas-chat-tools.ts";
 import {
   canvasContext,
   canvasFingerprint,
@@ -53,6 +54,7 @@ interface CanvasPageSettings {
 export interface CanvasPageOptions {
   settings: () => unknown;
   fetcher?: typeof fetch;
+  selectChatTool?: (question: string, signal: AbortSignal) => Promise<unknown>;
   verification?: CanvasVerificationOptions;
 }
 
@@ -554,12 +556,21 @@ export function createCanvasAuthoringHandlers(
     };
   }
 
-  const chatHandler: RequestHandler = async (req, res) => {
+  async function chatHandler(req: Request, res: Response, native = false) {
     res.setHeader("Cache-Control", "no-store");
     const actor = authorizeTeacher(req, res);
     if (!actor) return;
     const unavailable = () =>
       res.status(503).json({ code: "CANVAS_CHAT_UNAVAILABLE" });
+    const select = native ? options.selectChatTool : undefined;
+    if (native && !select) {
+      unavailable();
+      return;
+    }
+    const guide = () =>
+      res.json({
+        text: "Ask how many submissions or what score the configured Test Student has for one approved assignment. Use its full title.",
+      });
     const get = () => currentAccess(req, actor, "chat");
     let initial: ReturnType<typeof get>;
     try {
@@ -588,14 +599,33 @@ export function createCanvasAuthoringHandlers(
       res.status(400).json({ code: "INVALID_REQUEST" });
       return;
     }
-    const query =
-      /^(how many submissions|what is the score) for (.{1,250}?)\??$/iu.exec(
-        body.question.trim(),
-      );
-    if (!query || !canvasPageTitle(query[2])) {
-      res.json({
-        text: "Ask how many submissions or what score the configured Test Student has for one approved assignment. Use its full title.",
-      });
+    const question = body.question;
+    if (
+      select &&
+      [...initial.launchKeys, initial.settings.canvasToken].some((secret) =>
+        question.includes(secret),
+      )
+    ) {
+      res.status(400).json({ code: "INVALID_REQUEST" });
+      return;
+    }
+    const query = select
+      ? undefined
+      : /^(how many submissions|what is the score) for (.{1,250}?)\??$/iu.exec(
+          question.trim(),
+        );
+    let selection =
+      query && canvasPageTitle(query[2])
+        ? {
+            title: query[2],
+            kind:
+              query[1]!.toLowerCase() === "how many submissions"
+                ? ("count" as const)
+                : ("score" as const),
+          }
+        : undefined;
+    if (!select && !selection) {
+      guide();
       return;
     }
     const { origin, courseId, teacherId, chat } = initial.settings;
@@ -607,13 +637,11 @@ export function createCanvasAuthoringHandlers(
       res.status(409).json({ code: "BUSY" });
       return;
     }
-    const kind =
-      query[1]!.toLowerCase() === "how many submissions" ? "count" : "score";
     busy = true;
     const controller = new AbortController();
     const signal = AbortSignal.any([
       controller.signal,
-      AbortSignal.timeout(15_000),
+      AbortSignal.timeout(select ? 35_000 : 15_000),
     ]);
     const disconnect = () => controller.abort();
     res.once("close", disconnect);
@@ -624,6 +652,21 @@ export function createCanvasAuthoringHandlers(
       return value;
     };
     try {
+      if (select) {
+        const proposed = await select(question, signal);
+        assertCurrent();
+        if (proposed === undefined) {
+          res.json({
+            text: "Canvas tools are unavailable on the selected Local model. Use Direct query mode for an exact question.",
+          });
+          return;
+        }
+        selection = selectCanvasChatCall(proposed, question);
+      }
+      if (!selection) {
+        guide();
+        return;
+      }
       const client = createCanvasPageClient(
         {
           origin,
@@ -636,7 +679,7 @@ export function createCanvasAuthoringHandlers(
         signal,
       );
       await client.readTarget();
-      const observation = await client.chat({ title: query[2], kind }, chat);
+      const observation = await client.chat(selection, chat);
       const { launchKeys, settings } = assertCurrent();
       if (
         observation &&
@@ -645,14 +688,14 @@ export function createCanvasAuthoringHandlers(
         )
       )
         throw new Error("INVALID_CANVAS_TARGET");
-      res.json({ text: canvasChatText(observation, kind) });
+      res.json({ text: canvasChatText(observation, selection.kind) });
     } catch {
       if (!res.destroyed) unavailable();
     } finally {
       busy = false;
       res.off("close", disconnect);
     }
-  };
+  }
 
   const verification = createCanvasVerificationHandler(
     options.verification,
@@ -707,7 +750,8 @@ export function createCanvasAuthoringHandlers(
       preview: handler("feedback", "preview"),
       post: handler("feedback", "confirm"),
     },
-    chat: chatHandler,
+    chat: (req: Request, res: Response) => chatHandler(req, res),
+    chatTools: (req: Request, res: Response) => chatHandler(req, res, true),
     verification,
     close: clearPreview,
   };

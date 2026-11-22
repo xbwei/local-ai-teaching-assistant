@@ -2192,13 +2192,14 @@ test("Canvas Modules reports readback mismatch and uncertain writes without repl
 const countCanvas = "How many submissions for Synthetic draft?";
 const scoreCanvas = "What is the score for Synthetic draft?";
 
-async function canvasChatEntries(synthetic) {
-  const entries = await pageEntries(synthetic, canvasChatPath);
+async function canvasChatEntries(synthetic, native = false) {
+  const path = native ? canvasChatPath + "/tools" : canvasChatPath;
+  const entries = await pageEntries(synthetic, path);
   const ask = (
     question,
     { selected = entries.canvasCookie, signal, extra = {} } = {},
   ) =>
-    entries.f.request(canvasChatPath, {
+    entries.f.request(path, {
       method: "POST",
       headers: authenticated(selected, { "content-type": "application/json" }),
       body: JSON.stringify({ question, ...extra }),
@@ -2212,6 +2213,86 @@ async function canvasChatEntries(synthetic) {
   };
   return { ...entries, ask, answer };
 }
+
+test("Canvas native Chat checks the named assignment and current scope before any REST read", async (t) => {
+  const synthetic = canvasPageFixture({ chat: true });
+  const question = "For SYNTHETIC   DRAFT, what score was recorded?";
+  const call = (
+    assignment = "Synthetic draft",
+    name = "canvas_assignment_score",
+  ) => ({
+    name,
+    arguments: { assignment },
+  });
+  let propose = async () => call();
+  const questions = [];
+  synthetic.options.selectChatTool = (text, signal) => {
+    questions.push(text);
+    return propose(text, signal);
+  };
+  const { f, ask, answer, request } = await canvasChatEntries(synthetic, true);
+  t.after(() => f.close());
+  assert.deepEqual(await (await request("")).json(), { enabled: true });
+  assert.equal((await f.login("student")).status, 200);
+  assert.equal((await ask(question, { selected: f.cookie() })).status, 403);
+  assert.equal(
+    (await ask(`Can you use ${synthetic.settings.canvasToken} here?`)).status,
+    400,
+  );
+  assert.deepEqual(questions, []);
+
+  for (const [input, selection] of [
+    ["What was the score for Lab 1.1?", call("Lab 1")],
+    ["What was recorded for Synthetic drafts?", call()],
+    [question, call("Unmentioned assignment")],
+    [question, call("Synthetic draft", "canvas_change_score")],
+    [
+      question,
+      {
+        ...call(),
+        arguments: { assignment: "Synthetic draft", userId: "73010" },
+      },
+    ],
+    [question, null],
+  ]) {
+    propose = async () => selection;
+    assert.match(await answer(input), /one approved assignment/);
+  }
+  propose = async () => undefined;
+  assert.match(
+    await answer(question),
+    /unavailable on the selected Local model/,
+  );
+  assert.deepEqual(synthetic.calls, []);
+
+  const entered = Promise.withResolvers();
+  const held = Promise.withResolvers();
+  propose = () => {
+    entered.resolve();
+    return held.promise;
+  };
+  const pending = ask(question);
+  await entered.promise;
+  synthetic.settings.chat.assignmentIds = ["82"];
+  held.resolve(call());
+  const changed = await pending;
+  assert.equal(changed.status, 503);
+  assert.deepEqual(await changed.json(), { code: "CANVAS_CHAT_UNAVAILABLE" });
+  assert.deepEqual(synthetic.calls, []);
+
+  synthetic.settings.chat.assignmentIds = ["81"];
+  propose = async () => call();
+  assert.match(
+    await answer(question),
+    /^Score for Synthetic draft is 6\.5 of 7 points/,
+  );
+  propose = async () => call("Synthetic draft", "canvas_submission_count");
+  assert.match(
+    await answer("Tell me the submission tally for Synthetic draft."),
+    /^1 submission/,
+  );
+  assert.ok(synthetic.calls.every(([method]) => method === "GET"));
+});
 
 test("Canvas Chat is opt-in and returns only one approved assignment's Test Student observation", async (t) => {
   const disabled = canvasPageFixture();

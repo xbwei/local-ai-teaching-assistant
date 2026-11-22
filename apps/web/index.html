@@ -416,6 +416,13 @@
           full title. Answers cover the configured Canvas Test Student.
         </p>
         <form id="canvas-chat-form" autocomplete="off">
+          <label class="teacher-field" id="canvas-chat-routing" hidden>
+            Canvas query mode
+            <select id="canvas-chat-mode">
+              <option value="local">Local model</option>
+              <option value="direct">Direct query</option>
+            </select>
+          </label>
           <label class="teacher-field" for="canvas-chat-question">
             Canvas question
             <input

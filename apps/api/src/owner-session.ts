@@ -514,8 +514,15 @@ export function createOwnerSessions(options: {
         },
       );
       if (authoring) {
-        const { pages, assignments, modules, feedback, chat, verification } =
-          authoring;
+        const {
+          pages,
+          assignments,
+          modules,
+          feedback,
+          chat,
+          chatTools,
+          verification,
+        } = authoring;
         const parser = createCanvasPageParser();
         const pagesPath = "/api/v1/canvas/pages";
         app.use(pagesPath, entryLimit);
@@ -542,6 +549,8 @@ export function createOwnerSessions(options: {
         app.use(chatPath, entryLimit);
         app.get(chatPath, chat);
         app.post(chatPath, createCanvasPageParser(2048), chat);
+        app.get(chatPath + "/tools", chatTools);
+        app.post(chatPath + "/tools", createCanvasPageParser(2048), chatTools);
         const verificationPath = "/api/v1/canvas/verification";
         app.use(verificationPath, entryLimit);
         app.get(verificationPath, verification);
