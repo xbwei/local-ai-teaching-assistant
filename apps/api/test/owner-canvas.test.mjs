@@ -2436,6 +2436,231 @@ test("Canvas Modules reports readback mismatch and uncertain writes without repl
   assert.equal(synthetic.moduleWrites.length, 2);
 });
 
+const orderedModule = {
+  kind: "LINK_ORDERED",
+  moduleId: "61",
+  items: [
+    { kind: "LINK_PAGE", contentId: "9002" },
+    { kind: "LINK_ASSIGNMENT", contentId: "81" },
+  ],
+};
+
+test("Canvas Modules binds one confirmation to a bounded approved order and preserves the existing prefix", async (t) => {
+  const synthetic = canvasPageFixture({ modules: true });
+  const { f, request, preview, save } = await assignmentEntries(
+    synthetic,
+    modulesPath,
+  );
+  t.after(() => f.close());
+  const module = synthetic.moduleRows.get("61");
+  const existing = {
+    id: 100,
+    module_id: 61,
+    position: 1,
+    type: "SubHeader",
+    published: false,
+  };
+  module.items.push(existing);
+  for (const [draft, status] of [
+    [{ ...orderedModule, items: [orderedModule.items[0]] }, 400],
+    [
+      {
+        ...orderedModule,
+        items: Array.from({ length: 11 }, (_, i) => ({
+          kind: "LINK_PAGE",
+          contentId: String(i + 1),
+        })),
+      },
+      400,
+    ],
+    [
+      {
+        ...orderedModule,
+        items: [orderedModule.items[0], orderedModule.items[0]],
+      },
+      400,
+    ],
+    [{ ...orderedModule, moduleId: "62" }, 403],
+    [
+      {
+        ...orderedModule,
+        items: [
+          orderedModule.items[0],
+          { kind: "LINK_ASSIGNMENT", contentId: "82" },
+        ],
+      },
+      403,
+    ],
+  ]) {
+    assert.equal((await request("preview", { draft })).status, status);
+  }
+  assert.deepEqual(synthetic.calls, []);
+  const plan = await preview(orderedModule);
+  assert.deepEqual(
+    plan.orderedSubjects.map((subject) => subject.resourceName),
+    ["Maps and examples", "Synthetic draft"],
+  );
+  assert.equal(synthetic.moduleWrites.length, 0);
+  const reversed = {
+    ...orderedModule,
+    items: [...orderedModule.items].reverse(),
+  };
+  assert.equal((await save(plan, reversed)).status, 409);
+  assert.equal(synthetic.moduleWrites.length, 0);
+  let firstItemReads = 0;
+  synthetic.remote.before = (method, endpoint) => {
+    if (
+      method === "GET" &&
+      endpoint.endsWith("/pages/page_id:9002") &&
+      ++firstItemReads === 2
+    )
+      synthetic.linkedPage.title = "Changed before the first dispatch";
+  };
+  assert.equal((await save(plan)).status, 409);
+  assert.equal(synthetic.moduleWrites.length, 0);
+  synthetic.remote.before = undefined;
+  synthetic.linkedPage.title = "Maps and examples";
+  const refreshed = await preview(orderedModule);
+  assert.deepEqual(await (await save(refreshed)).json(), {
+    status: "ORDERED",
+    steps: [
+      { status: "VERIFIED", resourceId: "102" },
+      { status: "VERIFIED", resourceId: "103" },
+    ],
+  });
+  assert.deepEqual(module.items[0], existing);
+  assert.deepEqual(
+    module.items.slice(1).map(({ type }) => type),
+    ["Page", "Assignment"],
+  );
+  assert.equal((await save(refreshed)).status, 409);
+  assert.equal(
+    (await request("preview", { draft: orderedModule })).status,
+    503,
+  );
+  assert.equal(synthetic.moduleWrites.length, 2);
+  assert.equal(module.published, false);
+});
+
+for (const mode of [
+  "changed next resource",
+  "wrong readback",
+  "changed authority",
+  "changed Canvas enrollment",
+]) {
+  test(`Canvas Modules stops the order after ${mode}`, async (t) => {
+    const synthetic = canvasPageFixture({ modules: true });
+    const { f, preview, save } = await assignmentEntries(
+      synthetic,
+      modulesPath,
+    );
+    t.after(() => f.close());
+    const plan = await preview(orderedModule);
+    synthetic.remote.afterModuleWrite = (item) => {
+      if (mode === "changed next resource")
+        synthetic.assignmentRows.get("81").name = "A revised assignment";
+      else if (mode === "wrong readback") item.page_url = "wrong-page";
+      else if (mode === "changed Canvas enrollment")
+        synthetic.remote.course.enrollments[0].enrollment_state = "inactive";
+      else synthetic.settings.modules.pageIds = [];
+    };
+    const result = await (await save(plan)).json();
+    assert.deepEqual(
+      result,
+      mode === "changed authority" || mode === "changed Canvas enrollment"
+        ? { status: "UNCERTAIN" }
+        : {
+            status: "ORDERED",
+            steps: [
+              {
+                status: mode === "wrong readback" ? "UNVERIFIED" : "VERIFIED",
+                resourceId: "101",
+              },
+            ],
+          },
+    );
+    assert.equal(synthetic.moduleWrites.length, 1);
+    assert.equal(
+      (await save(plan)).status,
+      mode === "changed authority" ? 403 : 409,
+    );
+    assert.equal(synthetic.moduleWrites.length, 1);
+  });
+}
+
+test("Canvas Modules never resends an uncertain ordered write or starts a later item", async (t) => {
+  const synthetic = canvasPageFixture({ modules: true });
+  synthetic.settings.modules.assignmentIds.push("82");
+  synthetic.assignmentRows.set("82", {
+    ...synthetic.assignmentRows.get("81"),
+    id: 82,
+  });
+  const { f, request, preview, save } = await assignmentEntries(
+    synthetic,
+    modulesPath,
+  );
+  t.after(() => f.close());
+  const order = {
+    ...orderedModule,
+    items: [
+      ...orderedModule.items,
+      { kind: "LINK_ASSIGNMENT", contentId: "82" },
+    ],
+  };
+  const plan = await preview(order);
+  synthetic.remote.afterModuleWrite = (item) => {
+    if (item.content_id === 81)
+      throw new Error("Synthetic lost response after commit");
+  };
+  assert.deepEqual(await (await save(plan)).json(), {
+    status: "ORDERED",
+    steps: [{ status: "VERIFIED", resourceId: "101" }, { status: "UNCERTAIN" }],
+  });
+  assert.equal((await save(plan)).status, 409);
+  assert.equal((await request("preview", { draft: order })).status, 503);
+  assert.deepEqual(
+    synthetic.moduleRows
+      .get("61")
+      .items.map(({ page_url, content_id }) => page_url ?? content_id),
+    ["maps-and-examples", 81],
+  );
+  assert.equal(synthetic.moduleWrites.length, 2);
+});
+
+test("Canvas Modules disconnect after a verified append stops the remaining order", async (t) => {
+  const synthetic = canvasPageFixture({ modules: true });
+  const { f, preview, save } = await assignmentEntries(synthetic, modulesPath);
+  t.after(() => f.close());
+  const plan = await preview(orderedModule);
+  const entered = Promise.withResolvers();
+  const disconnected = Promise.withResolvers();
+  synthetic.remote.before = async (method, endpoint, signal) => {
+    if (
+      method !== "GET" ||
+      !endpoint.endsWith("/assignments/81") ||
+      synthetic.moduleWrites.length !== 1
+    )
+      return;
+    entered.resolve();
+    await new Promise((resolve) =>
+      signal.addEventListener("abort", resolve, { once: true }),
+    );
+    disconnected.resolve();
+  };
+  const controller = new AbortController();
+  const applying = save(plan, plan.draft, controller.signal);
+  await entered.promise;
+  controller.abort();
+  await assert.rejects(applying, { name: "AbortError" });
+  await disconnected.promise;
+  assert.equal((await save(plan)).status, 409);
+  assert.deepEqual(
+    synthetic.moduleRows.get("61").items.map(({ type }) => type),
+    ["Page"],
+  );
+  assert.equal(synthetic.moduleWrites.length, 1);
+});
+
 const countCanvas = "How many submissions for Synthetic draft?";
 const scoreCanvas = "What is the score for Synthetic draft?";
 

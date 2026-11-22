@@ -2,6 +2,10 @@ import {
   canvasAssignmentSubmissionTypes,
   canvasPageTitle,
   type CanvasModuleDraft,
+  type CanvasModuleLinkDraft,
+  type CanvasModuleLinkItem,
+  type CanvasModuleOrderDraft,
+  type CanvasModuleStep,
   type CanvasModuleSubject,
 } from "@laita/contracts";
 import type { CanvasAuthoringRequest } from "./canvas-page.ts";
@@ -20,7 +24,7 @@ function position(value: unknown): number {
   return value;
 }
 
-type LinkDraft = Exclude<CanvasModuleDraft, { kind: "CREATE_MODULE" }>;
+type SingleDraft = Exclude<CanvasModuleDraft, CanvasModuleOrderDraft>;
 
 export function moduleAuthoring(
   courseId: string,
@@ -81,10 +85,7 @@ export function moduleAuthoring(
     return { name: row.name, position: position(row.position), items };
   }
 
-  async function readResource({
-    kind,
-    contentId,
-  }: Pick<LinkDraft, "kind" | "contentId">) {
+  async function readResource({ kind, contentId }: CanvasModuleLinkItem) {
     if (kind === "LINK_PAGE") {
       const row = await request(`${course}/pages/page_id:${id(contentId)}`);
       if (
@@ -129,8 +130,12 @@ export function moduleAuthoring(
     };
   }
 
-  async function preview(draft: LinkDraft) {
-    const module = await readModule(draft.moduleId);
+  type ModuleState = Awaited<ReturnType<typeof readModule>>;
+
+  async function prepareLink(
+    module: ModuleState,
+    draft: CanvasModuleLinkDraft,
+  ) {
     const resource = await readResource(draft);
     if (
       module.items.length >= maxItems ||
@@ -146,17 +151,67 @@ export function moduleAuthoring(
       resourceName: resource.name,
       resourcePublished: resource.published,
     };
-    return { module, resource, subject };
+    return { resource, subject };
+  }
+
+  async function preview(draft: CanvasModuleLinkDraft) {
+    const module = await readModule(draft.moduleId);
+    return { module, ...(await prepareLink(module, draft)) };
+  }
+
+  async function previewOrder(draft: CanvasModuleOrderDraft) {
+    const module = await readModule(draft.moduleId);
+    if (module.items.length + draft.items.length > maxItems)
+      throw new Error("INVALID_CANVAS_TARGET");
+    const links: Awaited<ReturnType<typeof prepareLink>>[] = [];
+    for (const item of draft.items) {
+      const next = await prepareLink(module, {
+        ...item,
+        moduleId: draft.moduleId,
+      });
+      if (
+        links.some(
+          ({ resource }) =>
+            resource.type === next.resource.type &&
+            resource.reference === next.resource.reference,
+        )
+      )
+        throw new Error("INVALID_CANVAS_TARGET");
+      links.push(next);
+    }
+    return { module, links };
   }
 
   type LinkPreview = Awaited<ReturnType<typeof preview>>;
-  return {
+  async function verifiedLink(
+    resourceId: string,
+    draft: CanvasModuleLinkDraft,
+    link: LinkPreview,
+  ) {
+    const resource = await readResource(draft);
+    const module = await readModule(draft.moduleId);
+    const last = module.items.at(-1);
+    if (
+      JSON.stringify(resource) === JSON.stringify(link.resource) &&
+      module.name === link.module.name &&
+      module.position === link.module.position &&
+      last?.id === resourceId &&
+      last.type === resource.type &&
+      last.reference === resource.reference &&
+      last.published === resource.published &&
+      JSON.stringify(module.items.slice(0, -1)) ===
+        JSON.stringify(link.module.items)
+    )
+      return module;
+  }
+
+  const single = {
     preview,
     async describeDestination(moduleId: string) {
       const module = await readModule(moduleId);
       return { id: moduleId, title: module.name, published: false };
     },
-    async describeItem(kind: LinkDraft["kind"], contentId: string) {
+    async describeItem(kind: CanvasModuleLinkItem["kind"], contentId: string) {
       const resource = await readResource({ kind, contentId });
       return {
         id: contentId,
@@ -165,7 +220,7 @@ export function moduleAuthoring(
       };
     },
     async write(
-      draft: CanvasModuleDraft,
+      draft: SingleDraft,
       link: LinkPreview | undefined,
       beforeDispatch: () => void,
     ) {
@@ -201,7 +256,7 @@ export function moduleAuthoring(
     },
     async readBack(
       resourceId: string,
-      draft: CanvasModuleDraft,
+      draft: SingleDraft,
       link: LinkPreview | undefined,
     ) {
       if (draft.kind === "CREATE_MODULE") {
@@ -209,20 +264,41 @@ export function moduleAuthoring(
         return module.name === draft.title && module.items.length === 0;
       }
       if (!link || link.subject.moduleId !== draft.moduleId) return false;
-      const resource = await readResource(draft);
-      const module = await readModule(draft.moduleId);
-      const last = module.items.at(-1);
-      return (
-        JSON.stringify(resource) === JSON.stringify(link.resource) &&
-        module.name === link.module.name &&
-        module.position === link.module.position &&
-        last?.id === resourceId &&
-        last.type === resource.type &&
-        last.reference === resource.reference &&
-        last.published === resource.published &&
-        JSON.stringify(module.items.slice(0, -1)) ===
-          JSON.stringify(link.module.items)
-      );
+      return (await verifiedLink(resourceId, draft, link)) !== undefined;
+    },
+  };
+  return {
+    ...single,
+    previewOrder,
+    async applyOrder(
+      draft: CanvasModuleOrderDraft,
+      prepared: Awaited<ReturnType<typeof previewOrder>>,
+      steps: CanvasModuleStep[],
+      recheckTarget: () => Promise<void>,
+      beforeDispatch: () => void,
+    ) {
+      let expected = prepared.module;
+      for (const [index, item] of draft.items.entries()) {
+        const linkDraft = { ...item, moduleId: draft.moduleId };
+        const original = prepared.links[index]!;
+        await recheckTarget();
+        const current = await preview(linkDraft);
+        if (
+          JSON.stringify(current.module) !== JSON.stringify(expected) ||
+          JSON.stringify(current.resource) !== JSON.stringify(original.resource)
+        )
+          throw new Error("INVALID_CANVAS_TARGET");
+        const link = { ...original, module: expected };
+        const resourceId = await single.write(linkDraft, link, () => {
+          beforeDispatch();
+          steps.push({ status: "UNCERTAIN" });
+        });
+        steps[index] = { status: "UNVERIFIED", resourceId };
+        const after = await verifiedLink(resourceId, linkDraft, link);
+        if (!after) return;
+        steps[index] = { status: "VERIFIED", resourceId };
+        expected = after;
+      }
     },
   };
 }

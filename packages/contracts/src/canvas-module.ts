@@ -1,13 +1,25 @@
 import { canvasPageId, canvasPageTitle } from "./canvas-page.ts";
 import type { CanvasPagePreview } from "./canvas-page.ts";
 
+export const canvasModuleOrderLimit = 10;
+
+export interface CanvasModuleLinkItem {
+  kind: "LINK_PAGE" | "LINK_ASSIGNMENT";
+  contentId: string;
+}
+
+export type CanvasModuleLinkDraft = CanvasModuleLinkItem & { moduleId: string };
+
+export type CanvasModuleOrderDraft = {
+  kind: "LINK_ORDERED";
+  moduleId: string;
+  items: CanvasModuleLinkItem[];
+};
+
 export type CanvasModuleDraft =
   | { kind: "CREATE_MODULE"; title: string }
-  | {
-      kind: "LINK_PAGE" | "LINK_ASSIGNMENT";
-      moduleId: string;
-      contentId: string;
-    };
+  | CanvasModuleLinkDraft
+  | CanvasModuleOrderDraft;
 
 export interface CanvasModuleScope {
   moduleIds: string[];
@@ -27,11 +39,15 @@ export interface CanvasModulePreview {
   target: CanvasPagePreview["target"];
   draft: CanvasModuleDraft;
   moduleSubject?: CanvasModuleSubject;
+  orderedSubjects?: CanvasModuleSubject[];
 }
 
-export type CanvasModuleResult =
+export type CanvasModuleStep =
   | { status: "VERIFIED" | "UNVERIFIED"; resourceId: string }
   | { status: "UNCERTAIN" };
+
+export type CanvasModuleResult =
+  CanvasModuleStep | { status: "ORDERED"; steps: CanvasModuleStep[] };
 
 function moduleIds(value: unknown): string[] {
   if (
@@ -76,5 +92,34 @@ export function readCanvasModuleDraft(value: unknown): CanvasModuleDraft {
     canvasPageId(row.contentId)
   )
     return { kind: row.kind, moduleId: row.moduleId, contentId: row.contentId };
+  if (
+    keys === "items,kind,moduleId" &&
+    row.kind === "LINK_ORDERED" &&
+    canvasPageId(row.moduleId) &&
+    Array.isArray(row.items) &&
+    row.items.length >= 2 &&
+    row.items.length <= canvasModuleOrderLimit
+  ) {
+    const items = Array.from(
+      row.items,
+      (item: unknown): CanvasModuleLinkItem => {
+        if (!item || typeof item !== "object") throw new Error("INVALID_DRAFT");
+        const link = item as Record<string, unknown>;
+        if (
+          Object.keys(link).sort().join(",") !== "contentId,kind" ||
+          (link.kind !== "LINK_PAGE" && link.kind !== "LINK_ASSIGNMENT") ||
+          !canvasPageId(link.contentId)
+        )
+          throw new Error("INVALID_DRAFT");
+        return { kind: link.kind, contentId: link.contentId };
+      },
+    );
+    if (
+      new Set(items.map(({ kind, contentId }) => `${kind}:${contentId}`))
+        .size !== items.length
+    )
+      throw new Error("INVALID_DRAFT");
+    return { kind: row.kind, moduleId: row.moduleId, items };
+  }
   throw new Error("INVALID_DRAFT");
 }
