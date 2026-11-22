@@ -47,9 +47,7 @@ export async function mountCanvasInventory(
             : selected === "module-assignments"
               ? "LINK_ASSIGNMENT"
               : undefined;
-        const selectItem = kinds.includes("modules")
-          ? moduleItemSelector()
-          : undefined;
+        const hasModules = kinds.includes("modules");
         results.replaceChildren(
           ...entries.map(({ id, title, published }) => {
             const entry = document.createElement("li");
@@ -61,7 +59,7 @@ export async function mountCanvasInventory(
               ` · ID ${id} · ${published ? "Published" : "Unpublished"}`,
             );
             entry.append(label);
-            if (action && selectItem) {
+            if (action && hasModules) {
               const use = document.createElement("button");
               use.type = "button";
               use.textContent = "Use in Modules";
@@ -70,9 +68,9 @@ export async function mountCanvasInventory(
                 `Use ${title} (ID ${id}) in Modules`,
               );
               use.onclick = () => {
-                if (!selectItem(action, { id, title }))
+                if (!moduleItemSelector()?.(action, { id, title }))
                   status.textContent =
-                    "Module selection is unavailable. Finish the current Modules request or reload the approved resources.";
+                    "Module selection is unavailable. Wait for Modules to load or finish its current request, or reload to check the approved resources.";
               };
               entry.append(" ", use);
             }

@@ -397,6 +397,13 @@ try {
     const requests = [];
     page.on("request", (request) => requests.push(request.url()));
     const writes = syntheticCanvas.writes.length;
+    const allowModuleScope = mobile ? undefined : Promise.withResolvers();
+    if (allowModuleScope) {
+      await page.route("**/api/v1/canvas/modules", async (route) => {
+        await allowModuleScope.promise;
+        await route.continue();
+      }, { times: 1 });
+    }
     await page.goto(f.origin);
     const inventory = page.locator("#teacher-canvas-inventory");
     await inventory.getByText("Browse approved Canvas resources", { exact: true }).click();
@@ -407,6 +414,23 @@ try {
     await inventoryKind.selectOption("pages");
     await loadInventory.click();
     await inventoryRows.getByText("Maps and examples · ID 9002 · Published", { exact: true }).waitFor();
+    if (allowModuleScope) {
+      const earlyUse = inventoryRows.getByRole("button", { name: "Use Maps and examples (ID 9002) in Modules", exact: true });
+      const modules = page.locator("#teacher-canvas-modules");
+      try {
+        assert.equal(await modules.isVisible(), false);
+        await earlyUse.click();
+        await inventory.getByRole("status").getByText(/^Module selection is unavailable/).waitFor();
+      } finally {
+        allowModuleScope.resolve();
+      }
+      await modules.waitFor();
+      await earlyUse.click();
+      assert.equal(await modules.getByLabel("Item to add").inputValue(), "9002");
+      await modules.getByLabel("Module action").selectOption("CREATE_MODULE");
+      await modules.locator("summary").click();
+      assert.equal(await modules.getAttribute("open"), null);
+    }
     await inventoryKind.selectOption("modules");
     assert.equal(await inventoryRows.getByRole("listitem").count(), 0);
     await loadInventory.click();
