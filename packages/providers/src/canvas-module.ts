@@ -1,6 +1,8 @@
 import {
   canvasAssignmentSubmissionTypes,
+  canvasModuleCatalogLimit,
   canvasPageTitle,
+  type CanvasModuleCatalog,
   type CanvasModuleDraft,
   type CanvasModuleLinkDraft,
   type CanvasModuleLinkItem,
@@ -9,7 +11,10 @@ import {
   type CanvasModuleSubject,
 } from "@laita/contracts";
 import type { CanvasAuthoringRequest } from "./canvas-page.ts";
-import { canvasResponseId as id } from "./canvas-response.ts";
+import {
+  canvasResponseId as id,
+  canvasResponseTimestamp,
+} from "./canvas-response.ts";
 
 const maxItems = 25;
 const record = (value: unknown): Record<string, unknown> => {
@@ -25,15 +30,69 @@ function position(value: unknown): number {
 }
 
 type SingleDraft = Exclude<CanvasModuleDraft, CanvasModuleOrderDraft>;
+type CatalogKind = keyof CanvasModuleCatalog;
+
+function linkableAssignment(row: Record<string, unknown>): boolean {
+  // Canvas can substitute a quiz or discussion for its backing Assignment.
+  return (
+    row.is_quiz_assignment === false &&
+    row.discussion_topic == null &&
+    Array.isArray(row.submission_types) &&
+    row.submission_types.length >= 1 &&
+    row.submission_types.length <= 3 &&
+    row.submission_types.every(
+      (type: unknown) =>
+        typeof type === "string" &&
+        Object.hasOwn(canvasAssignmentSubmissionTypes, type),
+    )
+  );
+}
 
 export function moduleAuthoring(
   courseId: string,
   request: CanvasAuthoringRequest,
+  readCatalog: (kind: CatalogKind, limit: number) => Promise<unknown[]>,
+  organizeSavedResources = false,
 ) {
   const course = `/courses/${courseId}`;
   const modules = `${course}/modules`;
   const verifyCourse = (row: Record<string, unknown>) =>
     row.course_id === undefined || id(row.course_id) === courseId;
+
+  async function catalogEntries(kind: CatalogKind) {
+    const seen = new Set<string>();
+    const entries: CanvasModuleCatalog[CatalogKind] = [];
+    for (const value of await readCatalog(kind, canvasModuleCatalogLimit)) {
+      const row = record(value);
+      const entryId = id(kind === "pages" ? row.page_id : row.id);
+      const title = kind === "pages" ? row.title : row.name;
+      if (
+        !(kind === "assignments"
+          ? id(row.course_id) === courseId
+          : verifyCourse(row)) ||
+        !canvasPageTitle(title) ||
+        typeof row.published !== "boolean" ||
+        seen.has(entryId)
+      )
+        throw new Error("INVALID_CANVAS_RESPONSE");
+      seen.add(entryId);
+      if (
+        (kind === "modules" && row.published) ||
+        (kind === "assignments" && !linkableAssignment(row))
+      )
+        continue;
+      entries.push({ id: entryId, title, published: row.published });
+    }
+    return entries;
+  }
+
+  function resourceVersion(row: Record<string, unknown>) {
+    if (!organizeSavedResources) return undefined;
+    const value = row.updated_at;
+    if (!canvasResponseTimestamp(value))
+      throw new Error("INVALID_CANVAS_TARGET");
+    return value;
+  }
 
   async function readModule(moduleId: string, draft?: { title: string }) {
     const row = await request(
@@ -101,25 +160,16 @@ export function moduleAuthoring(
         name: row.title,
         published: row.published,
         reference: row.url,
+        version: resourceVersion(row),
       };
     }
     const row = await request(`${course}/assignments/${id(contentId)}`);
-    // Canvas can substitute a quiz or discussion for its backing Assignment.
     if (
       id(row.id) !== contentId ||
       id(row.course_id) !== courseId ||
       !canvasPageTitle(row.name) ||
       typeof row.published !== "boolean" ||
-      row.is_quiz_assignment !== false ||
-      row.discussion_topic != null ||
-      !Array.isArray(row.submission_types) ||
-      row.submission_types.length < 1 ||
-      row.submission_types.length > 3 ||
-      !row.submission_types.every(
-        (type: unknown) =>
-          typeof type === "string" &&
-          Object.hasOwn(canvasAssignmentSubmissionTypes, type),
-      )
+      !linkableAssignment(row)
     )
       throw new Error("INVALID_CANVAS_TARGET");
     return {
@@ -127,6 +177,7 @@ export function moduleAuthoring(
       name: row.name,
       published: row.published,
       reference: contentId,
+      version: resourceVersion(row),
     };
   }
 
@@ -223,6 +274,7 @@ export function moduleAuthoring(
       draft: SingleDraft,
       link: LinkPreview | undefined,
       beforeDispatch: () => void,
+      recheckTarget?: () => Promise<void>,
     ) {
       if (draft.kind === "CREATE_MODULE") {
         const row = await request(modules, draft, {
@@ -235,6 +287,13 @@ export function moduleAuthoring(
       }
       if (!link || link.subject.moduleId !== draft.moduleId)
         throw new Error("INVALID_CANVAS_TARGET");
+      if (organizeSavedResources) {
+        if (!recheckTarget) throw new Error("INVALID_CANVAS_TARGET");
+        await recheckTarget();
+        const destination = await readModule(draft.moduleId);
+        if (JSON.stringify(destination) !== JSON.stringify(link.module))
+          throw new Error("INVALID_CANVAS_TARGET");
+      }
       const fields = new URLSearchParams({
         "module_item[type]": link.resource.type,
         [draft.kind === "LINK_PAGE"
@@ -269,6 +328,34 @@ export function moduleAuthoring(
   };
   return {
     ...single,
+    async catalog(): Promise<CanvasModuleCatalog> {
+      return {
+        modules: await catalogEntries("modules"),
+        pages: await catalogEntries("pages"),
+        assignments: await catalogEntries("assignments"),
+      };
+    },
+    async assertCatalogTargets(
+      draft: CanvasModuleLinkDraft | CanvasModuleOrderDraft,
+    ) {
+      if (
+        !(await catalogEntries("modules")).some(
+          ({ id }) => id === draft.moduleId,
+        )
+      )
+        throw new Error("INVALID_CANVAS_TARGET");
+      const items = draft.kind === "LINK_ORDERED" ? draft.items : [draft];
+      for (const [type, kind] of [
+        ["LINK_PAGE", "pages"],
+        ["LINK_ASSIGNMENT", "assignments"],
+      ] as const) {
+        const selected = items.filter((item) => item.kind === type);
+        if (!selected.length) continue;
+        const ids = new Set((await catalogEntries(kind)).map(({ id }) => id));
+        if (!selected.every(({ contentId }) => ids.has(contentId)))
+          throw new Error("INVALID_CANVAS_TARGET");
+      }
+    },
     previewOrder,
     async applyOrder(
       draft: CanvasModuleOrderDraft,
@@ -289,10 +376,15 @@ export function moduleAuthoring(
         )
           throw new Error("INVALID_CANVAS_TARGET");
         const link = { ...original, module: expected };
-        const resourceId = await single.write(linkDraft, link, () => {
-          beforeDispatch();
-          steps.push({ status: "UNCERTAIN" });
-        });
+        const resourceId = await single.write(
+          linkDraft,
+          link,
+          () => {
+            beforeDispatch();
+            steps.push({ status: "UNCERTAIN" });
+          },
+          recheckTarget,
+        );
         steps[index] = { status: "UNVERIFIED", resourceId };
         const after = await verifiedLink(resourceId, linkDraft, link);
         if (!after) return;

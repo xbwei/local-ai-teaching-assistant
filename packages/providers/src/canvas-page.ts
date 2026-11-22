@@ -89,6 +89,7 @@ async function readJson(
 }
 
 export interface CanvasPageAccess extends PageTarget {
+  organizeSavedResources?: true;
   refresh: () => SecretHandle;
   fetcher?: typeof fetch;
 }
@@ -165,7 +166,13 @@ export function createCanvasPageClient(
       deadline.throwIfAborted();
       const link =
         pagination === "catalog" ? response.headers.get("link") : null;
-      if (JSON.stringify(value).includes(token) || link?.includes(token))
+      if (
+        JSON.stringify(value).includes(token) ||
+        (link !== null &&
+          (link.length > 8192 ||
+            link.includes(token) ||
+            decodeURIComponent(link).includes(token)))
+      )
         throw new Error("INVALID_CANVAS_RESPONSE");
       return { value, link };
     });
@@ -173,43 +180,19 @@ export function createCanvasPageClient(
   const request: CanvasAuthoringRequest = async (endpoint, content, write) =>
     row((await requestJson(endpoint, content, write)).value);
 
-  async function readAssignmentGroupRows() {
-    const path = `${coursePath}/assignment_groups`;
+  async function readCourseCatalog(
+    kind: "assignment_groups" | "modules" | "pages" | "assignments",
+    limit: number,
+  ) {
+    const path = `${coursePath}/${kind}`;
     const fullPath = `/api/v1${path}`;
     const pageSize = 50;
     let endpoint = `${path}?per_page=${pageSize}`;
     const visited = new Set<string>();
     const rows: unknown[] = [];
-    for (let page = 0; page < canvasAssignmentGroupLimit / pageSize; page++) {
-      if (visited.has(endpoint)) throw new Error("INVALID_CANVAS_RESPONSE");
-      visited.add(endpoint);
-      const { value, link } = await requestJson(
-        endpoint,
-        undefined,
-        undefined,
-        "catalog",
-      );
-      if (!Array.isArray(value) || value.length > pageSize)
-        throw new Error("INVALID_CANVAS_RESPONSE");
-      rows.push(...value);
-      if (link === null) return rows;
-      if (link.length > 8192) throw new Error("INVALID_CANVAS_RESPONSE");
-      let next: URL | undefined;
-      const relations = new Set<string>();
-      for (const entry of link.split(/,\s*(?=<)/u)) {
-        const match =
-          /^\s*<([^<>\s]+)>\s*;\s*rel="(current|prev|next|first|last)"\s*$/iu.exec(
-            entry,
-          );
-        if (!match) throw new Error("INVALID_CANVAS_RESPONSE");
-        const relation = match[2]!.toLowerCase();
-        if (relations.has(relation)) throw new Error("INVALID_CANVAS_RESPONSE");
-        relations.add(relation);
-        if (relation === "next") next = new URL(match[1]!);
-      }
-      if (!next) return rows;
-      // Retain Canvas's opaque page value, but never follow a URL outside this
-      // course's fixed metadata route or forward any other query parameters.
+    function catalogQuery(link: string) {
+      // Resolve only absolute links on this exact course resource path.
+      const next = new URL(link);
       const params = next.searchParams;
       const size = params.get("per_page");
       if (
@@ -229,7 +212,48 @@ export function createCanvasPageClient(
           (!/^[1-9]\d?$/u.test(size) || Number(size) > pageSize))
       )
         throw new Error("INVALID_CANVAS_RESPONSE");
-      endpoint = `${path}?${params}`;
+      return params;
+    }
+    for (let page = 0; page < limit / pageSize; page++) {
+      if (visited.has(endpoint)) throw new Error("INVALID_CANVAS_RESPONSE");
+      visited.add(endpoint);
+      const { value, link } = await requestJson(
+        endpoint,
+        undefined,
+        undefined,
+        "catalog",
+      );
+      if (!Array.isArray(value) || value.length > pageSize)
+        throw new Error("INVALID_CANVAS_RESPONSE");
+      rows.push(...value);
+      if (link === null) return rows;
+      const relations = new Map<string, string>();
+      for (const entry of link.split(/,\s*(?=<)/u)) {
+        const match =
+          /^\s*<([^<>\s]+)>\s*;\s*rel="(current|prev|next|first|last)"\s*$/iu.exec(
+            entry,
+          );
+        if (!match) throw new Error("INVALID_CANVAS_RESPONSE");
+        const relation = match[2]!.toLowerCase();
+        if (relations.has(relation)) throw new Error("INVALID_CANVAS_RESPONSE");
+        relations.set(relation, match[1]!);
+      }
+      const next = relations.get("next");
+      if (!next) {
+        const last = relations.get("last");
+        if (last) {
+          const current = relations.get("current");
+          const cursor = current
+            ? catalogQuery(current).get("page")
+            : (new URLSearchParams(endpoint.slice(path.length + 1)).get(
+                "page",
+              ) ?? "1");
+          if (cursor !== catalogQuery(last).get("page"))
+            throw new Error("INVALID_CANVAS_RESPONSE");
+        }
+        return rows;
+      }
+      endpoint = `${path}?${catalogQuery(next)}`;
     }
     throw new Error("CANVAS_UNAVAILABLE");
   }
@@ -334,12 +358,15 @@ export function createCanvasPageClient(
   }
 
   return {
-    assignments: assignmentAuthoring(
+    assignments: assignmentAuthoring(courseId, request, () =>
+      readCourseCatalog("assignment_groups", canvasAssignmentGroupLimit),
+    ),
+    modules: moduleAuthoring(
       courseId,
       request,
-      readAssignmentGroupRows,
+      readCourseCatalog,
+      access.organizeSavedResources,
     ),
-    modules: moduleAuthoring(courseId, request),
     chat: canvasChat(courseId, request, (studentId) =>
       assertCourseStudent(studentId, "student_view"),
     ),

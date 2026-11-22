@@ -6,7 +6,10 @@ import {
   type CanvasAssignmentGroup,
   type CanvasAssignmentSubject,
 } from "@laita/contracts";
-import { canvasResponseId } from "./canvas-response.ts";
+import {
+  canvasResponseId,
+  canvasResponseTimestamp,
+} from "./canvas-response.ts";
 import type { CanvasAuthoringRequest } from "./canvas-page.ts";
 
 function assignmentDate(value: unknown) {
@@ -86,13 +89,7 @@ export function assignmentAuthoring(
         if (!canvasPageTitle(row.name) || typeof row.published !== "boolean")
           throw new Error("INVALID_CANVAS_TARGET");
         const updatedAt = row.updated_at;
-        if (
-          typeof updatedAt !== "string" ||
-          !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u.test(
-            updatedAt,
-          ) ||
-          !Number.isFinite(Date.parse(updatedAt))
-        )
+        if (!canvasResponseTimestamp(updatedAt))
           throw new Error("INVALID_CANVAS_TARGET");
         return {
           kind: "TITLE",

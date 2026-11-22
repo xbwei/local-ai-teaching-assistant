@@ -9,6 +9,7 @@ import {
   canvasInventoryKinds,
   isCanvasInventoryKind,
   type CanvasInventory,
+  type CanvasInventoryEntry,
   type CanvasInventoryKind,
   canvasFeedbackSubmittedAt,
   readCanvasAssignmentDraft,
@@ -25,6 +26,8 @@ import {
   type CanvasFeedbackResult,
   readCanvasModuleDraft,
   readCanvasModuleScope,
+  canvasModuleCatalogLimit,
+  type CanvasModuleCatalog,
   type CanvasModuleDraft,
   type CanvasModulePreview,
   type CanvasModuleResult,
@@ -49,6 +52,26 @@ const responseRecord = (value: unknown) =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+
+function readCanvasInventoryEntries(
+  value: unknown,
+  limit: number,
+): CanvasInventoryEntry[] {
+  if (!Array.isArray(value) || value.length > limit) throw new ClientError();
+  const entries = value.map((entry: unknown) => {
+    const item = responseRecord(entry);
+    if (
+      !canvasPageId(item?.id) ||
+      !canvasPageTitle(item.title) ||
+      typeof item.published !== "boolean"
+    )
+      throw new ClientError();
+    return { id: item.id, title: item.title, published: item.published };
+  });
+  if (new Set(entries.map((entry) => entry.id)).size !== entries.length)
+    throw new ClientError();
+  return entries;
+}
 type CanvasChatRouting = "direct" | "local";
 const canvasChatRoute = (routing: CanvasChatRouting) =>
   routing === "local" ? "/api/v1/canvas/chat/tools" : "/api/v1/canvas/chat";
@@ -337,24 +360,8 @@ export class InputApi {
       ),
     );
     const target = readCanvasTarget(value?.target);
-    if (
-      !Array.isArray(value?.entries) ||
-      value.entries.length < 1 ||
-      value.entries.length > 12
-    )
-      throw new ClientError();
-    const entries = value.entries.map((entry: unknown) => {
-      const item = responseRecord(entry);
-      if (
-        !canvasPageId(item?.id) ||
-        !canvasPageTitle(item?.title) ||
-        typeof item?.published !== "boolean"
-      )
-        throw new ClientError();
-      return { id: item.id, title: item.title, published: item.published };
-    });
-    if (new Set(entries.map((entry) => entry.id)).size !== entries.length)
-      throw new ClientError();
+    const entries = readCanvasInventoryEntries(value?.entries, 12);
+    if (!entries.length) throw new ClientError();
     return { target, entries };
   }
 
@@ -444,6 +451,35 @@ export class InputApi {
     return readCanvasModuleScope(
       await this.request("/api/v1/canvas/modules", "GET"),
     );
+  }
+
+  async canvasModuleCatalog(signal: AbortSignal): Promise<CanvasModuleCatalog> {
+    const catalog = responseRecord(
+      await this.request("/api/v1/canvas/modules", "GET", undefined, signal, {
+        "x-laita-module-catalog": "1",
+      }),
+    );
+    if (
+      !catalog ||
+      Object.keys(catalog).sort().join(",") !== "assignments,modules,pages"
+    )
+      throw new ClientError();
+    const modules = readCanvasInventoryEntries(
+      catalog.modules,
+      canvasModuleCatalogLimit,
+    );
+    if (modules.some(({ published }) => published)) throw new ClientError();
+    return {
+      modules,
+      pages: readCanvasInventoryEntries(
+        catalog.pages,
+        canvasModuleCatalogLimit,
+      ),
+      assignments: readCanvasInventoryEntries(
+        catalog.assignments,
+        canvasModuleCatalogLimit,
+      ),
+    };
   }
 
   async previewCanvasModule(

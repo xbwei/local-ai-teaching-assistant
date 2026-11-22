@@ -22,6 +22,8 @@ import { execFileSync } from "node:child_process";
 import { fixture } from "../apps/api/test/browser-fixture.mjs";
 import { canvas, canvasNow, canvasPageFixture, signed } from "../apps/api/test/canvas-fixture.mjs";
 import { canvasVerificationFixture } from "../apps/api/test/canvas-verification-fixture.mjs";
+import { readCanvasConfiguration } from "../apps/api/dist/canvas.js";
+import { readCanvasPageSettings } from "../apps/api/dist/canvas-pages.js";
 import { initializeOwnerCredential } from "../apps/api/dist/owner-credential.js";
 import { wav } from "../apps/web/src/client/microphone.ts";
 const { chromium } = await import(
@@ -992,6 +994,114 @@ try {
     syntheticVerification.state.mongo = async () => {};
     results.push({ name: mobile ? "canvas-verification-phone" : "canvas-verification-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();
+  }
+  {
+    const dynamicCanvas = canvasPageFixture({ assignments: true, modules: true });
+    dynamicCanvas.settings.assignments = { editableIds: [] };
+    dynamicCanvas.settings.modules = { organizeSavedResources: true };
+    const launchConfigFile = path.join(root, "synthetic-canvas-launch.json");
+    const restConfigFile = path.join(root, "synthetic-canvas-rest.json");
+    const restConfiguration = JSON.stringify(dynamicCanvas.settings);
+    writeFileSync(launchConfigFile, JSON.stringify({
+      ...canvas, demo: { course: "IA342", studentUserId: "73002" },
+    }), { mode: 0o600 });
+    writeFileSync(restConfigFile, restConfiguration, { mode: 0o600 });
+    const courseApp = await fixture({
+      canvas: () => readCanvasConfiguration(launchConfigFile),
+      authNow: () => canvasNow,
+      canvasPages: { ...dynamicCanvas.options, settings: () => readCanvasPageSettings(restConfigFile) },
+      tls: {
+        key: readFileSync(path.join(root, "key.pem")),
+        cert: readFileSync(path.join(root, "cert.pem")),
+      },
+      webRoot,
+    });
+    const width = 390, height = 844;
+    const context = await browser.newContext({ viewport: { width, height }, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true });
+    try {
+      courseApp.authStore.configureDemo("IA342", ...(await Promise.all(
+        [teacherPassphrase, studentPassphrase].map(initializeOwnerCredential),
+      )));
+      const launchPath = "/api/v1/canvas/launch";
+      const launch = await courseApp.request(launchPath, {
+        method: "POST",
+        headers: { origin: canvas.canvasOrigin, "sec-fetch-site": "cross-site", "content-type": "application/x-www-form-urlencoded", cookie: "" },
+        body: signed(courseApp.config.publicOrigin + launchPath, { oauth_nonce: "canvas-saved-resources-phone" }),
+      });
+      assert.equal(launch.status, 303);
+      const cookie = launch.headers.get("set-cookie").split(";")[0];
+      const split = cookie.indexOf("=");
+      await context.addCookies([{
+        name: cookie.slice(0, split), value: cookie.slice(split + 1), url: courseApp.origin + "/",
+        httpOnly: true, secure: true, sameSite: "Lax",
+      }]);
+      const page = await context.newPage();
+      const requests = [];
+      page.on("request", (request) => requests.push(request.url()));
+      await page.goto(courseApp.origin);
+      await page.getByText("Create a Canvas Page", { exact: true }).click();
+      await page.getByLabel("Page title").fill("Independent lesson Page");
+      await page.getByLabel("Page content").fill("Compare two synthetic maps.");
+      await page.getByRole("button", { name: "Preview Canvas Page" }).click();
+      await page.getByRole("button", { name: "Create unpublished page" }).click();
+      await page.getByText("Canvas verified unpublished Page 9001.").waitFor();
+      await page.getByText("Canvas Assignments", { exact: true }).click();
+      const assignments = page.locator("#teacher-canvas-assignments");
+      await assignments.getByRole("button", { name: "Refresh Assignment Groups" }).click();
+      await assignments.locator("#canvas-assignment-group").selectOption("73");
+      await assignments.getByLabel("Assignment title").fill("Independent lesson Assignment");
+      await assignments.getByLabel("Assignment content").fill("Submit a synthetic map.");
+      await assignments.getByRole("button", { name: "Preview Canvas Assignment" }).click();
+      await assignments.getByRole("button", { name: "Create unpublished assignment" }).click();
+      await assignments.getByText("Canvas verified assignment 91.").waitFor();
+
+      const modules = page.locator("#teacher-canvas-modules");
+      await modules.locator("summary").click();
+      const preview = modules.getByRole("button", { name: "Preview Canvas Module change" });
+      const refresh = modules.getByRole("button", { name: "Refresh saved Canvas resources" });
+      await modules.getByLabel("Module title").fill("Independent lesson Module");
+      await preview.click();
+      await modules.getByRole("button", { name: "Create unpublished module" }).click();
+      await modules.getByText(/Canvas verified module 62.*Refresh saved Canvas resources/).waitFor();
+      const chooseAction = modules.getByLabel("Module action");
+      const destination = modules.getByLabel("Destination module");
+      const orderItem = modules.getByLabel("Approved item for order");
+      const add = modules.getByRole("button", { name: "Add to order" });
+      const chooseOrder = async () => {
+        await chooseAction.selectOption("LINK_ORDERED");
+        assert.equal(await destination.inputValue(), "");
+        await destination.selectOption({ label: "Independent lesson Module · Module 62" });
+        await orderItem.selectOption({ label: "Independent lesson Page · Page 9001 · Unpublished" });
+        await add.click();
+        await orderItem.selectOption({ label: "Independent lesson Assignment · Assignment 91 · Unpublished" });
+        await add.click();
+        await modules.getByRole("button", { name: "Move Independent lesson Assignment · Assignment 91 · Unpublished up" }).click();
+        await preview.click();
+      };
+      await refresh.click();
+      await modules.getByText(/^Choose an unpublished module and saved items/).waitFor();
+      await chooseOrder();
+      const review = modules.getByRole("region", { name: "Canvas Module preview" });
+      await review.waitFor();
+      assert.match(await review.locator("ol").innerText(), /Independent lesson Assignment.*Independent lesson Page/s);
+      await refresh.click();
+      await modules.getByText(/^Choose an unpublished module and saved items/).waitFor();
+      assert.equal(await review.isVisible(), false);
+      assert.equal(dynamicCanvas.moduleWrites.length, 1);
+      await chooseOrder();
+      await review.getByRole("button", { name: "Apply reviewed order" }).click();
+      await modules.getByText("Canvas verified all 2 module items in the reviewed order.").waitFor();
+      assert.deepEqual(dynamicCanvas.moduleRows.get("62").items.map(({ type, published }) => [type, published]), [["Assignment", false], ["Page", false]]);
+      assert.equal(dynamicCanvas.moduleRows.get("62").published, false);
+      assert.equal(dynamicCanvas.moduleWrites.length, 3);
+      assert.equal(readFileSync(restConfigFile, "utf8"), restConfiguration);
+      assert.ok(requests.every((url) => new URL(url).origin === courseApp.origin));
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+      results.push({ name: "canvas-saved-resources-phone", width, height, status: "PASS", requests: requests.length });
+    } finally {
+      await context.close();
+      courseApp.close();
+    }
   }
   launchSettings = canvas;
   for (const scenario of [

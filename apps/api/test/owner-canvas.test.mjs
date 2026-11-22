@@ -2594,6 +2594,328 @@ const orderedModule = {
   ],
 };
 
+test("Canvas Modules lets a Teacher independently create, refresh and order new saved resources without configuring their IDs", async (t) => {
+  const synthetic = canvasPageFixture({ assignments: true, modules: true });
+  synthetic.settings.assignments = { editableIds: [] };
+  synthetic.settings.modules = { organizeSavedResources: true };
+  synthetic.moduleRows.set("63", {
+    id: 63,
+    name: "Published module",
+    published: true,
+  });
+  const { f, canvasCookie, request, preview, save } = await assignmentEntries(
+    synthetic,
+    modulesPath,
+  );
+  t.after(() => f.close());
+  const catalog = () =>
+    request("", undefined, undefined, { "x-laita-module-catalog": "1" });
+  const post = (route, action, body) =>
+    f.request(`${route}/${action}`, {
+      method: "POST",
+      headers: authenticated(canvasCookie, {
+        "content-type": "application/json",
+      }),
+      body: JSON.stringify(body),
+    });
+  for (const [route, action, draft, receipt] of [
+    [
+      pagesPath,
+      "create",
+      authoredDraft,
+      { status: "VERIFIED", pageId: "9001" },
+    ],
+    [
+      assignmentsPath,
+      "save",
+      { ...createAssignment, groupId: "73" },
+      { status: "VERIFIED", assignmentId: "91" },
+    ],
+  ]) {
+    const planned = await post(route, "preview", { draft });
+    assert.equal(planned.status, 200);
+    const { planId, draft: reviewed } = await planned.json();
+    assert.deepEqual(
+      await (
+        await post(route, action, { planId, draft: reviewed, confirm: true })
+      ).json(),
+      receipt,
+    );
+  }
+  assert.deepEqual(await (await save(await preview(createModule))).json(), {
+    status: "VERIFIED",
+    resourceId: "62",
+  });
+
+  const pagePath = `/api/v1/courses/${canvas.courseId}/pages`;
+  synthetic.remote.moduleCatalog = (kind, url, rows) =>
+    kind !== "pages"
+      ? Response.json(rows)
+      : url.searchParams.has("page")
+        ? Response.json(rows.slice(0, 1))
+        : Response.json(rows.slice(1), {
+            headers: {
+              Link: `<${canvas.canvasOrigin}${pagePath}?page=opaque_second_page&per_page=50>; rel="next"`,
+            },
+          });
+  const refreshed = await catalog();
+  assert.equal(refreshed.status, 200);
+  assert.equal(refreshed.headers.get("cache-control"), "no-store");
+  assert.match(refreshed.headers.get("vary"), /x-laita-module-catalog/iu);
+  assert.deepEqual(await refreshed.json(), {
+    modules: [
+      { id: "61", title: "Studio module", published: false },
+      { id: "62", title: createModule.title, published: false },
+    ],
+    pages: [
+      { id: "9002", title: "Maps and examples", published: true },
+      { id: "9001", title: authoredDraft.title, published: false },
+    ],
+    assignments: [
+      { id: "81", title: "Synthetic draft", published: true },
+      { id: "91", title: createAssignment.title, published: false },
+    ],
+  });
+
+  const ordered = {
+    kind: "LINK_ORDERED",
+    moduleId: "62",
+    items: [
+      { kind: "LINK_ASSIGNMENT", contentId: "91" },
+      { kind: "LINK_PAGE", contentId: "9001" },
+      { kind: "LINK_PAGE", contentId: "9002" },
+    ],
+  };
+  const discarded = await preview(ordered);
+  assert.equal((await catalog()).status, 200);
+  assert.equal((await save(discarded)).status, 409);
+  const plan = await preview(ordered);
+  assert.deepEqual(
+    plan.orderedSubjects.map(({ resourceName, resourcePublished }) => [
+      resourceName,
+      resourcePublished,
+    ]),
+    [
+      [createAssignment.title, false],
+      [authoredDraft.title, false],
+      ["Maps and examples", true],
+    ],
+  );
+  assert.equal(
+    (await save(plan, { ...ordered, items: [...ordered.items].reverse() }))
+      .status,
+    409,
+  );
+  assert.equal(synthetic.moduleWrites.length, 1);
+  assert.deepEqual(await (await save(plan)).json(), {
+    status: "ORDERED",
+    steps: [
+      { status: "VERIFIED", resourceId: "101" },
+      { status: "VERIFIED", resourceId: "102" },
+      { status: "VERIFIED", resourceId: "103" },
+    ],
+  });
+  assert.equal((await save(plan)).status, 409);
+  const destination = synthetic.moduleRows.get("62");
+  assert.equal(destination.published, false);
+  assert.deepEqual(
+    destination.items.map(({ type, content_id, page_url, published }) => [
+      type,
+      content_id ?? page_url,
+      published,
+    ]),
+    [
+      ["Assignment", 91, false],
+      ["Page", "synthetic-lesson-page", false],
+      ["Page", "maps-and-examples", true],
+    ],
+  );
+  assert.equal(synthetic.moduleWrites.length, 4);
+  assert.equal(synthetic.writes.length, 1);
+  assert.equal(synthetic.assignmentWrites.length, 1);
+});
+
+test("Canvas Module refresh and previews reject incomplete or unauthorized catalogs without writes", async (t) => {
+  const synthetic = canvasPageFixture({ modules: true });
+  const { f, request } = await assignmentEntries(synthetic, modulesPath);
+  t.after(() => f.close());
+  const catalog = (selected, signal) =>
+    request("", undefined, selected, { "x-laita-module-catalog": "1" }, signal);
+  assert.equal((await catalog()).status, 403);
+  synthetic.settings.modules = { organizeSavedResources: true };
+  for (const role of ["admin", "teacher", "student"]) {
+    assert.equal((await f.login(role)).status, 200);
+    assert.equal((await catalog(f.cookie())).status, 403);
+  }
+  assert.deepEqual(synthetic.calls, []);
+
+  const course = `/api/v1/courses/${canvas.courseId}`;
+  for (const next of [
+    `https://other.example.test${course}/modules?page=2`,
+    `${canvas.canvasOrigin}${course.replace(canvas.courseId, "123")}/modules?page=2`,
+    `${canvas.canvasOrigin}${course}/assignments?page=2`,
+    `${canvas.canvasOrigin}${course}/modules?page=2&include%5B%5D=items`,
+    `${course}/modules?page=2`,
+  ]) {
+    synthetic.remote.moduleCatalog = (_kind, _url, rows) =>
+      Response.json(rows, {
+        headers: { Link: `<${next}>; rel="next"` },
+      });
+    const rejected = await catalog();
+    assert.equal(rejected.status, 503);
+    assert.deepEqual(await rejected.json(), { code: "SERVICE_UNAVAILABLE" });
+  }
+  synthetic.remote.moduleCatalog = (_kind, _url, rows) =>
+    Response.json(rows, {
+      headers: {
+        Link: `<${canvas.canvasOrigin}${course}/modules?page=1>; rel="current", <${canvas.canvasOrigin}${course}/modules?page=3>; rel="last"`,
+      },
+    });
+  assert.equal((await catalog()).status, 503);
+  const encoded = Array.from(
+    synthetic.settings.canvasToken,
+    (char) => `%${char.charCodeAt(0).toString(16)}`,
+  ).join("");
+  synthetic.remote.moduleCatalog = (_kind, _url, rows) =>
+    Response.json(rows, {
+      headers: {
+        Link: `<${canvas.canvasOrigin}${course}/modules?page=${encoded}>; rel="next"`,
+      },
+    });
+  assert.equal((await catalog()).status, 503);
+  let pages = 0;
+  synthetic.remote.moduleCatalog = (_kind, _url, rows) =>
+    Response.json(rows, {
+      headers: {
+        Link: `<${canvas.canvasOrigin}${course}/modules?page=${++pages + 1}>; rel="next"`,
+      },
+    });
+  assert.equal(
+    (await request("preview", { draft: orderedModule })).status,
+    503,
+  );
+  assert.equal(pages, 5);
+  synthetic.remote.moduleCatalog = (_kind, _url, rows) =>
+    Response.json([...rows, rows[0]]);
+  assert.equal((await catalog()).status, 503);
+  synthetic.remote.moduleCatalog = (_kind, _url, rows) =>
+    Response.json([{ ...rows[0], course_id: 123 }]);
+  assert.equal((await catalog()).status, 503);
+  synthetic.remote.moduleCatalog = (_kind, _url, rows) =>
+    Response.json([{ ...rows[0], name: canvas.sharedSecret }]);
+  assert.equal((await catalog()).status, 503);
+  synthetic.remote.moduleCatalog = () => new Response(null, { status: 403 });
+  assert.equal((await catalog()).status, 503);
+  synthetic.remote.moduleCatalog = (_kind, _url, rows) => Response.json(rows);
+  synthetic.moduleRows.get("61").published = true;
+  assert.deepEqual((await (await catalog()).json()).modules, []);
+  assert.equal(
+    (await request("preview", { draft: orderedModule })).status,
+    503,
+  );
+  synthetic.moduleRows.get("61").published = false;
+  synthetic.calls.length = 0;
+  assert.equal(
+    (await request("preview", { draft: { ...linkPage, moduleId: "999" } }))
+      .status,
+    503,
+  );
+  assert.ok(
+    !synthetic.calls.some(([, endpoint]) => endpoint.endsWith("/modules/999")),
+  );
+  synthetic.remote.moduleCatalog = (kind, _url, rows) =>
+    Response.json(kind === "pages" ? [] : rows);
+  assert.equal((await request("preview", { draft: linkPage })).status, 503);
+  assert.ok(
+    !synthetic.calls.some(([, endpoint]) =>
+      endpoint.endsWith("/pages/page_id:9002"),
+    ),
+  );
+  synthetic.remote.moduleCatalog = (_kind, _url, rows) => Response.json(rows);
+
+  const entered = Promise.withResolvers();
+  const cancelled = Promise.withResolvers();
+  synthetic.remote.before = async (method, endpoint, signal) => {
+    if (method !== "GET" || !endpoint.endsWith("/pages")) return;
+    entered.resolve();
+    await new Promise((resolve) =>
+      signal.addEventListener("abort", resolve, { once: true }),
+    );
+    cancelled.resolve();
+  };
+  const controller = new AbortController();
+  const loading = catalog(undefined, controller.signal);
+  await entered.promise;
+  controller.abort();
+  await assert.rejects(loading, { name: "AbortError" });
+  await cancelled.promise;
+  assert.deepEqual(synthetic.moduleWrites, []);
+});
+
+test("Canvas dynamic module plans reject edited resources, publication drift, or lost authority before writing", async (t) => {
+  const synthetic = canvasPageFixture({ modules: true });
+  synthetic.settings.modules = { organizeSavedResources: true };
+  const { f, preview, save } = await assignmentEntries(synthetic, modulesPath);
+  t.after(() => f.close());
+  const old = await preview(orderedModule);
+  synthetic.assignmentRows.get("81").updated_at = "2026-11-20T12:30:00Z";
+  assert.equal((await save(old)).status, 409);
+
+  const unpublished = await preview(linkAssignment);
+  synthetic.remote.before = (method, endpoint) => {
+    if (method === "GET" && endpoint.endsWith("/assignments/81"))
+      synthetic.moduleRows.get("61").published = true;
+  };
+  assert.equal((await save(unpublished)).status, 409);
+  synthetic.remote.before = undefined;
+  synthetic.moduleRows.get("61").published = false;
+
+  const teacher = await preview(linkAssignment);
+  synthetic.remote.before = (method, endpoint) => {
+    if (method === "GET" && endpoint.endsWith("/assignments/81"))
+      synthetic.remote.course.enrollments[0].enrollment_state = "inactive";
+  };
+  assert.equal((await save(teacher)).status, 409);
+  synthetic.remote.before = undefined;
+  synthetic.remote.course.enrollments[0].enrollment_state = "active";
+  const configured = await preview(linkAssignment);
+  synthetic.settings.modules = {
+    moduleIds: ["61"],
+    pageIds: [],
+    assignmentIds: ["81"],
+  };
+  assert.equal((await save(configured)).status, 409);
+  assert.deepEqual(synthetic.moduleWrites, []);
+});
+
+for (const mode of ["wrong readback", "uncertain dispatch"]) {
+  test(`Canvas dynamic module order halts after ${mode} and cannot replay`, async (t) => {
+    const synthetic = canvasPageFixture({ modules: true });
+    synthetic.settings.modules = { organizeSavedResources: true };
+    const { f, preview, save } = await assignmentEntries(
+      synthetic,
+      modulesPath,
+    );
+    t.after(() => f.close());
+    const plan = await preview(orderedModule);
+    synthetic.remote.afterModuleWrite = (item) => {
+      if (mode === "uncertain dispatch")
+        throw new Error("Synthetic response lost after dispatch");
+      item.page_url = "other-page";
+    };
+    assert.deepEqual(await (await save(plan)).json(), {
+      status: "ORDERED",
+      steps: [
+        mode === "uncertain dispatch"
+          ? { status: "UNCERTAIN" }
+          : { status: "UNVERIFIED", resourceId: "101" },
+      ],
+    });
+    assert.equal((await save(plan)).status, 409);
+    assert.equal(synthetic.moduleWrites.length, 1);
+  });
+}
+
 test("Canvas Modules binds one confirmation to a bounded approved order and preserves the existing prefix", async (t) => {
   const synthetic = canvasPageFixture({ modules: true });
   const { f, request, preview, save } = await assignmentEntries(

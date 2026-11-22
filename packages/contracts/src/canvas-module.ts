@@ -1,7 +1,15 @@
 import { canvasPageId, canvasPageTitle } from "./canvas-page.ts";
 import type { CanvasPagePreview } from "./canvas-page.ts";
+import type { CanvasInventoryEntry } from "./canvas-inventory.ts";
 
 export const canvasModuleOrderLimit = 10;
+export const canvasModuleCatalogLimit = 250;
+
+export interface CanvasModuleCatalog {
+  modules: CanvasInventoryEntry[];
+  pages: CanvasInventoryEntry[];
+  assignments: CanvasInventoryEntry[];
+}
 
 export interface CanvasModuleLinkItem {
   kind: "LINK_PAGE" | "LINK_ASSIGNMENT";
@@ -25,6 +33,7 @@ export interface CanvasModuleScope {
   moduleIds: string[];
   pageIds: string[];
   assignmentIds: string[];
+  organizeSavedResources?: true;
 }
 
 export interface CanvasModuleSubject {
@@ -61,17 +70,32 @@ function moduleIds(value: unknown): string[] {
 }
 
 export function readCanvasModuleScope(value: unknown): CanvasModuleScope {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Object.keys(value).sort().join(",") !== "assignmentIds,moduleIds,pageIds"
-  )
+  if (!value || typeof value !== "object")
     throw new Error("INVALID_MODULE_SCOPE");
   const row = value as Record<string, unknown>;
+  const keys = Object.keys(row).sort().join(",");
+  if (keys === "organizeSavedResources" && row.organizeSavedResources === true)
+    return {
+      moduleIds: [],
+      pageIds: [],
+      assignmentIds: [],
+      organizeSavedResources: true,
+    };
+  if (
+    keys !== "assignmentIds,moduleIds,pageIds" &&
+    !(
+      keys === "assignmentIds,moduleIds,organizeSavedResources,pageIds" &&
+      row.organizeSavedResources === true
+    )
+  )
+    throw new Error("INVALID_MODULE_SCOPE");
   return {
     moduleIds: moduleIds(row.moduleIds),
     pageIds: moduleIds(row.pageIds),
     assignmentIds: moduleIds(row.assignmentIds),
+    ...(row.organizeSavedResources === true && {
+      organizeSavedResources: true,
+    }),
   };
 }
 

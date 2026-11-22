@@ -281,6 +281,7 @@ export function createCanvasAuthoringHandlers(
             modules?.moduleIds ?? null,
             modules?.pageIds ?? null,
             modules?.assignmentIds ?? null,
+            modules?.organizeSavedResources ?? false,
             chat?.testStudentId ?? null,
             chat?.assignmentIds ?? null,
             feedback ?? null,
@@ -357,6 +358,71 @@ export function createCanvasAuthoringHandlers(
     }
   }
 
+  async function describeModuleCatalog(
+    res: Response,
+    initial: ReturnType<typeof currentAccess>,
+    get: () => ReturnType<typeof currentAccess>,
+  ) {
+    if (!initial.settings.modules?.organizeSavedResources) {
+      res.status(403).json({ code: "FORBIDDEN" });
+      return;
+    }
+    if (busy) {
+      res.status(409).json({ code: "BUSY" });
+      return;
+    }
+    busy = true;
+    if (saved?.resource === "module" && saved.key === initial.key)
+      clearPreview();
+    const controller = new AbortController();
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(25_000),
+    ]);
+    const disconnect = () => controller.abort();
+    res.once("close", disconnect);
+    const assertCurrent = () => {
+      signal.throwIfAborted();
+      const current = get();
+      if (current.key !== initial.key) throw new Error("INVALID_CANVAS_TARGET");
+      return current;
+    };
+    try {
+      const { origin, courseId, teacherId } = initial.settings;
+      const client = createCanvasPageClient(
+        {
+          origin,
+          courseId,
+          teacherId,
+          refresh: () =>
+            createSecretHandleForProvider(assertCurrent().settings.canvasToken),
+          ...(options.fetcher ? { fetcher: options.fetcher } : {}),
+        },
+        signal,
+      );
+      const target = await client.readTarget();
+      const catalog = await client.modules.catalog();
+      if (JSON.stringify(await client.readTarget()) !== JSON.stringify(target))
+        throw new Error("INVALID_CANVAS_TARGET");
+      const { settings, launchKeys } = assertCurrent();
+      const entries = Object.values(catalog).flat();
+      if (
+        [...launchKeys, settings.canvasToken].some((secret) =>
+          entries.some(
+            ({ id, title }) => id.includes(secret) || title.includes(secret),
+          ),
+        )
+      )
+        throw new Error("INVALID_CANVAS_TARGET");
+      if (!res.destroyed) res.json(catalog);
+    } catch {
+      if (!res.destroyed) res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
+    } finally {
+      res.off("close", disconnect);
+      busy = false;
+    }
+  }
+
   function handler(
     resource: Resource,
     action: "status" | "preview" | "confirm",
@@ -377,6 +443,14 @@ export function createCanvasAuthoringHandlers(
         return;
       }
       if (action === "status") {
+        if (resource === "module") {
+          res.setHeader("Cache-Control", "no-store");
+          res.vary("X-Laita-Module-Catalog");
+          if (req.get("x-laita-module-catalog") === "1") {
+            await describeModuleCatalog(res, initial, get);
+            return;
+          }
+        }
         if (resource === "assignment") {
           res.setHeader("Cache-Control", "no-store");
           res.vary("X-Laita-Assignment-Group");
@@ -421,7 +495,8 @@ export function createCanvasAuthoringHandlers(
         res.status(403).json({ code: "FORBIDDEN" });
         return;
       }
-      if ("moduleId" in draft) {
+      const organizeSavedResources = modules?.organizeSavedResources;
+      if ("moduleId" in draft && !organizeSavedResources) {
         const items = draft.kind === "LINK_ORDERED" ? draft.items : [draft];
         if (
           !modules?.moduleIds.includes(draft.moduleId) ||
@@ -463,7 +538,8 @@ export function createCanvasAuthoringHandlers(
       busy = true;
       const controller = new AbortController();
       const signal =
-        draft.kind === "LINK_ORDERED"
+        draft.kind === "LINK_ORDERED" ||
+        (organizeSavedResources && "moduleId" in draft)
           ? AbortSignal.any([controller.signal, AbortSignal.timeout(35_000)])
           : controller.signal;
       const disconnect = () => controller.abort();
@@ -507,6 +583,8 @@ export function createCanvasAuthoringHandlers(
             origin,
             courseId,
             teacherId,
+            ...(resource === "module" &&
+              organizeSavedResources && { organizeSavedResources }),
             refresh: () =>
               createSecretHandleForProvider(
                 assertCurrent().settings.canvasToken,
@@ -518,6 +596,17 @@ export function createCanvasAuthoringHandlers(
         const current = await client.readTarget(
           "title" in draft ? draft : undefined,
         );
+        const recheckTarget = async () => {
+          const fresh = await client.readTarget();
+          if (JSON.stringify(fresh) !== JSON.stringify(current))
+            throw new Error("INVALID_CANVAS_TARGET");
+        };
+        if (
+          organizeSavedResources &&
+          action === "preview" &&
+          "moduleId" in draft
+        )
+          await client.modules.assertCatalogTargets(draft);
         const link =
           draft.kind === "LINK_PAGE" || draft.kind === "LINK_ASSIGNMENT"
             ? await client.modules.preview(draft)
@@ -646,9 +735,7 @@ export function createCanvasAuthoringHandlers(
             orderSteps,
             async () => {
               orderTargetChecked = false;
-              const fresh = await client.readTarget();
-              if (JSON.stringify(fresh) !== JSON.stringify(current))
-                throw new Error("INVALID_CANVAS_TARGET");
+              await recheckTarget();
               orderTargetChecked = true;
             },
             () => {
@@ -664,7 +751,12 @@ export function createCanvasAuthoringHandlers(
             res.json({ status: "ORDERED", steps: orderSteps });
           return;
         } else {
-          resourceId = await client.modules.write(draft, link, beforeDispatch);
+          resourceId = await client.modules.write(
+            draft,
+            link,
+            beforeDispatch,
+            recheckTarget,
+          );
           verified = await client.modules.readBack(resourceId, draft, link);
         }
         assertCurrent();
