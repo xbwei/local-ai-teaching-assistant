@@ -60,24 +60,4 @@ export function mountTeacherLocal(api: InputApi) {
         "Draft ready. Check the sources and edit before use.";
     },
   );
-  const history = get("teacher-history-plugin");
-  const historyStatus = get("teacher-history-status");
-  void api
-    .teacherHistoryEnabled()
-    .then((enabled) => {
-      if (enabled) history.hidden = false;
-    })
-    .catch(() => {
-      // An unconfigured plugin leaves standalone Chat available.
-    });
-  bindTeacherForm(
-    get<HTMLFormElement>("teacher-history-form"),
-    historyStatus,
-    async (signal) => {
-      historyStatus.textContent = await api.teacherHistory(
-        get<HTMLInputElement>("teacher-history-question").value,
-        signal,
-      );
-    },
-  );
 }

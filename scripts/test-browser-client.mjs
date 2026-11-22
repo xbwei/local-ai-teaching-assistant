@@ -279,7 +279,7 @@ try {
     };
     await signIn("student", true);
     assert.match(await page.locator(".owner-role").innerText(), /Test Student sample/);
-    assert.equal(await page.getByText("History Chat plugin", { exact: true }).isVisible(), false);
+    assert.equal(await page.getByLabel("Ask about").isVisible(), false);
     if (!mobile) {
       await page.locator("#question:not([disabled])").fill("How can I compare two visual explanations?");
       await page.locator("#composer").getByRole("button", { name: "Send", exact: true }).click();
@@ -303,15 +303,51 @@ try {
     await page.getByText("docs/example.md · Lab 5", { exact: true }).waitFor();
     await draft.fill("Teacher revision");
     assert.equal(await draft.inputValue(), "Teacher revision");
-    await page.getByText("History Chat plugin", { exact: true }).click();
-    const historyQuestion = page.getByLabel("History question");
-    const ask = page.getByRole("button", { name: "Ask History" });
+    const askAbout = page.getByLabel("Ask about");
+    const historyQuestion = page.getByLabel("Your question");
+    const ask = page.locator("#composer").getByRole("button", { name: "Send", exact: true });
+    const toolAnswer = page.locator("#conversation #teacher-chat-answer");
+    await askAbout.waitFor();
+    assert.deepEqual(await askAbout.locator("option").allTextContents(), ["General chat", "History (Local)"]);
+    assert.equal(await askAbout.inputValue(), "conversation");
+    await askAbout.selectOption("history");
+    assert.equal(await historyQuestion.getAttribute("maxlength"), "200");
+    assert.equal(await page.getByRole("button", { name: "Mic" }).isVisible(), false);
+    assert.equal(await page.locator("#providers").isVisible(), false);
+    const historyRequests = requests.length;
     await historyQuestion.fill("Can you tally the past seven days of questions?");
     await ask.click();
-    await page.getByText(/^1 question recorded for the Test Student sample/).waitFor();
+    await toolAnswer.getByText(/^1 question recorded for the Test Student sample/).waitFor();
     await historyQuestion.fill("Which themes appeared in the sample recently?");
     await ask.click();
-    await page.getByText("The sample asks about comparing visual explanations.", { exact: true }).waitFor();
+    await toolAnswer.getByText("The sample asks about comparing visual explanations.", { exact: true }).waitFor();
+    assert.deepEqual(requests.slice(historyRequests), Array(2).fill(f.origin + "/api/v1/teacher-tools/history"));
+    assert.equal(await page.locator("#messages article").count(), 0);
+    if (!mobile) {
+      const late = Promise.withResolvers();
+      const completed = Promise.withResolvers();
+      await page.route("**/api/v1/teacher-tools/history", async (route) => {
+        await late.promise;
+        await route.fulfill({ json: { text: "Late synthetic History answer" } }).catch(() => {});
+        completed.resolve();
+      }, { times: 1 });
+      const started = page.waitForRequest(request => request.url().endsWith("/api/v1/teacher-tools/history") && request.method() === "POST");
+      await historyQuestion.fill("Are there recent questions?");
+      await ask.click();
+      await started;
+      assert.equal(await askAbout.isDisabled(), true);
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await toolAnswer.getByText("Cancelled.", { exact: true }).waitFor();
+      late.resolve();
+      await completed.promise;
+      assert.equal(await toolAnswer.textContent(), "Cancelled.");
+    }
+    await historyQuestion.fill("An unsent sample query");
+    await askAbout.selectOption("conversation");
+    assert.equal(await historyQuestion.inputValue(), "");
+    assert.equal(await toolAnswer.textContent(), "");
+    assert.equal(await page.locator("#providers").isVisible(), true);
+    assert.equal(await historyQuestion.getAttribute("maxlength"), "2000");
     const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     assert.ok(pageWidth <= width, `${name} layout overflowed its viewport`);
     assert.ok(requests.every((request) => new URL(request).origin === f.origin));
@@ -363,7 +399,6 @@ try {
     await page.goto(f.origin);
     await page.getByText("Create a Canvas Page", { exact: true }).click();
     assert.equal(await page.getByText("Local teaching drafts", { exact: true }).isVisible(), false);
-    assert.equal(await page.getByText("History Chat plugin", { exact: true }).isVisible(), false);
     const title = page.getByLabel("Page title");
     const markdown = page.getByLabel("Page Markdown");
     const preview = page.getByRole("region", { name: "Canvas Page preview" });
@@ -491,32 +526,39 @@ try {
     assert.equal(requests.filter(request => request.endsWith("/api/v1/canvas/modules/save")).length, 3);
     assert.ok(requests.every(request => new URL(request).origin === f.origin));
     results.push({ name: mobile ? "canvas-module-phone" : "canvas-module-desktop", width, height, status: "PASS", requests: requests.length });
-    const canvasChat = page.locator("#canvas-chat-plugin");
-    const canvasQuestion = canvasChat.getByRole("textbox", { name: "Canvas question" });
-    const askCanvas = canvasChat.getByRole("button", { name: "Ask Canvas" });
+    const canvasQuestion = page.getByLabel("Your question");
+    const askCanvas = page.locator("#composer").getByRole("button", { name: "Send", exact: true });
+    const canvasAnswer = page.locator("#conversation #teacher-chat-answer");
+    const queryMode = page.getByLabel("Ask about");
+    await queryMode.waitFor();
+    assert.deepEqual(await queryMode.locator("option").allTextContents(), ["General chat", "Canvas (Local)", "Canvas (Direct)"]);
+    assert.equal(await queryMode.inputValue(), "conversation");
+    await queryMode.selectOption("canvas-local");
+    assert.equal(await canvasQuestion.getAttribute("maxlength"), "280");
+    assert.match(await page.locator("#teacher-chat-scope").textContent(), /configured Canvas Test Student/);
     const browserRequests = requests.length;
     const providerRequests = syntheticCanvas.calls.length;
-    await canvasChat.locator("summary").click();
-    const queryMode = canvasChat.getByRole("combobox", { name: "Canvas query mode" });
-    assert.equal(await queryMode.inputValue(), "local");
     await canvasQuestion.fill(`Tell me the submission tally for ${updatedTitle}.`);
     await askCanvas.click();
-    await canvasChat.getByText(/^1 submission.*configured Test Student/).waitFor();
+    await canvasAnswer.getByText(/^1 submission.*configured Test Student/).waitFor();
     await canvasQuestion.fill(`For ${updatedTitle}, what score was recorded?`);
     await askCanvas.click();
-    await canvasChat.getByText(/is 6\.5 of 7 points.*configured Test Student/).waitFor();
+    await canvasAnswer.getByText(/is 6\.5 of 7 points.*configured Test Student/).waitFor();
     await canvasQuestion.fill("What are the class grades?");
     await askCanvas.click();
-    await canvasChat.getByText(/^Ask how many submissions or what score/).waitFor();
-    await queryMode.selectOption("direct");
+    await canvasAnswer.getByText(/^Ask how many submissions or what score/).waitFor();
+    await queryMode.selectOption("canvas-direct");
+    assert.equal(await page.getByLabel("Local model", { exact: true }).isVisible(), false);
     await canvasQuestion.fill(`How many submissions for ${updatedTitle}?`);
     await askCanvas.click();
-    await canvasChat.getByText(/^1 submission.*configured Test Student/).waitFor();
+    await canvasAnswer.getByText(/^1 submission.*configured Test Student/).waitFor();
     assert.deepEqual(requests.slice(browserRequests), [
       ...Array(3).fill(f.origin + "/api/v1/canvas/chat/tools"),
       f.origin + "/api/v1/canvas/chat",
     ]);
     assert.ok(syntheticCanvas.calls.slice(providerRequests).every(([method]) => method === "GET"));
+    assert.equal(await page.locator("#messages article").count(), 0);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
     results.push({ name: mobile ? "canvas-chat-phone" : "canvas-chat-desktop", width, height, status: "PASS", requests: requests.length });
 
     const feedback = page.locator("#teacher-canvas-feedback");
