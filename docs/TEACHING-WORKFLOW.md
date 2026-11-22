@@ -22,7 +22,7 @@ For an Assignment, refresh the actual current-course Assignment Groups and choos
 
 If an external write is uncertain, inspect the Canvas course before any retry.
 
-In the same signed Teacher view, open the optional **Canvas Chat plugin** and ask “How many submissions for Map studio?” or “What is the score for Map studio?” using the full title of one approved practice assignment. This answers from one Canvas Test Student sample. [Setup and scope](CANVAS.md#canvas-chat-plugin)
+In the same signed Teacher view, choose **Ask about → Canvas (Local)** to use an available tool-capable Local model for selecting a bounded count/score lookup, or **Canvas (Direct)** for an exact query such as “How many submissions for Map studio?” or “What is the score for Map studio?” Use the full, unambiguous title of one approved practice assignment. Local selection never silently falls back to Direct; select Direct explicitly if the Local model cannot choose a tool. Both routes format the bounded Canvas observation deterministically for **one configured Test Student**, not an entire class. [Setup and scope](CANVAS.md#canvas-chat-plugin)
 
 Use **Canvas Test Student feedback** to review the exact assignment, recipient, attempt and text before choosing **Post feedback**. Check the readback. If it is uncertain or unverified, check Canvas directly before trying again. A feedback comment does not update a grade. [Feedback setup and walkthrough](CANVAS.md#canvas-teacher-feedback)
 
