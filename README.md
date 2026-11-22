@@ -2,71 +2,51 @@
 
 # LAITA — Local AI Teaching Assistant
 
-A teaching assistant that runs locally, keeps a conversation going, answers questions using public course evidence, and lets one operator review saved work. LAITA is an independent faculty-led project, not an official James Madison University service or product.
+**Local-first AI for course-grounded questions and instructor-controlled teaching workflows.** LAITA is independent, self-managed faculty-led software—not an official JMU service.
 
-**LAITA v0.2.0** · [Release notes](docs/RELEASE-NOTES-v0.2.0.md)
+**Release status:** Public **v0.3.0 code candidate**, source commit `0a888602c9ea237ca0156948121fee07edaad479` (November 22, 2026). **No v0.3.0 release/tag is claimed.** The last issued release remains [v0.2.0](docs/RELEASE-NOTES-v0.2.0.md). [Candidate v0.3.0 notes](docs/RELEASE-NOTES-v0.3.0.md).
 
-Public LAITA is an **individual / self-managed** installation for individual instructors and technical early adopters. You manage your own machine, local models, runtime, Owner credential and optional integrations. Core standalone use needs no school-provided server, central SSO or institution-wide provisioning. A future Enterprise offering is a separate future product/repository direction; it is not available today.
+LAITA runs on a machine and local model **you** manage. Standalone use needs no Canvas, GitHub practice token, MongoDB account or OpenAI key. Optional integrations are enabled separately and must use only your own authorized, non-sensitive data. No central school servers or SSO are provided.
 
-## See it in action
+## Start here
 
-![LAITA v0.2.0 sandbox Canvas course launch and demo](docs/assets/demo/laita-v020-canvas.gif)
+| I want to… | Read |
+| --- | --- |
+| Install Node, Ollama, the reference HTTPS edge, and launch LAITA | [Getting Started](docs/GETTING-STARTED.md) |
+| Initialize Admin / Demo Teacher / Demo Student and assign courses | [Accounts and course grants](docs/GETTING-STARTED.md#initialize-accounts-and-course-access) |
+| Connect an authorized Canvas course using External App / Paste XML | [Canvas configuration](docs/CANVAS.md) |
+| Generate teaching content and create a Page, Assignment or Module | [Teacher workflows](docs/TEACHING-WORKFLOW.md) |
+| Verify practice submissions with bounded read-only GitHub/MongoDB checks | [Assignment verification](docs/CANVAS-VERIFICATION.md) |
+| Reproduce the six teaching scenarios | [Workflow guide](docs/DEMO.md) |
+| Check setup errors or file a safe GitHub Issue | [Troubleshooting and support](docs/SUPPORT.md) |
+| Review the code candidate's tests and limitations | [Validation](docs/VALIDATION.md) |
 
-Owner-provided sandbox demonstration: **SANDBOX ONLY — No real student or teacher data.** [Media provenance and privacy review](docs/SCREENSHOTS.md).
+## Public v0.3.0 capabilities
 
-## What you can do
+- **Local and grounded Chat.** Explicitly select installed Ollama models, ask follow-ups and inspect bounded public course-source evidence. Missing/ambiguous evidence is not silently fabricated. Optional OpenAI/Compare requires your own API access, explicit selection and charges.
+- **Scoped practice roles.** One Admin/Owner plus *separately authenticated* Demo Teacher and Demo Student accounts. Admin manages account labels/status, sessions and IA340/IA342 course grants. An installed copy is **single-operator**; these are not real enrolled users.
+- **Teacher Chat and History.** General chat, permitted Canvas tools and scoped Demo Student History Count/Summary can be selected in the same authorized course context. A fresh install starts with zero questions.
+- **Editable AI teaching drafts.** Teacher Generate uses supported public course sources, exposes the source details and produces text the Teacher can edit. Model-generated drafts do not write to Canvas.
+- **Optional Canvas LTI + authoring.** An appropriately mapped, signed **Instructor or Learner** course-level LTI 1.1 launch uses its own launch credentials; Canvas **REST writes require a separate Instructor token**. A Teacher can refresh and choose the destination Assignment Group; preview/confirm/create an *Unpublished* Page, Assignment or Module; refresh already saved Pages/Assignments/Modules, choose and order resources and append them to an **Unpublished** Module. A single opt-in REST setting enables this dynamic workflow without copying newly created object IDs into JSON. Teachers later publish in Canvas itself.
+- **Read-only practice verification and optional feedback.** Current Canvas submission versions are previewed before selected/batch GitHub/MongoDB checks. Bounded observations are not grades or proof of authorship. Posting Test Student feedback is a separate explicit confirm/readback action.
+- **Mobile web/PWA.** Responsive browser with online Safari home-screen option when your phone can reach and trust the self-managed HTTPS origin. The supplied loopback-only reference is **not** a remote-host deployment.
 
-- **Chat locally:** `gemma4:12b-mlx` by default, with an explicit `llama3.1:8b` alternative. Continue across turns, cancel a response, or start a new conversation.
-- **Choose your provider:** Local / optional OpenAI / Compare, with visible provider/model attribution and no silent fallback. OpenAI uses your own key through server-side macOS Keychain.
-- **Ask course-grounded questions:** supported public course sources, bounded evidence and visible source provenance. Unavailable, invalid or insufficient evidence fails closed before model invocation.
-- **Use LAITA on a phone:** the responsive interface supports an online Safari home-screen entry when your phone can reach your LAITA HTTPS origin. [Phone setup](docs/GETTING-STARTED.md#iphone-home-screen-entry).
-- **Draft teaching material:** use the [standalone Teacher tools](docs/TEACHING-WORKFLOW.md) for Local lesson and assignment drafts grounded in supported course sources.
-- **Ask about practice questions:** the opt-in [History Chat plugin](docs/HISTORY.md#teacher-history-plugin) counts and locally summarizes one Test Student sample.
-- **Check a Canvas sample:** the optional [Canvas Chat plugin](docs/CANVAS.md#canvas-chat-plugin) answers read-only submission and score questions for one approved assignment and the course’s configured Test Student.
-- **Verify practice submissions:** the optional [GitHub and MongoDB verifiers](docs/CANVAS-VERIFICATION.md) check a configured course roster and show bounded observations per current attempt.
-- **Post Canvas feedback:** preview and explicitly post one [plain-text comment](docs/CANVAS.md#canvas-teacher-feedback) to the configured Canvas Test Student’s supported submission.
-- **Review saved work:** local [History & Review](docs/HISTORY.md) at `/history`, including search, Problems, sources, feedback and operator review. Admin can [look up a retained turn by correlation reference](docs/HISTORY.md#admin-diagnostic-lookup).
-- **Use optional local speech:** the reference adapters support English/Chinese recognition and spoken replies when configured. Text answers depend on the selected model's language capability; this does not establish broader speech support.
-- **Use local roles:** Owner Admin / Teacher / Student views with scoped History, all operated by the same Owner.
-- **Optional Canvas Teacher authoring:** launch from one configured course. With separate REST access, preview and explicitly create unpublished Pages, Assignments and Modules, rename an approved Assignment, or add an approved Page or Assignment to an unpublished Module. LAITA checks the result in Canvas.
+## See the workflows
 
-## Optional Canvas course launch
+The [six walkthroughs](docs/DEMO.md) cover Admin, Student, Teacher Chat, Teacher Generate, Teacher Verify and mobile/PWA. The image below is **an earlier v0.2.0 synthetic sandbox demonstration**, not a capture of the v0.3.0 Public code candidate:
 
-Canvas is optional. Installation requires permission in your own Canvas environment to add a **course-level External App / Paste XML**; actual account and institution policies still apply. You provide the Canvas HTTPS origin, numeric course ID, numeric Canvas Owner user ID, generated consumer key, generated shared secret and exact LAITA HTTPS origin.
+![Prior v0.2.0 Canvas sandbox example](docs/assets/demo/laita-v020-canvas.gif)
 
-The consumer key/shared secret are launch credentials, not your Canvas password or a Canvas REST API token. The signed launch requires **no Canvas REST API token**. The optional Canvas authoring panels use a backend token for the same Instructor and course. They recheck the target before an explicit write and report the readback result. Standalone use needs neither configuration. [Canvas installation and authoring](docs/CANVAS.md)
+The Owner-supplied **six DEV GIFs** are being assessed against the final Public code and privacy/media rules. They are **not yet represented as Public-build screenshots**; see [media provenance](docs/SCREENSHOTS.md). A synthetic Chromium run or DEV Sandbox recording is not real Public Canvas/device acceptance.
 
-## Public course sources
+## Limitations, privacy and support
 
-Course grounding is separate from Canvas credentials. It uses explicitly supported public GitHub repositories (currently the two demo-course mappings), read-only public GitHub APIs and a **1 MiB per-course snapshot budget**. No GitHub token or GitHub account is needed to run standalone LAITA; neither a GitHub token nor a Canvas API token is a universal prerequisite. Anonymous API rate limits may apply. Unsupported repositories are not accepted, and unavailable, invalid or insufficient evidence fails closed. [Supported sources and limits](docs/COURSE-GROUNDING.md).
+The reference setup is Apple Silicon macOS, Node 24/npm 11, Ollama, an operator-owned loopback HTTPS entry and locally stored SQLite. Course grounding uses explicitly supported public IA340/IA342 mappings, not arbitrary RAG, private course repos or institutional LMS data. Optional Canvas, Github/MongoDB and OpenAI connections need the appropriate rights and may be unavailable under your organization’s policies. Keep all Canvas secrets, student-related records and practice URIs out of public bug reports. Protect your own host and backup; retained text History has no automatic purge.
 
-## Start with Local
+This source candidate has not been accepted on physical devices or against arbitrary real Canvas, Atlas, GitHub or school installations. See [validation](docs/VALIDATION.md) and [security](SECURITY.md).
 
-Follow [Getting started](docs/GETTING-STARTED.md) for prerequisites, installation, configuration, model setup and the first conversation. The reference deployment uses an Apple Silicon Mac, Ollama, Node 24 and an operator-controlled HTTPS entry on loopback. OpenAI is optional.
+## Author and community
 
-[Unreleased changes since v0.2.0](docs/RELEASE-NOTES-unreleased.md) lists the supported workflows, a practice walkthrough and upgrade checks.
+Created and maintained by **Xuebin Wei, Ph.D.**, Associate Professor at James Madison University. [Project background](docs/ABOUT.md). LAITA software is [MIT licensed](LICENSE); media, datasets, dependencies and model weights retain their respective terms in [THIRD_PARTY.md](THIRD_PARTY.md).
 
-| Guide                                                          | What it covers                                                                                                               |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| [Local roles and optional Canvas course App](docs/CANVAS.md)   | Hidden Terminal credential setup, standalone roles, signed Instructor launch, unpublished Pages, removal and troubleshooting |
-| [Demo courses / Course-grounded Q&A](docs/COURSE-GROUNDING.md) | Source refresh, visible citations, evidence refusal and substituting supported public course material                        |
-| [OpenAI / Compare](docs/OPENAI.md)                             | Cloud data flow, interactive Keychain setup, enabling, missing credentials, rotation and deletion                            |
-| [History & Review](docs/HISTORY.md)                            | Retained records, feedback, operator review and access limitations                                                           |
-| [Speech and Pi client](docs/SPEECH.md)                         | English/Chinese reference support, local adapters and hardware acceptance                                                    |
-| [Deployment](docs/DEPLOYMENT.md)                               | Operator-owned macOS lifecycle, hardware photos, HTTPS and recovery                                                          |
-
-## Privacy and current limits
-
-Local inference and course evidence remain on your host. Optional OpenAI sends eligible general questions and bounded provider-specific context to OpenAI; course excerpts and archived History are not sent. Text history persists locally; microphone and generated audio are temporary. See [data flow](docs/ARCHITECTURE.md) and [security policy](SECURITY.md).
-
-LAITA remains **single-operator**: one Owner operates local Admin / Teacher / Student roles using an initialized passphrase, with scoped sessions and History. Optional Canvas admits only the configured Instructor into Teacher. These are not real participant accounts; the reference entry stays on loopback. There is one admitted operation with no queue, bounded context/retrieval, and two explicit public demo-course mappings. It is not a student account, LMS or grading platform. Live model quality, Cloud account availability, real speech quality and physical hardware acceptance are not established by synthetic tests. [Validation and limitations](docs/VALIDATION.md).
-
-## Author, support and community
-
-Created and maintained by **Xuebin Wei, Ph.D.**, Associate Professor in JMU's Intelligence Analysis program. [Verified professional profile and project background](docs/ABOUT.md).
-
-Thank you to JMU's School of Integrated Sciences and College of Integrated Science and Engineering, including CISE Faculty Mini-Grant and Educational Leave support. Additional support was provided by OpenAI through ChatGPT for Academic Researchers. These acknowledgments do not imply endorsement by JMU or OpenAI. [Official names and acknowledgments](docs/ABOUT.md#acknowledgments).
-
-Bug reports and focused feature requests are welcome through [GitHub Issues](https://github.com/xbwei/local-ai-teaching-assistant/issues). Use a minimal, non-sensitive reproduction. [Contributing](CONTRIBUTING.md) · [Validation & limitations](docs/VALIDATION.md).
-
-LAITA-authored software is under the [MIT License](LICENSE). Models, course content, dependencies and recorded media retain their own rights; see [third-party boundaries](THIRD_PARTY.md).
+Report reproducible, **redacted** bugs via [GitHub Issues](https://github.com/xbwei/local-ai-teaching-assistant/issues/new), not by submitting tokens, MongoDB URIs, student PII or private Canvas content. [Support checklist](docs/SUPPORT.md).
