@@ -289,6 +289,61 @@ export function createCanvasAuthoringHandlers(
     };
   }
 
+  async function describeConfiguredAssignmentGroup(
+    res: Response,
+    initial: ReturnType<typeof currentAccess>,
+    get: () => ReturnType<typeof currentAccess>,
+  ) {
+    if (busy) {
+      res.status(409).json({ code: "BUSY" });
+      return;
+    }
+    busy = true;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(5000),
+    ]);
+    const disconnect = () => controller.abort();
+    res.once("close", disconnect);
+    const assertCurrent = () => {
+      signal.throwIfAborted();
+      const current = get();
+      if (current.key !== initial.key) throw new Error("INVALID_CANVAS_TARGET");
+      return current;
+    };
+    try {
+      const { origin, courseId, teacherId, assignments } = initial.settings;
+      if (!assignments) throw new Error("CANVAS_UNAVAILABLE");
+      const client = createCanvasPageClient(
+        {
+          origin,
+          courseId,
+          teacherId,
+          refresh: () =>
+            createSecretHandleForProvider(assertCurrent().settings.canvasToken),
+          ...(options.fetcher ? { fetcher: options.fetcher } : {}),
+        },
+        signal,
+      );
+      await client.readTarget();
+      const group = await client.assignments.describeGroup(assignments.groupId);
+      const { settings, launchKeys } = assertCurrent();
+      if (
+        [...launchKeys, settings.canvasToken].some((secret) =>
+          group.name.includes(secret),
+        )
+      )
+        throw new Error("INVALID_CANVAS_TARGET");
+      if (!res.destroyed) res.json(group);
+    } catch {
+      if (!res.destroyed) res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
+    } finally {
+      res.off("close", disconnect);
+      busy = false;
+    }
+  }
+
   function handler(
     resource: Resource,
     action: "status" | "preview" | "confirm",
@@ -309,6 +364,14 @@ export function createCanvasAuthoringHandlers(
         return;
       }
       if (action === "status") {
+        if (resource === "assignment") {
+          res.setHeader("Cache-Control", "no-store");
+          res.vary("X-Laita-Assignment-Group");
+          if (req.get("x-laita-assignment-group") === "1") {
+            await describeConfiguredAssignmentGroup(res, initial, get);
+            return;
+          }
+        }
         res.json(
           {
             page: { enabled: true },

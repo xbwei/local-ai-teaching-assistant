@@ -13,11 +13,14 @@ const get = <T extends HTMLElement>(id: string) =>
 
 export async function mountTeacherCanvasAssignments(api: InputApi) {
   const scope = await api.canvasAssignmentScope();
-  const tool = document.getElementById("teacher-canvas-assignments")!;
+  const tool = document.getElementById(
+    "teacher-canvas-assignments",
+  ) as HTMLDetailsElement;
   const form = get<HTMLFormElement>("form");
   const kind = get<HTMLSelectElement>("kind");
   const assignment = get<HTMLSelectElement>("id");
   const createFields = get<HTMLFieldSetElement>("create");
+  const groupLabel = get("group");
   const title = get<HTMLInputElement>("title");
   const body = get<HTMLTextAreaElement>("body");
   const format = get<HTMLSelectElement>("format");
@@ -37,7 +40,11 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
     'option[value="TITLE"]',
   )!;
   editChoice.disabled = scope.editableIds.length === 0;
+  const groupIdLabel = `Configured Assignment Group · ID ${scope.groupId}`;
+  groupLabel.textContent = groupIdLabel;
   let pending: AbortController | undefined;
+  let groupLookup: AbortController | undefined;
+  let groupRead: Promise<void> | undefined;
   let approved: CanvasAssignmentPreview | undefined;
   const syncDraft = mountCanvasLocalDraft(
     api,
@@ -100,6 +107,28 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
     preview.hidden = false;
   }
 
+  tool.addEventListener("toggle", () => {
+    groupLookup?.abort();
+    groupLabel.textContent = groupIdLabel;
+    if (!tool.open) return;
+    const lookup = new AbortController();
+    groupLookup = lookup;
+    groupRead = api
+      .canvasAssignmentGroup(lookup.signal)
+      .then((group) => {
+        if (!lookup.signal.aborted && tool.open && group.id === scope.groupId)
+          groupLabel.textContent = `Configured Assignment Group · ${group.name} (ID ${group.id})`;
+      })
+      .catch(() => {
+        // The existing configured ID remains visible when metadata is unavailable.
+      })
+      .finally(() => {
+        if (groupLookup === lookup) {
+          groupLookup = undefined;
+          groupRead = undefined;
+        }
+      });
+  });
   tool.hidden = false;
   syncForm();
   form.addEventListener("input", () => {
@@ -113,7 +142,10 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
     status.textContent = "Assignment preview cancelled.";
     previewButton.focus();
   };
-  abort.onclick = () => pending?.abort();
+  abort.onclick = () => {
+    groupLookup?.abort();
+    pending?.abort();
+  };
   form.onsubmit = async (event) => {
     event.preventDefault();
     if (pending) return;
@@ -152,6 +184,8 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
     abort.hidden = false;
     status.textContent = "Checking the Canvas assignment target…";
     try {
+      await groupRead;
+      controller.signal.throwIfAborted();
       const plan = await api.previewCanvasAssignment(draft, controller.signal);
       if (pending !== controller || controller.signal.aborted) return;
       approved = plan;
@@ -204,6 +238,8 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
   };
 
   window.addEventListener("pagehide", () => {
+    groupLookup?.abort();
+    groupLabel.textContent = groupIdLabel;
     pending?.abort();
     pending = undefined;
     clearPreview();

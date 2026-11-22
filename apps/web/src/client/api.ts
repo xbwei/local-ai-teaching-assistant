@@ -278,6 +278,21 @@ export class InputApi {
     );
   }
 
+  async canvasAssignmentGroup(signal: AbortSignal) {
+    const group = responseRecord(
+      await this.request(
+        "/api/v1/canvas/assignments",
+        "GET",
+        undefined,
+        signal,
+        { "x-laita-assignment-group": "1" },
+      ),
+    );
+    if (!canvasPageId(group?.id) || !canvasPageTitle(group.name))
+      throw new ClientError();
+    return { id: group.id, name: group.name };
+  }
+
   async canvasInventoryOptions() {
     const value = responseRecord(
       await this.request("/api/v1/canvas/inventory", "GET"),

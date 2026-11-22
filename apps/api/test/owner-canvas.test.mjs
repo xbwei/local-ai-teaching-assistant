@@ -1715,6 +1715,86 @@ async function assignmentEntries(synthetic, path = assignmentsPath) {
   return { ...entries, save };
 }
 
+test("Canvas Assignment group display reads only the configured destination before Preview", async (t) => {
+  const synthetic = canvasPageFixture({ assignments: true });
+  const { f, request, preview, save, canvasCookie } =
+    await assignmentEntries(synthetic);
+  t.after(() => f.close());
+  const group = (selected = canvasCookie, flag = "1") =>
+    f.request(assignmentsPath, {
+      headers: authenticated(selected, { "x-laita-assignment-group": flag }),
+    });
+  const groupPath = `/courses/${canvas.courseId}/assignment_groups/72`;
+  assert.equal((await group("")).status, 401);
+  for (const role of ["admin", "teacher", "student"]) {
+    assert.equal((await f.login(role)).status, 200);
+    assert.equal((await group(f.cookie())).status, 403);
+  }
+  const scope = {
+    groupId: "72",
+    editableIds: ["81", "82"],
+  };
+  assert.deepEqual(await (await group(canvasCookie, "73")).json(), scope);
+  assert.equal(
+    (
+      await f.request(assignmentsPath + "?groupId=73", {
+        headers: authenticated(canvasCookie, {
+          "x-laita-assignment-group": "1",
+        }),
+      })
+    ).status,
+    403,
+  );
+  assert.deepEqual(await (await request("")).json(), scope);
+  assert.deepEqual(synthetic.calls, []);
+
+  synthetic.remote.group.extra = "synthetic unprojected field";
+  const result = await group();
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get("cache-control"), "no-store");
+  assert.match(result.headers.get("vary"), /x-laita-assignment-group/iu);
+  assert.deepEqual(await result.json(), { id: "72", name: "Studio Exercises" });
+  assert.deepEqual(synthetic.calls, [
+    ["GET", "/users/self"],
+    ["GET", `/courses/${canvas.courseId}`],
+    ["GET", groupPath],
+  ]);
+  assert.deepEqual(synthetic.assignmentWrites, []);
+
+  for (const changed of [
+    { id: 73 },
+    { course_id: 42002 },
+    { name: canvas.sharedSecret },
+    { name: synthetic.settings.canvasToken },
+    { name: "Unsafe\u202e label" },
+  ]) {
+    synthetic.remote.group = { id: 72, name: "Studio Exercises", ...changed };
+    const denied = await group();
+    assert.equal(denied.status, 503);
+    assert.deepEqual(await denied.json(), { code: "SERVICE_UNAVAILABLE" });
+  }
+  synthetic.remote.group = { id: 72, name: "Studio Exercises" };
+  synthetic.remote.before = (method, endpoint) => {
+    if (method === "GET" && endpoint === groupPath)
+      synthetic.settings.assignments.groupId = "73";
+  };
+  assert.equal((await group()).status, 503);
+  synthetic.settings.assignments.groupId = "72";
+  synthetic.remote.before = undefined;
+
+  const rename = await preview(renameAssignment);
+  synthetic.remote.group = { id: 73, name: "Wrong group" };
+  assert.equal((await group()).status, 503);
+  assert.equal((await request("")).status, 200);
+  assert.equal((await save(rename)).status, 200);
+  assert.deepEqual(
+    synthetic.calls.filter(([, endpoint]) =>
+      endpoint.includes("assignment_groups"),
+    ),
+    Array(8).fill(["GET", groupPath]),
+  );
+});
+
 test("Canvas Assignment authoring is opt-in, strictly scoped, and sends one exact confirmed create or title change", async (t) => {
   const unconfigured = canvasPageFixture();
   const inactive = await assignmentEntries(unconfigured);

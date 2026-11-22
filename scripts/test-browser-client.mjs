@@ -625,6 +625,10 @@ try {
     const createAssignment = assignmentPreview.getByRole("button", { name: "Create unpublished assignment" });
     const saveTitle = assignmentPreview.getByRole("button", { name: "Save assignment title" });
     const assignmentWrites = syntheticCanvas.assignmentWrites.length;
+    const configuredGroup = tool.locator("#canvas-assignment-group");
+    await tool.getByText("Configured Assignment Group · Studio Exercises (ID 72)", { exact: true }).waitFor();
+    assert.equal(await assignmentPreview.isVisible(), false);
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await assignmentTitle.fill("Synthetic studio lab");
     const assignmentBody = tool.getByLabel("Assignment content");
     const assignmentFormat = tool.getByLabel("Assignment body format");
@@ -685,6 +689,7 @@ try {
     assert.ok([...submitted.keys()].every((key) => !/rubric/iu.test(key)));
 
     await tool.getByLabel("Assignment action").selectOption("TITLE");
+    assert.equal(await configuredGroup.isVisible(), false);
     assert.equal(await tool.getByRole("button", { name: "Generate Local suggestion" }).isVisible(), false);
     await tool.getByLabel("Assignment to rename").selectOption("81");
     assert.equal(await assignmentBody.isVisible(), false);
