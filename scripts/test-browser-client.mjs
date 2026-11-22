@@ -397,6 +397,13 @@ try {
     const requests = [];
     page.on("request", (request) => requests.push(request.url()));
     const writes = syntheticCanvas.writes.length;
+    const allowModuleScope = mobile ? undefined : Promise.withResolvers();
+    if (allowModuleScope) {
+      await page.route("**/api/v1/canvas/modules", async (route) => {
+        await allowModuleScope.promise;
+        await route.continue();
+      }, { times: 1 });
+    }
     await page.goto(f.origin);
     const inventory = page.locator("#teacher-canvas-inventory");
     await inventory.getByText("Browse approved Canvas resources", { exact: true }).click();
@@ -407,6 +414,23 @@ try {
     await inventoryKind.selectOption("pages");
     await loadInventory.click();
     await inventoryRows.getByText("Maps and examples · ID 9002 · Published", { exact: true }).waitFor();
+    if (allowModuleScope) {
+      const earlyUse = inventoryRows.getByRole("button", { name: "Use Maps and examples (ID 9002) in Modules", exact: true });
+      const modules = page.locator("#teacher-canvas-modules");
+      try {
+        assert.equal(await modules.isVisible(), false);
+        await earlyUse.click();
+        await inventory.getByRole("status").getByText(/^Module selection is unavailable/).waitFor();
+      } finally {
+        allowModuleScope.resolve();
+      }
+      await modules.waitFor();
+      await earlyUse.click();
+      assert.equal(await modules.getByLabel("Item to add").inputValue(), "9002");
+      await modules.getByLabel("Module action").selectOption("CREATE_MODULE");
+      await modules.locator("summary").click();
+      assert.equal(await modules.getAttribute("open"), null);
+    }
     await inventoryKind.selectOption("modules");
     assert.equal(await inventoryRows.getByRole("listitem").count(), 0);
     await loadInventory.click();
@@ -522,10 +546,34 @@ try {
     assert.equal(syntheticCanvas.moduleRows.get("62").published, false);
 
     const chooseModuleAction = moduleTool.getByLabel("Module action");
+    const moduleDestination = moduleTool.getByLabel("Destination module");
+    const itemToAdd = moduleTool.getByLabel("Item to add");
     const addItem = modulePreview.getByRole("button", { name: "Add item to module" });
-    await chooseModuleAction.selectOption("LINK_PAGE");
-    await moduleTool.getByLabel("Destination module").selectOption("61");
-    await moduleTool.getByLabel("Item to add").selectOption("9002");
+    await inventory.getByText("Browse approved Canvas resources", { exact: true }).click();
+    const useInventoryItem = async (label, id) => {
+      const button = inventoryRows.getByRole("button", { name: `Use ${label} (ID ${id}) in Modules`, exact: true });
+      await button.waitFor();
+      const beforeBrowser = requests.length;
+      const beforeCanvas = syntheticCanvas.calls.length;
+      await button.click();
+      assert.equal(requests.length, beforeBrowser);
+      assert.equal(syntheticCanvas.calls.length, beforeCanvas);
+      assert.equal(await modulePreview.isVisible(), false);
+      assert.equal(await moduleDestination.inputValue(), "");
+      assert.equal(await itemToAdd.inputValue(), id);
+      assert.equal(await itemToAdd.locator("option:checked").textContent(), `${label} · ID ${id}`);
+    };
+    await inventoryKind.selectOption("pages");
+    await loadInventory.click();
+    await moduleTool.locator("summary").click();
+    assert.equal(await moduleTool.getAttribute("open"), null);
+    await useInventoryItem("Maps and examples", "9002");
+    assert.equal(await moduleDestination.isVisible(), true);
+    assert.equal(await chooseModuleAction.inputValue(), "LINK_PAGE");
+    const beforeMissingDestination = requests.length;
+    await previewModule.click();
+    assert.equal(requests.length, beforeMissingDestination);
+    await moduleDestination.selectOption("61");
     await previewModule.click();
     await modulePreview.getByText(/Add Page 9002/).waitFor();
     assert.match(await modulePreview.textContent(), /Maps and examples.*unpublished Module 61/s);
@@ -533,9 +581,18 @@ try {
     assert.equal(await modulePreview.isVisible(), false);
     assert.equal(syntheticCanvas.moduleWrites.length, moduleWrites + 1);
     await previewModule.click();
+    await addItem.waitFor();
+    await useInventoryItem("Maps and examples", "9002");
+    assert.equal(syntheticCanvas.moduleWrites.length, moduleWrites + 1);
+    await moduleDestination.selectOption("61");
+    await previewModule.click();
     await addItem.click();
     await moduleTool.getByText("Canvas verified module item 101.").waitFor();
-    await chooseModuleAction.selectOption("LINK_ASSIGNMENT");
+    await inventoryKind.selectOption("module-assignments");
+    await loadInventory.click();
+    await useInventoryItem(updatedTitle, "81");
+    assert.equal(await chooseModuleAction.inputValue(), "LINK_ASSIGNMENT");
+    await moduleDestination.selectOption("61");
     await previewModule.click();
     await modulePreview.getByText(/Add Assignment 81/).waitFor();
     assert.equal(syntheticCanvas.moduleWrites.length, moduleWrites + 2);

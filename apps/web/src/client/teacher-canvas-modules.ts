@@ -1,5 +1,6 @@
 import {
   readCanvasModuleDraft,
+  type CanvasInventoryEntry,
   type CanvasModulePreview,
 } from "@laita/contracts/browser";
 import { ClientError, type InputApi } from "./api.ts";
@@ -7,9 +8,18 @@ import { ClientError, type InputApi } from "./api.ts";
 const get = <T extends HTMLElement>(id: string) =>
   document.getElementById(`canvas-module-${id}`) as T;
 
-export async function mountTeacherCanvasModules(api: InputApi) {
+export type CanvasModuleItemSelector = (
+  action: "LINK_PAGE" | "LINK_ASSIGNMENT",
+  item: Pick<CanvasInventoryEntry, "id" | "title">,
+) => boolean;
+
+export async function mountTeacherCanvasModules(
+  api: InputApi,
+): Promise<CanvasModuleItemSelector> {
   const scope = await api.canvasModuleScope();
-  const tool = document.getElementById("teacher-canvas-modules")!;
+  const tool = document.querySelector<HTMLDetailsElement>(
+    "#teacher-canvas-modules",
+  )!;
   const form = get<HTMLFormElement>("form");
   const kind = get<HTMLSelectElement>("kind");
   const title = get<HTMLInputElement>("title");
@@ -180,6 +190,7 @@ export async function mountTeacherCanvasModules(api: InputApi) {
           status.textContent +=
             " To add items through LAITA, approve this module ID in the REST settings and reload.";
         form.reset();
+        content.replaceChildren();
       } else {
         status.textContent =
           result.status === "UNVERIFIED"
@@ -202,8 +213,26 @@ export async function mountTeacherCanvasModules(api: InputApi) {
     pending = undefined;
     clearPreview();
     form.reset();
+    content.replaceChildren();
     abort.hidden = true;
     status.textContent = "";
     syncForm();
   });
+
+  return (action, item) => {
+    const ids = action === "LINK_PAGE" ? scope.pageIds : scope.assignmentIds;
+    if (pending || !scope.moduleIds.length || !ids.includes(item.id))
+      return false;
+    clearPreview();
+    kind.value = action;
+    fillItems();
+    content.value = item.id;
+    content.selectedOptions[0]!.textContent = `${item.title} · ID ${item.id}`;
+    module.selectedIndex = -1;
+    syncForm();
+    status.textContent = "Choose a destination module and preview the change.";
+    tool.open = true;
+    module.focus();
+    return true;
+  };
 }
