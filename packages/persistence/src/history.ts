@@ -18,6 +18,7 @@ export class HistoryValidationError extends Error {}
 export interface HistoryScope {
   role: "admin" | "teacher" | "student";
   context?: string;
+  principal?: import("./owner-auth.ts").DemoUsername;
 }
 
 /** All SQL is fixed here; callers never receive a connection or raw query seam. */
@@ -26,13 +27,16 @@ export function createHistoryRepository(
   scope?: HistoryScope,
 ) {
   const allowed = (conversation: string) => {
-    if (!scope || scope.role === "admin") return;
+    if (!scope) return;
     const row = db
-      .prepare("SELECT role, scope FROM history_conversations WHERE id = ?")
+      .prepare(
+        "SELECT role, scope, principal FROM history_conversations WHERE id = ?",
+      )
       .get(conversation);
     if (
       !row ||
-      row.role !== scope.role ||
+      row.principal !== (scope.principal ?? "") ||
+      (scope.role !== "admin" && row.role !== scope.role) ||
       (scope.context !== undefined && row.scope !== scope.context)
     )
       throw new HistoryValidationError("History target unavailable");
@@ -106,12 +110,13 @@ export function createHistoryRepository(
       transaction(() => {
         const at = new Date().toISOString();
         db.prepare(
-          "INSERT INTO history_conversations(id, created, role, scope) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+          "INSERT INTO history_conversations(id, created, role, scope, principal) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
         ).run(
           value.conversation,
           at,
           scope?.role ?? "legacy",
           scope?.context ?? "",
+          scope?.principal ?? "",
         );
         allowed(value.conversation);
         db.prepare(
@@ -339,6 +344,7 @@ export function createHistoryRepository(
       const context = scope?.context;
       if (
         scope?.role !== "student" ||
+        scope.principal ||
         !context ||
         !/^[a-f0-9]{64}$/u.test(context)
       )
@@ -348,7 +354,7 @@ export function createHistoryRepository(
         .prepare(
           `SELECT ${includeText ? "substr(t.text, 1, 2000)" : "NULL"} AS question
            FROM history_turns t JOIN history_conversations c ON c.id = t.conversation
-           WHERE c.role = 'student' AND c.scope = ? AND t.created >= ? AND t.created <= ?
+           WHERE c.role = 'student' AND c.principal = '' AND c.scope = ? AND t.created >= ? AND t.created <= ?
              AND t.text IS NOT NULL AND t.recording = 'RECORDED'
            ORDER BY t.ordinal DESC LIMIT ?`,
         )
@@ -371,11 +377,13 @@ export function createHistoryRepository(
         conditions.push(sql);
         args.push(...values);
       };
-      if (scope && scope.role !== "admin") {
+      if (scope) {
         add(
-          "EXISTS (SELECT 1 FROM history_conversations c WHERE c.id = t.conversation AND c.role = ?" +
+          "EXISTS (SELECT 1 FROM history_conversations c WHERE c.id = t.conversation AND c.principal = ?" +
+            (scope.role === "admin" ? "" : " AND c.role = ?") +
             (scope.context === undefined ? ")" : " AND c.scope = ?)"),
-          scope.role,
+          scope.principal ?? "",
+          ...(scope.role === "admin" ? [] : [scope.role]),
           ...(scope.context === undefined ? [] : [scope.context]),
         );
       }

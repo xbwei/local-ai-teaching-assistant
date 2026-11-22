@@ -95,4 +95,9 @@ export {
   type HistoryScope,
 } from "./history.ts";
 
-export type { OwnerAuthRepository, OwnerCredential } from "./owner-auth.ts";
+export {
+  demoUsernames,
+  type DemoUsername,
+  type OwnerAuthRepository,
+  type OwnerCredential,
+} from "./owner-auth.ts";

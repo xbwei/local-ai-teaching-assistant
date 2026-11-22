@@ -83,6 +83,7 @@ export function createCourseAwareExecution(options: {
     trace?: Trace,
     source: "TYPED" | "TRANSCRIPT" = "TYPED",
     draft?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" },
+    boundCourse?: CourseId,
   ): Promise<ProviderRunResult> {
     const executeProvider: typeof options.executeProvider = async (...args) => {
       const started = Date.now();
@@ -107,6 +108,20 @@ export function createCourseAwareExecution(options: {
       }
     };
     const identified = identifyCourseQuestion(request.input.text, source);
+    if (
+      boundCourse &&
+      identified &&
+      identified !== "AMBIGUOUS" &&
+      identified !== boundCourse
+    ) {
+      trace?.("COURSE", "NOT_APPLICABLE");
+      trace?.("RETRIEVAL", "NOT_EXECUTED");
+      trace?.("PROVIDER", "NOT_EXECUTED");
+      return notice(request, {
+        status: "EVIDENCE_NOT_FOUND",
+        course: boundCourse,
+      });
+    }
     if (
       source === "TRANSCRIPT" &&
       identified !== identifyCourseQuestion(request.input.text)
@@ -181,9 +196,11 @@ export function createCourseAwareExecution(options: {
           })
         : executeProvider(request, signal, sessionRef);
     if (
-      draft &&
       grounding.status === "FOUND" &&
-      grounding.course !== draft.course
+      ((draft && grounding.course !== draft.course) ||
+        (boundCourse &&
+          (grounding.course !== boundCourse ||
+            grounding.sources.some((source) => source.course !== boundCourse))))
     )
       return notice(request, { status: "EVIDENCE_AMBIGUOUS" });
     if (grounding.status !== "FOUND") {

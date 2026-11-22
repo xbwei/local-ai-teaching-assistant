@@ -62,7 +62,7 @@ export function createTeacherHistoryStatusHandler(
   return (req, res) => {
     const actor = sessions.authorize(req, res);
     if (!actor) return;
-    if (actor.role !== "teacher" || actor.source !== "local") {
+    if (actor.role !== "teacher" || actor.source !== "local" || actor.demo) {
       res.status(403).json({ code: "FORBIDDEN" });
       return;
     }
@@ -87,7 +87,7 @@ export function createTeacherHistoryQueryHandler(
   return async (req, res) => {
     const actor = sessions.authorize(req, res);
     if (!actor) return;
-    if (actor.role !== "teacher" || actor.source !== "local") {
+    if (actor.role !== "teacher" || actor.source !== "local" || actor.demo) {
       res.status(403).json({ code: "FORBIDDEN" });
       return;
     }

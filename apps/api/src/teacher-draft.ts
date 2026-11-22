@@ -46,6 +46,10 @@ export function createTeacherDraftHandler(
       res.status(400).json({ code: "INVALID_REQUEST" });
       return;
     }
+    if (actor.demo && value.course !== actor.demo.course) {
+      res.status(403).json({ code: "FORBIDDEN" });
+      return;
+    }
     const controller = new AbortController();
     const disconnect = () => controller.abort();
     res.once("close", disconnect);

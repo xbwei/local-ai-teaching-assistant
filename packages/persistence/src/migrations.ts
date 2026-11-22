@@ -51,7 +51,22 @@ export const migrations: readonly Migration[] = Object.freeze([
       "ALTER TABLE history_conversations ADD COLUMN scope TEXT NOT NULL DEFAULT ''",
     ].join(";"),
   }),
+  Object.freeze({
+    version: 6,
+    sql: [
+      "ALTER TABLE history_conversations ADD COLUMN principal TEXT NOT NULL DEFAULT ''",
+      "CREATE TABLE demo_memberships (username TEXT PRIMARY KEY CHECK (username IN ('demo-teacher','demo-student')), course TEXT NOT NULL, salt TEXT NOT NULL, verifier TEXT NOT NULL, revision TEXT NOT NULL, active INTEGER NOT NULL CHECK (active IN (0,1))) STRICT",
+    ].join(";"),
+  }),
 ]);
+const schemaObjects = [
+  "schema_migrations",
+  "policy_active,policy_history,policy_versions,schema_migrations",
+  "policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations",
+  "history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations",
+  "canvas_nonces,history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,owner_credential,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations",
+  "canvas_nonces,demo_memberships,history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,owner_credential,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations",
+];
 const checksum = (sql: string) =>
   createHash("sha256").update(sql).digest("hex");
 
@@ -100,16 +115,7 @@ export function migrate(
           )
           .all()
           .map((row) => row.name)
-          .join(",") !==
-          (version === 1
-            ? "schema_migrations"
-            : version === 2
-              ? "policy_active,policy_history,policy_versions,schema_migrations"
-              : version === 3
-                ? "policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations"
-                : version === 4
-                  ? "history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations"
-                  : "canvas_nonces,history_answers,history_conversation_order,history_conversations,history_events,history_feedback,history_outcome_order,history_turns,history_usage_interaction,owner_credential,policy_active,policy_history,policy_versions,provider_usage,provider_usage_active,provider_usage_comparison,provider_usage_reconciliations,provider_usage_scope_day,provider_usage_week,schema_migrations")
+          .join(",") !== schemaObjects[version - 1]
       )
         throw new Error();
       const rows = database

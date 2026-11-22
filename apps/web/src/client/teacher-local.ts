@@ -23,6 +23,11 @@ export function mountTeacherLocal(api: InputApi) {
   const draft = get<HTMLTextAreaElement>("teacher-draft-output");
   const sources = get("teacher-draft-sources");
   const draftStatus = get("teacher-draft-status");
+  const course = get<HTMLSelectElement>("teacher-draft-course");
+  if (document.body.dataset.demoCourse) {
+    course.value = document.body.dataset.demoCourse;
+    course.disabled = true;
+  }
   window.addEventListener("pagehide", () => {
     draft.value = "";
     sources.replaceChildren();
@@ -32,7 +37,7 @@ export function mountTeacherLocal(api: InputApi) {
     draftStatus,
     async (signal) => {
       const result = await api.teacherDraft(
-        get<HTMLSelectElement>("teacher-draft-course").value,
+        course.value,
         get<HTMLSelectElement>("teacher-draft-kind").value,
         get<HTMLInputElement>("teacher-draft-topic").value,
         signal,
