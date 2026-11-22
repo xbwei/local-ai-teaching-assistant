@@ -615,6 +615,10 @@ select {
 .owner-role button {
   padding: 4px 8px;
 }
+.owner-role span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 html[data-touch-capable][data-virtual-keyboard] .owner-role {
   display: none;
 }

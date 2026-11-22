@@ -13,6 +13,16 @@ const validRevision = (value: unknown): value is string =>
   typeof value === "string" && /^[a-f0-9]{32}$/u.test(value);
 const validCourse = (value: unknown): value is string =>
   typeof value === "string" && /^[A-Z0-9]{1,32}$/u.test(value);
+const demoUsername = (value: unknown): value is DemoUsername =>
+  demoUsernames.some((username) => username === value);
+const demoRole = (username: DemoUsername) =>
+  username === "demo-teacher" ? "teacher" : "student";
+
+export function normalizeDemoLabel(value: unknown): string | undefined {
+  if (typeof value !== "string") return;
+  const label = value.trim();
+  if (label.length <= 80 && /^[\p{L}\p{N} ._-]+$/u.test(label)) return label;
+}
 
 function credentialFrom(row: Record<string, unknown>): OwnerCredential {
   const { salt, verifier, revision } = row;
@@ -35,15 +45,30 @@ function membershipFrom(row: Record<string, unknown>): {
 } {
   const { username, course, active } = row;
   if (
-    (username !== "demo-teacher" && username !== "demo-student") ||
+    !demoUsername(username) ||
     !validCourse(course) ||
     (active !== 0 && active !== 1)
   )
     throw new Error("Membership unavailable");
   return {
     username,
-    role: username === "demo-teacher" ? "teacher" : "student",
+    role: demoRole(username),
     course,
+    active: active === 1,
+  };
+}
+
+function accountFrom(row: Record<string, unknown>) {
+  const { username, active } = row;
+  if (!demoUsername(username) || (active !== 0 && active !== 1))
+    throw new Error("Account unavailable");
+  const role = demoRole(username);
+  return {
+    username,
+    role,
+    label:
+      normalizeDemoLabel(row.label) ??
+      (role === "teacher" ? "Demo Teacher" : "Demo Student"),
     active: active === 1,
   };
 }
@@ -95,7 +120,7 @@ export function createOwnerAuthRepository(db: DatabaseSync) {
     demoMembership(username: DemoUsername, course: string) {
       const row = db
         .prepare(
-          "SELECT m.username,m.course,m.active,m.revision,a.revision AS credential_revision FROM demo_course_memberships m JOIN demo_accounts a ON a.username=m.username WHERE m.username=? AND m.course=?",
+          "SELECT m.username,m.course,m.active,m.revision,a.label,a.revision AS credential_revision FROM demo_course_memberships m JOIN demo_accounts a ON a.username=m.username WHERE m.username=? AND m.course=? AND a.active=1",
         )
         .get(username, course);
       if (!row) return;
@@ -106,9 +131,49 @@ export function createOwnerAuthRepository(db: DatabaseSync) {
         throw new Error("Membership unavailable");
       return {
         ...membershipFrom(row),
+        label: normalizeDemoLabel(row.label),
         revision: row.revision,
         credentialRevision: row.credential_revision,
       };
+    },
+    listDemoAccounts() {
+      return db
+        .prepare(
+          "SELECT username,label,active FROM demo_accounts ORDER BY username",
+        )
+        .all()
+        .map(accountFrom);
+    },
+    renameDemoAccount(username: DemoUsername, value: string) {
+      const label = normalizeDemoLabel(value);
+      if (!label) throw new Error("Account unavailable");
+      const row = db
+        .prepare(
+          "UPDATE demo_accounts SET label=? WHERE username=? AND active=1 RETURNING username,label,active",
+        )
+        .get(label, username);
+      return row && accountFrom(row);
+    },
+    setDemoAccountActive(username: DemoUsername, active: boolean) {
+      const row = db
+        .prepare(
+          "UPDATE demo_accounts SET revision=CASE WHEN active<>? THEN ? ELSE revision END, active=? WHERE username=? RETURNING username,label,active",
+        )
+        .get(
+          Number(active),
+          randomBytes(16).toString("hex"),
+          Number(active),
+          username,
+        );
+      return row && accountFrom(row);
+    },
+    revokeDemoSessions(username: DemoUsername) {
+      const row = db
+        .prepare(
+          "UPDATE demo_accounts SET revision=? WHERE username=? AND active=1 RETURNING username,label,active",
+        )
+        .get(randomBytes(16).toString("hex"), username);
+      return row && accountFrom(row);
     },
     activeDemoCourses(username: DemoUsername) {
       return db

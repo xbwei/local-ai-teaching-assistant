@@ -5,10 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 import { migrate, migrations } from "../dist/migrations.js";
 import { createOwnerAuthRepository } from "../dist/owner-auth.js";
 
-test("v6 practice accounts keep their credentials, default courses and revoked grants", (t) => {
-  const db = new DatabaseSync(":memory:");
-  t.after(() => db.close());
-  for (const { version, sql } of migrations.slice(0, 6)) {
+function initializeLegacySchema(db, through) {
+  for (const { version, sql } of migrations.slice(0, through)) {
     db.exec(sql);
     db.prepare("INSERT INTO schema_migrations VALUES (?, ?)").run(
       version,
@@ -16,9 +14,13 @@ test("v6 practice accounts keep their credentials, default courses and revoked g
     );
     db.exec(`PRAGMA user_version=${version}`);
   }
-  const ledger = db
-    .prepare("SELECT * FROM schema_migrations ORDER BY version")
-    .all();
+  return db.prepare("SELECT * FROM schema_migrations ORDER BY version").all();
+}
+
+test("v6 practice accounts keep their credentials, default courses and revoked grants", (t) => {
+  const db = new DatabaseSync(":memory:");
+  t.after(() => db.close());
+  const ledger = initializeLegacySchema(db, 6);
   const legacy = {
     salt: "a".repeat(32),
     verifier: "b".repeat(64),
@@ -70,6 +72,71 @@ test("v6 practice accounts keep their credentials, default courses and revoked g
   repo.setDemoMembershipActive(student, "IA342", true);
   assert.notEqual(repo.demoMembership(student, "IA342").revision, revision);
   assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+});
+
+test("v7 practice accounts gain display names and account status without altering course grants or passphrases", (t) => {
+  const db = new DatabaseSync(":memory:");
+  t.after(() => db.close());
+  const ledger = initializeLegacySchema(db, 7);
+  const username = "demo-student";
+  const credential = {
+    salt: "a".repeat(32),
+    verifier: "b".repeat(64),
+    revision: "c".repeat(32),
+  };
+  db.prepare("INSERT INTO demo_accounts VALUES (?, ?, ?, ?, ?)").run(
+    username,
+    "IA340",
+    credential.salt,
+    credential.verifier,
+    credential.revision,
+  );
+  const insert = db.prepare(
+    "INSERT INTO demo_course_memberships (username, course, revision, active) VALUES (?, ?, ?, ?)",
+  );
+  insert.run(username, "IA340", "d".repeat(32), 1);
+  insert.run(username, "IA342", "e".repeat(32), 0);
+
+  migrate(db);
+  const repo = createOwnerAuthRepository(db);
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT * FROM schema_migrations WHERE version <= 7 ORDER BY version",
+      )
+      .all(),
+    ledger,
+  );
+  assert.deepEqual(repo.demoAccount(username).credential, credential);
+  assert.deepEqual(repo.listDemoAccounts(), [
+    { username, role: "student", label: "Demo Student", active: true },
+  ]);
+  const grants = repo.listDemoMemberships();
+  const grantRevision = repo.demoMembership(username, "IA340").revision;
+  assert.equal(
+    repo.renameDemoAccount(username, "  Étudiante 42  ").label,
+    "Étudiante 42",
+  );
+  assert.equal(repo.demoMembership(username, "IA340").label, "Étudiante 42");
+  assert.equal(
+    repo.demoAccount(username).credential.revision,
+    credential.revision,
+  );
+  assert.equal(repo.setDemoAccountActive(username, false).active, false);
+  assert.equal(repo.demoMembership(username, "IA340"), undefined);
+  assert.equal(repo.renameDemoAccount(username, "Synthetic Other"), undefined);
+  assert.equal(repo.revokeDemoSessions(username), undefined);
+  const disabledRevision = repo.demoAccount(username).credential.revision;
+  assert.notEqual(disabledRevision, credential.revision);
+  assert.equal(repo.setDemoAccountActive(username, true).active, true);
+  const enabled = repo.demoMembership(username, "IA340");
+  assert.notEqual(enabled.credentialRevision, disabledRevision);
+  assert.equal(enabled.revision, grantRevision);
+  assert.deepEqual(repo.listDemoMemberships(), grants);
+  assert.equal(repo.revokeDemoSessions(username).active, true);
+  const revoked = repo.demoAccount(username).credential;
+  assert.notEqual(revoked.revision, enabled.credentialRevision);
+  assert.deepEqual(revoked, { ...credential, revision: revoked.revision });
 });
 
 test("nonce storage failure rolls back the supported Node 24 transaction and permits subsequent legitimate use", (t) => {

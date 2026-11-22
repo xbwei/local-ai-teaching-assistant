@@ -1,5 +1,115 @@
 type AuthRequest = (route: string, body?: object) => Promise<Response>;
 
+function mountDemoAccounts(request: AuthRequest, bar: HTMLElement) {
+  type Account = {
+    username: string;
+    role: "teacher" | "student";
+    label: string;
+    active: boolean;
+  };
+  const panel = document.createElement("details");
+  const heading = document.createElement("summary");
+  heading.textContent = "Practice accounts";
+  const list = document.createElement("ul");
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  panel.append(heading, list, status);
+  bar.after(panel);
+  let load = 0;
+  panel.addEventListener("toggle", async () => {
+    const current = ++load;
+    if (!panel.open) return;
+    list.replaceChildren();
+    status.textContent = "";
+    try {
+      const response = await request("demo-accounts");
+      if (!response.ok) throw new Error();
+      const { accounts } = (await response.json()) as { accounts: Account[] };
+      if (current !== load) return;
+      if (!accounts.length)
+        status.textContent =
+          "Initialize practice accounts with npm run demo:setup in Terminal.";
+      for (let account of accounts) {
+        const row = document.createElement("li");
+        const identity = document.createElement("p");
+        const form = document.createElement("form");
+        const label = document.createElement("label");
+        const name = document.createElement("input");
+        name.maxLength = 80;
+        name.required = true;
+        label.append("Display name ", name);
+        const rename = document.createElement("button");
+        rename.textContent = "Save display name";
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        const revoke = document.createElement("button");
+        revoke.type = "button";
+        revoke.textContent = "Revoke sessions";
+        let busy = false;
+        function display() {
+          identity.textContent = `${account.username} · ${account.role === "teacher" ? "Teacher" : "Student"} · ${account.active ? "Active" : "Disabled"}`;
+          toggle.textContent = account.active
+            ? "Disable account"
+            : "Enable account";
+          name.disabled =
+            rename.disabled =
+            revoke.disabled =
+              busy || !account.active;
+          toggle.disabled = busy;
+        }
+        name.value = account.label;
+        display();
+        async function mutate(change: object, success: string) {
+          if (busy) return;
+          busy = true;
+          display();
+          status.textContent = "";
+          try {
+            const response = await request("demo-accounts", {
+              username: account.username,
+              ...change,
+            });
+            if (!response.ok) throw new Error();
+            account = (await response.json()) as Account;
+            name.value = account.label;
+            if (current === load) status.textContent = success;
+          } catch {
+            if (current === load)
+              status.textContent =
+                "Account update unavailable. Reopen this panel to check the current state.";
+          } finally {
+            busy = false;
+            display();
+          }
+        }
+        form.onsubmit = (event) => {
+          event.preventDefault();
+          if (account.active)
+            void mutate(
+              { action: "rename", label: name.value },
+              "Display name saved.",
+            );
+        };
+        toggle.onclick = () =>
+          void mutate(
+            { action: "active", active: !account.active },
+            account.active
+              ? "Account disabled and sessions revoked."
+              : "Account enabled.",
+          );
+        revoke.onclick = () =>
+          void mutate({ action: "revoke-sessions" }, "Sessions revoked.");
+        form.append(label, rename, toggle, revoke);
+        row.append(identity, form);
+        list.append(row);
+      }
+    } catch {
+      if (current === load)
+        status.textContent = "Practice accounts unavailable.";
+    }
+  });
+}
+
 function mountDemoMemberships(request: AuthRequest, bar: HTMLElement) {
   type Membership = {
     username: string;
@@ -191,20 +301,29 @@ export async function requireOwnerSession(): Promise<boolean> {
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
   let session:
-    | { role: string; source: string; sample?: true; course?: string }
+    | {
+        role: string;
+        source: string;
+        sample?: true;
+        course?: string;
+        label?: string;
+      }
     | undefined;
   try {
     const response = await request("session");
     const value: unknown = response.ok ? await response.json() : undefined;
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const data = value as Record<string, unknown>;
+      const keys = Object.keys(data).sort().join(",");
       if (
-        (Object.keys(data).sort().join(",") === "role,source" ||
-          (Object.keys(data).sort().join(",") === "course,role,source" &&
+        (keys === "role,source" ||
+          ((keys === "course,role,source" ||
+            (keys === "course,label,role,source" &&
+              typeof data.label === "string")) &&
             (data.role === "teacher" || data.role === "student") &&
             typeof data.course === "string" &&
             /^[A-Z0-9]{1,32}$/u.test(data.course)) ||
-          (Object.keys(data).sort().join(",") === "role,sample,source" &&
+          (keys === "role,sample,source" &&
             data.role === "student" &&
             data.source === "local" &&
             data.sample === true)) &&
@@ -217,6 +336,7 @@ export async function requireOwnerSession(): Promise<boolean> {
           source: data.source,
           ...(data.sample === true ? { sample: true } : {}),
           ...(typeof data.course === "string" ? { course: data.course } : {}),
+          ...(typeof data.label === "string" ? { label: data.label } : {}),
         };
     }
   } catch {
@@ -227,7 +347,7 @@ export async function requireOwnerSession(): Promise<boolean> {
     bar.setAttribute("aria-label", "Current role");
     bar.className = "owner-role";
     const label = document.createElement("span");
-    label.textContent = `${session.course ? "Demo" : "Owner"} · ${session.role === "admin" ? "Admin" : session.role === "teacher" ? "Teacher" : "Student"}${session.course ? ` · ${session.course}` : ""}${session.source === "canvas" ? " · Canvas" : session.sample ? " · Test Student sample" : ""} `;
+    label.textContent = `${session.label ?? (session.course ? "Demo" : "Owner")} · ${session.role === "admin" ? "Admin" : session.role === "teacher" ? "Teacher" : "Student"}${session.course ? ` · ${session.course}` : ""}${session.source === "canvas" ? " · Canvas" : session.sample ? " · Test Student sample" : ""} `;
     const logout = document.createElement("button");
     logout.type = "button";
     logout.textContent = "Sign out / change role";
@@ -241,7 +361,10 @@ export async function requireOwnerSession(): Promise<boolean> {
         ? document.body
         : document.querySelector<HTMLElement>(".app")!;
     target.prepend(bar);
-    if (session.role === "admin") mountDemoMemberships(request, bar);
+    if (session.role === "admin") {
+      mountDemoMemberships(request, bar);
+      mountDemoAccounts(request, bar);
+    }
     if (session.source === "local" && session.course)
       void mountDemoCourse(request, bar, session.course);
     document.body.dataset.ownerRole = session.role;
