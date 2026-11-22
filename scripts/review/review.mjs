@@ -103,8 +103,26 @@ export function identity(config, artifacts, executableHash, version) {
   };
   return { ...record, routeSha256: sha256(JSON.stringify(record)) };
 }
-export function inspect() {
-  const config = readJson("route.json");
+export function selectProfile(config, profile) {
+  requireThat(
+    config && Object.hasOwn(config, "profiles"),
+    "INVALID_REVIEW_ROUTE",
+  );
+  const { profiles, ...shared } = config;
+  requireThat(
+    profiles && typeof profiles === "object" && !Array.isArray(profiles),
+    "INVALID_REVIEW_ROUTE",
+  );
+  requireThat(
+    typeof profile === "string" && Object.hasOwn(profiles, profile),
+    "UNSUPPORTED_REVIEW_PROFILE",
+  );
+  const selected = profiles[profile];
+  keys(selected, ["model", "effort"], "INVALID_REVIEW_ROUTE");
+  return { ...shared, ...selected, profile };
+}
+export function inspect(profile = "HIGH_ASSURANCE_ANTIGRAVITY") {
+  const config = selectProfile(readJson("route.json"), profile);
   const found = discover();
   // Hash before executing even --version. No unrecognized executable is run.
   requireThat(found.sha256 === config.cliSha256, "CLI_DRIFT");
@@ -504,6 +522,10 @@ export async function runReview(
   launch = spawn,
 ) {
   requireThat(
+    typeof config.profile === "string" && binding.profile === config.profile,
+    "REVIEW_PROFILE_BINDING_MISMATCH",
+  );
+  requireThat(
     diff.length > 0 &&
       diff.length === binding.diffBytes &&
       sha256(diff) === binding.diffSha256,
@@ -642,11 +664,14 @@ async function main() {
   const [mode, base, head, profile, ...extra] = process.argv.slice(2);
   requireThat(
     ["inspect", "prepare", "review"].includes(mode) && !extra.length,
-    "USAGE: inspect | prepare BASE HEAD PROFILE | review BASE HEAD PROFILE",
+    "USAGE: inspect | inspect PROFILE | prepare BASE HEAD PROFILE | review BASE HEAD PROFILE",
   );
-  const route = inspect();
   if (mode === "inspect") {
-    requireThat(!base && !head && !profile, "UNEXPECTED_ARGUMENTS");
+    requireThat(
+      head === undefined && profile === undefined,
+      "UNEXPECTED_ARGUMENTS",
+    );
+    const route = inspect(base);
     console.log(
       JSON.stringify(
         { status: "IDENTIFIED_NOT_REVIEWED", ...route.identity },
@@ -656,16 +681,24 @@ async function main() {
     );
     return;
   }
-  requireThat(profile === route.config.profile, "UNSUPPORTED_REVIEW_PROFILE");
+  requireThat(profile !== undefined, "REVIEW_PROFILE_REQUIRED");
+  const route = inspect(profile);
   const root = text(git(here, ["rev-parse", "--show-toplevel"]));
   assertFreshBase(root, base);
   const snapshot = bindDiff(root, base, head, route.config.maxDiffBytes);
+  const binding = { ...snapshot.binding, profile: route.config.profile };
+  const receipt = {
+    profile: route.config.profile,
+    routeSha256: route.identity.routeSha256,
+    requestedModel: route.config.model,
+    requestedEffort: route.config.effort,
+  };
   if (mode === "prepare") {
     console.log(
       JSON.stringify(
         {
           status: "BOUND_NOT_REVIEWED",
-          routeSha256: route.identity.routeSha256,
+          ...receipt,
           ...snapshot.binding,
         },
         null,
@@ -678,7 +711,7 @@ async function main() {
   const { result, reported } = await runReview(
     route.executable,
     route.config,
-    snapshot.binding,
+    binding,
     snapshot.diff,
     policy,
   );
@@ -690,14 +723,16 @@ async function main() {
     snapshot.binding,
     "DIFF_CHANGED_DURING_REVIEW",
   );
-  equal(inspect().identity, route.identity, "ROUTE_CHANGED_DURING_REVIEW");
+  equal(
+    inspect(profile).identity,
+    route.identity,
+    "ROUTE_CHANGED_DURING_REVIEW",
+  );
   console.log(
     JSON.stringify(
       {
         status: result.verdict,
-        routeSha256: route.identity.routeSha256,
-        requestedModel: route.config.model,
-        requestedEffort: route.config.effort,
+        ...receipt,
         reported,
         ...result,
       },
