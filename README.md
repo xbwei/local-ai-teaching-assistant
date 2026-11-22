@@ -8,6 +8,28 @@
 
 LAITA runs on a machine and local model **you** manage. Standalone use needs no Canvas, GitHub practice token, MongoDB account or OpenAI key. Optional integrations are enabled separately and must use only your own authorized, non-sensitive data. No central school servers or SSO are provided.
 
+## Watch the workflows — recent development previews
+
+These Owner-supplied **development previews use sandbox/demo data**. They illustrate the teaching journeys behind the v0.3.0 candidate, **not pixel-identical captures or live acceptance of the current Public build**. Public permissions and some UI steps differ; the [six step-by-step Public workflows](docs/DEMO.md) describe the actual supported product.
+
+| **Teacher Generate** — AI-assisted content | **Student in Canvas** — ask and follow up | **Teacher Verify** — inspect practice work |
+| :---: | :---: | :---: |
+| <img src="docs/assets/demo/v030-dev/04-Teacher-Generate-excerpt.gif" width="230" alt="Synthetic DEV preview: Teacher generates and reviews assignment and page drafts" /> | <img src="docs/assets/demo/v030-dev/02-Student-in-Canvas.gif" width="230" alt="Synthetic DEV preview: Student asks course questions through Canvas" /> | <img src="docs/assets/demo/v030-dev/05-Teacher-Verify.gif" width="230" alt="Synthetic DEV preview: Teacher verifies configured practice submissions" /> |
+| *Editable drafts, human review, Canvas creation* | *Course-grounded answers and History* | *Read-only GitHub/MongoDB checks, separate feedback* |
+
+| **Teacher Chat** — scoped tools | **Mobile experience** — online PWA | **Roles** — local practice accounts |
+| :---: | :---: | :---: |
+| <img src="docs/assets/demo/v030-dev/03-Teacher-Chat.gif" width="230" alt="Synthetic DEV preview: Teacher selects Canvas and History chat tools" /> | <img src="docs/assets/demo/v030-dev/06-Mobile-PWA-excerpt.gif" width="230" alt="Synthetic DEV phone preview: Open the LAITA web app and browse Teacher tools" /> | <img src="docs/assets/demo/v030-dev/01-Website-Roles.gif" width="230" alt="Synthetic DEV preview: Admin, Teacher and Student role views" /> |
+| *General, Canvas and History* | *A browser connection to your own host is required* | *DEV Admin includes controls not shipped in the single-Owner Public Admin* |
+
+**New source screenshots from the same sandbox** (select an image to inspect full size):
+
+| AI-assisted Assignment draft | Saved Page + Assignment in Module | MongoDB practice observations |
+| :---: | :---: | :---: |
+| [<img src="docs/assets/screenshots/v030-dev/04d-Generated-assignment-suggestion.png" width="285" alt="Synthetic DEV screenshot: editable AI-generated assignment draft" />](docs/assets/screenshots/v030-dev/04d-Generated-assignment-suggestion.png) | [<img src="docs/assets/screenshots/v030-dev/04k-Canvas-module-with-ordered-items.png" width="285" alt="Synthetic DEV screenshot: Canvas Module with saved Page and Assignment" />](docs/assets/screenshots/v030-dev/04k-Canvas-module-with-ordered-items.png) | [<img src="docs/assets/screenshots/v030-dev/05e-MongoDB-count-and-sampled-fields.png" width="285" alt="Synthetic DEV screenshot: bounded MongoDB verification observations" />](docs/assets/screenshots/v030-dev/05e-MongoDB-count-and-sampled-fields.png) |
+
+All animations are labeled *Development Preview*. The Generate and Mobile files above are **short excerpts** of the original Owner-supplied recordings; the originals remain unchanged. The final publication/privacy review and exact-Public-image parity decision are separate from the already merged code. [Media details and caveats](docs/SCREENSHOTS.md).
+
 ## Start here
 
 | I want to… | Read |
@@ -30,14 +52,6 @@ LAITA runs on a machine and local model **you** manage. Standalone use needs no 
 - **Optional Canvas LTI + authoring.** An appropriately mapped, signed **Instructor or Learner** course-level LTI 1.1 launch uses its own launch credentials; Canvas **REST writes require a separate Instructor token**. A Teacher can refresh and choose the destination Assignment Group; preview/confirm/create an *Unpublished* Page, Assignment or Module; refresh already saved Pages/Assignments/Modules, choose and order resources and append them to an **Unpublished** Module. A single opt-in REST setting enables this dynamic workflow without copying newly created object IDs into JSON. Teachers later publish in Canvas itself.
 - **Read-only practice verification and optional feedback.** Current Canvas submission versions are previewed before selected/batch GitHub/MongoDB checks. Bounded observations are not grades or proof of authorship. Posting Test Student feedback is a separate explicit confirm/readback action.
 - **Mobile web/PWA.** Responsive browser with online Safari home-screen option when your phone can reach and trust the self-managed HTTPS origin. The supplied loopback-only reference is **not** a remote-host deployment.
-
-## See the workflows
-
-The [six walkthroughs](docs/DEMO.md) cover Admin, Student, Teacher Chat, Teacher Generate, Teacher Verify and mobile/PWA. The image below is **an earlier v0.2.0 synthetic sandbox demonstration**, not a capture of the v0.3.0 Public code candidate:
-
-![Prior v0.2.0 Canvas sandbox example](docs/assets/demo/laita-v020-canvas.gif)
-
-The Owner-supplied **six DEV GIFs** are being assessed against the final Public code and privacy/media rules. They are **not yet represented as Public-build screenshots**; see [media provenance](docs/SCREENSHOTS.md). A synthetic Chromium run or DEV Sandbox recording is not real Public Canvas/device acceptance.
 
 ## Limitations, privacy and support
 
