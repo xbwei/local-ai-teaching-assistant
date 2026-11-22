@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
   mkdtempSync,
   readFileSync,
@@ -18,6 +19,7 @@ import { initializePersistence } from "@laita/persistence";
 import { DatabaseSync } from "node:sqlite";
 import { fixture } from "./browser-fixture.mjs";
 import { readCanvasPageSettings } from "../dist/canvas-pages.js";
+import { createTeacherHistoryQueryHandler } from "../dist/teacher-history.js";
 import {
   canvas,
   canvasNow as now,
@@ -1178,6 +1180,38 @@ test("disabled Test Student setup has no plugin and rejects sample sign-in", asy
   assert.equal(cookie(response), undefined);
   await f.login("teacher");
   assert.equal((await f.request("/api/v1/teacher-tools/history")).status, 404);
+});
+
+test("Teacher History closes an interrupted response once headers have started", async () => {
+  const response = Object.assign(new EventEmitter(), {
+    headersSent: false,
+    destroyed: false,
+    json() {
+      this.headersSent = true;
+      throw new Error("Synthetic response interruption");
+    },
+    status() {
+      assert.fail("The handler must not start a second response");
+    },
+    destroy() {
+      this.destroyed = true;
+      this.emit("close");
+    },
+  });
+  const handler = createTeacherHistoryQueryHandler(
+    () => ({ binding: "synthetic", scope: { role: "student" } }),
+    {
+      async select() {},
+      read: () => assert.fail("Unavailable selection must not read History"),
+      summarize: () => assert.fail("Unavailable selection must not summarize"),
+    },
+  );
+  await handler(
+    { is: () => true, body: { question: "How many questions?" } },
+    response,
+  );
+  assert.equal(response.destroyed, true);
+  assert.equal(response.listenerCount("close"), 0);
 });
 
 test("local drafting validates scope and rejects a result after sign-out", async (t) => {

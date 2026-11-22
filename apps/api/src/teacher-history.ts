@@ -247,7 +247,8 @@ export function createTeacherHistoryQueryHandler(
       if (canContinue()) res.json({ text });
     } catch (error) {
       if (!controller.signal.aborted && !res.destroyed) {
-        if (error instanceof HistoryValidationError)
+        if (res.headersSent) res.destroy();
+        else if (error instanceof HistoryValidationError)
           res.status(403).json({ code: "FORBIDDEN" });
         else res.status(503).json({ code: "HISTORY_UNAVAILABLE" });
       }
