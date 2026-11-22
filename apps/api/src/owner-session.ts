@@ -204,6 +204,13 @@ export function createOwnerSessions(options: {
     const courses = store?.activeDemoCourses(username);
     return courseIds.filter((course) => courses?.includes(course));
   }
+  function authorizeLocalDemo(req: Request, res: Response) {
+    const actor = authorize(req, res);
+    if (!actor) return false as const;
+    const { demo } = actor;
+    if (actor.source !== "local" || !demo) return deny(res);
+    return { ...actor, demo };
+  }
   const authoring =
     options.canvasPages && options.canvas
       ? createCanvasAuthoringHandlers(
@@ -383,68 +390,71 @@ export function createOwnerSessions(options: {
       });
       const demoCourse = "/api/v1/auth/course";
       app.get(demoCourse, entryLimit, (req, res) => {
-        const actor = authorize(req, res);
+        const actor = authorizeLocalDemo(req, res);
         if (!actor) return;
-        if (actor.source !== "local" || !actor.demo) {
-          deny(res);
-          return;
-        }
         try {
           res.json({ courses: allowedDemoCourses(actor.demo.username) });
         } catch {
           deny(res, 503);
         }
       });
-      app.post(demoCourse, entryLimit, parseJson, (req, res) => {
-        const actor = authorize(req, res);
-        if (!actor) return;
-        if (actor.source !== "local" || !actor.demo) {
-          deny(res);
-          return;
-        }
-        const course = courseIds.find((value) => value === req.body?.course);
-        if (
-          !req.is("json") ||
-          !course ||
-          Object.keys(req.body).join(",") !== "course"
-        ) {
-          res.status(400).json({ code: "INVALID_REQUEST" });
-          return;
-        }
-        try {
-          const membership = store?.demoMembership(actor.demo.username, course);
+      app.post(
+        demoCourse,
+        entryLimit,
+        (req, res, next) => {
+          if (authorizeLocalDemo(req, res)) next();
+        },
+        parseJson,
+        (req, res) => {
+          const actor = authorizeLocalDemo(req, res);
+          if (!actor) return;
+          const course = courseIds.find((value) => value === req.body?.course);
           if (
-            !membership?.active ||
-            membership.role !== actor.role ||
-            membership.credentialRevision !== actor.revision
+            !req.is("json") ||
+            !course ||
+            Object.keys(req.body).join(",") !== "course"
           ) {
-            deny(res);
+            res.status(400).json({ code: "INVALID_REQUEST" });
             return;
           }
-          if (
-            course === actor.demo.course ||
-            establish(
-              req,
-              res,
-              {
-                role: actor.role,
-                source: "local",
-                context: course,
-                demo: {
-                  username: actor.demo.username,
-                  course,
-                  membershipRevision: membership.revision,
+          try {
+            const membership = store?.demoMembership(
+              actor.demo.username,
+              course,
+            );
+            if (
+              !membership?.active ||
+              membership.role !== actor.role ||
+              membership.credentialRevision !== actor.revision
+            ) {
+              deny(res);
+              return;
+            }
+            if (
+              course === actor.demo.course ||
+              establish(
+                req,
+                res,
+                {
+                  role: actor.role,
+                  source: "local",
+                  context: course,
+                  demo: {
+                    username: actor.demo.username,
+                    course,
+                    membershipRevision: membership.revision,
+                  },
                 },
-              },
-              actor.revision,
-              actor.expires,
+                actor.revision,
+                actor.expires,
+              )
             )
-          )
-            res.json({ course });
-        } catch {
-          deny(res, 503);
-        }
-      });
+              res.json({ course });
+          } catch {
+            deny(res, 503);
+          }
+        },
+      );
       const demoMemberships = "/api/v1/auth/demo-memberships";
       const requireAdmin: express.RequestHandler = (req, res, next) => {
         const session = authorize(req, res);

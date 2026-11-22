@@ -268,12 +268,18 @@ test("separate local credentials, roles, course scope, private History, and boun
 
 test("only Admin can grant another course and local course switching keeps History, roles and session lifetime scoped", async (t) => {
   let now = canvasNow;
+  let afterMembershipRead;
   const draftCourses = [];
   const f = await fixture({
     autoLogin: false,
     history: true,
     canvas: () => paired,
-    authNow: () => now,
+    authNow: () => {
+      const read = afterMembershipRead;
+      afterMembershipRead = undefined;
+      read?.();
+      return now;
+    },
     async teacherDraft(course) {
       draftCourses.push(course);
     },
@@ -291,6 +297,12 @@ test("only Admin can grant another course and local course switching keeps Histo
   const coursePath = "/api/v1/auth/course";
   const list = (cookie) => f.request(coursePath, { headers: { cookie } });
   const change = (cookie, course) => post(f, coursePath, { course }, cookie);
+  const malformed = (cookie) =>
+    f.request(coursePath, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: "{",
+    });
   const update = (cookie, body) => post(f, membershipPath, body, cookie);
   const newStudentGrant = {
     action: "grant",
@@ -299,6 +311,9 @@ test("only Admin can grant another course and local course switching keeps Histo
   };
   assert.equal((await list(admin)).status, 403);
   assert.equal((await list("")).status, 401);
+  assert.equal((await malformed("")).status, 401);
+  assert.equal((await malformed(admin)).status, 403);
+  assert.equal((await malformed(student)).status, 400);
   assert.equal((await change(student, "IA342")).status, 403);
   assert.equal((await update(teacher, newStudentGrant)).status, 403);
   assert.equal((await update(student, newStudentGrant)).status, 403);
@@ -402,8 +417,13 @@ test("only Admin can grant another course and local course switching keeps Histo
   assert.equal((await generate("IA340")).status, 403);
   assert.equal((await generate("IA342")).status, 200);
   assert.deepEqual(draftCourses, ["IA342"]);
+  afterMembershipRead = () =>
+    f.authStore.setDemoMembershipActive("demo-student", "IA342", false);
+  const stale = await change(restored, "IA340");
+  assert.equal(stale.status, 401);
+  assert.equal(stale.headers.get("set-cookie"), null);
   now = canvasNow + 8 * 3600000;
-  assert.equal((await status(f, restored)).status, 401);
+  assert.equal((await status(f, teacherOtherCourse)).status, 401);
 });
 
 test("signed Canvas roles and current grants intersect without granting Learner any REST controls", async (t) => {
