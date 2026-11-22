@@ -683,8 +683,8 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
     canvas: () => configuration,
     canvasPages: fake.options,
     authNow: () => now,
-    async teacherDraft(course, kind, topic, signal) {
-      calls.push([course, kind, topic]);
+    async teacherDraft(course, kind, topic, signal, includeCriteria) {
+      calls.push([course, kind, topic, includeCriteria]);
       if (run) {
         const current = run;
         current.entered.resolve();
@@ -731,8 +731,13 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
     assert.equal(response.status, 303);
     return sessionCookie(response);
   };
-  const draft = (cookie, course = "IA340", kind = "PAGE") =>
-    post(f, "/api/v1/teacher-draft", { course, kind, topic: "Lab 5" }, cookie);
+  const draft = (cookie, course = "IA340", kind = "PAGE", options = {}) =>
+    post(
+      f,
+      "/api/v1/teacher-draft",
+      { course, kind, topic: "Lab 5", ...options },
+      cookie,
+    );
   const teacher = await launch();
   const learner = await launch({
     roles: "Learner",
@@ -741,9 +746,37 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
   assert.equal((await draft("")).status, 401);
   assert.equal((await draft(learner)).status, 403);
   assert.equal((await draft(teacher, "IA342")).status, 403);
+  const criteria = { includeCriteria: true };
+  assert.equal(
+    (await draft(learner, "IA340", "ASSIGNMENT", criteria)).status,
+    403,
+  );
+  assert.equal(
+    (await draft(teacher, "IA342", "ASSIGNMENT", criteria)).status,
+    403,
+  );
+  assert.equal((await draft(teacher, "IA340", "PAGE", criteria)).status, 400);
+  assert.equal(
+    (await draft(teacher, "IA340", "ASSIGNMENT", { includeCriteria: "yes" }))
+      .status,
+    400,
+  );
+  assert.equal(
+    (
+      await draft(teacher, "IA340", "ASSIGNMENT", {
+        ...criteria,
+        rubricId: "1",
+      })
+    ).status,
+    400,
+  );
   assert.deepEqual(calls, []);
-  for (const kind of ["PAGE", "ASSIGNMENT"]) {
-    const response = await draft(teacher, "IA340", kind);
+  for (const [kind, options] of [
+    ["PAGE", {}],
+    ["ASSIGNMENT", {}],
+    ["ASSIGNMENT", criteria],
+  ]) {
+    const response = await draft(teacher, "IA340", kind, options);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       text: "Synthetic editable suggestion",
@@ -751,8 +784,9 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
     });
   }
   assert.deepEqual(calls, [
-    ["IA340", "PAGE", "Lab 5"],
-    ["IA340", "ASSIGNMENT", "Lab 5"],
+    ["IA340", "PAGE", "Lab 5", false],
+    ["IA340", "ASSIGNMENT", "Lab 5", false],
+    ["IA340", "ASSIGNMENT", "Lab 5", true],
   ]);
 
   const active = (value) =>
@@ -772,7 +806,7 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
       entered: Promise.withResolvers(),
       release: Promise.withResolvers(),
     };
-    const request = draft(current);
+    const request = draft(current, "IA340", "ASSIGNMENT", criteria);
     await run.entered.promise;
     invalidate();
     run.release.resolve();

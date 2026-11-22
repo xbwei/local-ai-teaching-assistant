@@ -83,7 +83,9 @@ export function mountCanvasLocalDraft(
     true,
   ) as HTMLFormElement;
   const fields = form.querySelector("fieldset")!;
-  const topic = form.querySelector("input")!;
+  const topic = form.querySelector<HTMLInputElement>('input[type="text"]')!;
+  const criteria = form.querySelector("select")!;
+  if (kind === "PAGE") criteria.closest("label")!.remove();
   const draft = form.querySelector("textarea")!;
   const sources = form.querySelector("ul")!;
   const status = form.querySelector<HTMLParagraphElement>('[role="status"]')!;
@@ -105,6 +107,7 @@ export function mountCanvasLocalDraft(
           kind,
           topic.value,
           signal,
+          kind === "ASSIGNMENT" && criteria.value === "yes",
         );
         signal.throwIfAborted();
         showDraft(result, draft, sources, status);

@@ -168,6 +168,7 @@ export class InputApi {
     kind: string,
     topic: string,
     signal: AbortSignal,
+    includeCriteria = false,
   ): Promise<
     | { code: string }
     | { text: string; sources: { path: string; section: string }[] }
@@ -175,7 +176,12 @@ export class InputApi {
     const value = await this.request(
       "/api/v1/teacher-draft",
       "POST",
-      JSON.stringify({ course, kind, topic }),
+      JSON.stringify({
+        course,
+        kind,
+        topic,
+        ...(includeCriteria ? { includeCriteria } : {}),
+      }),
       signal,
     );
     if (value && typeof value === "object") {

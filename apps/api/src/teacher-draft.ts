@@ -9,6 +9,7 @@ export type TeacherDraft = (
   kind: "PAGE" | "ASSIGNMENT",
   topic: string,
   signal: AbortSignal,
+  includeCriteria: boolean,
 ) => Promise<ProviderRunResult | undefined>;
 
 export function createTeacherDraftParser(): RequestHandler {
@@ -39,10 +40,13 @@ export function createTeacherDraftHandler(
       return;
     }
     const value = req.body;
+    const keys = value && Object.keys(value).sort().join(",");
     if (
       !req.is("json") ||
-      !value ||
-      Object.keys(value).sort().join(",") !== "course,kind,topic" ||
+      (keys !== "course,kind,topic" &&
+        (keys !== "course,includeCriteria,kind,topic" ||
+          value.kind !== "ASSIGNMENT" ||
+          typeof value.includeCriteria !== "boolean")) ||
       !courseIds.includes(value.course) ||
       (value.kind !== "PAGE" && value.kind !== "ASSIGNMENT") ||
       typeof value.topic !== "string" ||
@@ -65,6 +69,7 @@ export function createTeacherDraftHandler(
         value.kind,
         value.topic,
         controller.signal,
+        value.includeCriteria === true,
       );
       if (controller.signal.aborted) return;
       if (!sessions.isCurrent(req, actor.binding)) {

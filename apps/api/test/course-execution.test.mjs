@@ -563,6 +563,65 @@ test("evidence fits the complete request, preserves multi-turn context and exact
   );
 });
 
+test("optional Assignment criteria add fixed Local draft guidance without changing the retrieved topic or sources", async () => {
+  const source = {
+    course: "IA340",
+    repository: "JMU-Data/IA340",
+    commit: "a".repeat(40),
+    path: "docs/assignments/lab-4/index.md",
+    section: "Instructions",
+    url: `https://github.com/JMU-Data/IA340/blob/${"a".repeat(40)}/docs/assignments/lab-4/index.md`,
+    excerpt: "Compare two synthetic sets of observations.",
+  };
+  const topic = "IA340: Lab 4";
+  const instructions = [];
+  const execute = createCourseAwareExecution({
+    grounder: {
+      async ground(question) {
+        assert.equal(question, topic);
+        return {
+          status: "FOUND",
+          course: "IA340",
+          snapshot: source.commit,
+          sources: [source],
+        };
+      },
+    },
+    async executeProvider(value, _signal, _session, evidence) {
+      assert.equal(value.mode, "LOCAL");
+      assert.equal(value.input.text, topic);
+      assert.equal(evidence.prompt, courseEvidencePrompt([source]));
+      instructions.push(evidence.systemInstruction);
+      return providerResult();
+    },
+  });
+  for (const [kind, includeCriteria] of [
+    ["PAGE", true],
+    ["ASSIGNMENT", false],
+    ["ASSIGNMENT", true],
+  ]) {
+    const result = await execute(
+      request(topic),
+      new AbortController().signal,
+      session,
+      undefined,
+      "TYPED",
+      {
+        course: "IA340",
+        kind,
+        includeCriteria,
+      },
+    );
+    assert.deepEqual(result.grounding.sources, [source]);
+  }
+  assert.doesNotMatch(instructions[0], /assessment criteria/u);
+  assert.doesNotMatch(instructions[1], /assessment criteria/u);
+  assert.match(
+    instructions[2],
+    /assessment criteria section in the assignment instructions without scores or grades/u,
+  );
+});
+
 test("follow-up reclaims oldest whole turns only when one ranked source cannot fit", async () => {
   const { validConversation, providerMessages, reservedProviderInput } =
     await import("@laita/contracts");

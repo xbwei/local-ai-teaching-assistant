@@ -52,7 +52,10 @@ import { MacOSKeychainSecretProvider } from "@laita/runtime";
 
 import { createLocalHealthRefresh } from "./local-health.ts";
 import { createCourseGrounder } from "@laita/course-grounding";
-import { createCourseAwareExecution } from "./course-execution.ts";
+import {
+  createCourseAwareExecution,
+  type TeacherDraftTask,
+} from "./course-execution.ts";
 import { historyToolPrompt } from "./teacher-history.ts";
 import { canvasChatToolPrompt } from "./canvas-chat-tools.ts";
 
@@ -511,7 +514,7 @@ try {
   async function runTeacherLocal(
     text: string,
     signal: AbortSignal,
-    task?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" } | TeacherTool,
+    task?: TeacherDraftTask | TeacherTool,
   ) {
     const available = await capabilities.read("instructor", text);
     const model = localAdapter.selectedModel;
@@ -643,8 +646,12 @@ try {
       : {}),
     ...(successor
       ? {
-          teacherDraft: (course, kind, topic, signal) =>
-            runTeacherLocal(`${course}: ${topic}`, signal, { course, kind }),
+          teacherDraft: (course, kind, topic, signal, includeCriteria) =>
+            runTeacherLocal(`${course}: ${topic}`, signal, {
+              course,
+              kind,
+              includeCriteria,
+            }),
         }
       : {}),
     ...(sampleContext

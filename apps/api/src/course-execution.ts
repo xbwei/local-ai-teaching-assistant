@@ -57,6 +57,12 @@ function notice(
   };
 }
 
+export interface TeacherDraftTask {
+  course: CourseId;
+  kind: "PAGE" | "ASSIGNMENT";
+  includeCriteria?: boolean;
+}
+
 export function createCourseAwareExecution(options: {
   readonly grounder: {
     ground(
@@ -82,7 +88,7 @@ export function createCourseAwareExecution(options: {
     sessionRef: `session-${string}`,
     trace?: Trace,
     source: "TYPED" | "TRANSCRIPT" = "TYPED",
-    draft?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" },
+    draft?: TeacherDraftTask,
     boundCourse?: CourseId,
   ): Promise<ProviderRunResult> {
     const executeProvider: typeof options.executeProvider = async (...args) => {
@@ -219,8 +225,12 @@ export function createCourseAwareExecution(options: {
         course: identified,
       });
     }
+    const assessmentInstruction =
+      draft?.kind === "ASSIGNMENT" && draft.includeCriteria === true
+        ? " Include a short editable assessment criteria section in the assignment instructions without scores or grades."
+        : "";
     const systemInstruction = draft
-      ? `${courseGroundingInstruction}\nDraft editable student-facing Markdown ${draft.kind === "PAGE" ? "lesson content" : "assignment instructions"} in the topic's language. Use short headings and practice prompts. Do not invent citations, deadlines, marks, URLs, settings or completed actions. Return only draft content.`
+      ? `${courseGroundingInstruction}\nDraft editable student-facing Markdown ${draft.kind === "PAGE" ? "lesson content" : "assignment instructions"} in the topic's language. Use short headings and practice prompts. Do not invent citations, deadlines, marks, URLs, settings or completed actions.${assessmentInstruction} Return only draft content.`
       : courseGroundingInstruction;
     let fittedRequest = request;
     const firstEvidence = {
