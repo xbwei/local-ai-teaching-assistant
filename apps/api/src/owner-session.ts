@@ -5,6 +5,7 @@ import type { AccessConfiguration } from "@laita/contracts/server";
 import { courseIds, type CourseId } from "@laita/course-grounding";
 import {
   demoUsernames,
+  normalizeDemoLabel,
   type DemoUsername,
   type HistoryScope,
   type OwnerAuthRepository,
@@ -131,7 +132,11 @@ export function createOwnerSessions(options: {
       sessions.delete(binding);
       return;
     }
-    return { ...session, binding };
+    return {
+      ...session,
+      binding,
+      ...(membership?.label ? { label: membership.label } : {}),
+    };
   };
   const forget = (req: Request) => {
     const raw = token(req);
@@ -235,6 +240,7 @@ export function createOwnerSessions(options: {
             role: s.role,
             source: s.source,
             ...(s.demo ? { course: s.demo.course } : {}),
+            ...(s.label ? { label: s.label } : {}),
             ...(s.source === "local" &&
             !s.demo &&
             s.role === "student" &&
@@ -456,6 +462,7 @@ export function createOwnerSessions(options: {
         },
       );
       const demoMemberships = "/api/v1/auth/demo-memberships";
+      const demoAccounts = "/api/v1/auth/demo-accounts";
       const requireAdmin: express.RequestHandler = (req, res, next) => {
         const session = authorize(req, res);
         if (!session) return;
@@ -466,6 +473,50 @@ export function createOwnerSessions(options: {
         next();
       };
       app.use(demoMemberships, entryLimit, requireAdmin);
+      app.use(demoAccounts, entryLimit, requireAdmin);
+      app.get(demoAccounts, (_req, res) => {
+        try {
+          res.json({ accounts: store!.listDemoAccounts() });
+        } catch {
+          deny(res, 503);
+        }
+      });
+      app.post(demoAccounts, parseJson, requireAdmin, (req, res) => {
+        const value = req.body;
+        const username = demoUsernames.find((name) => name === value?.username);
+        const keys = value && Object.keys(value).sort().join(",");
+        const rename =
+          value?.action === "rename" &&
+          keys === "action,label,username" &&
+          normalizeDemoLabel(value.label);
+        const toggle =
+          value?.action === "active" &&
+          keys === "action,active,username" &&
+          typeof value.active === "boolean";
+        const revoke =
+          value?.action === "revoke-sessions" && keys === "action,username";
+        if (!req.is("json") || !username || (!rename && !toggle && !revoke)) {
+          res.status(400).json({ code: "INVALID_REQUEST" });
+          return;
+        }
+        try {
+          const account = rename
+            ? store!.renameDemoAccount(username, rename)
+            : toggle
+              ? store!.setDemoAccountActive(username, value.active)
+              : store!.revokeDemoSessions(username);
+          if (!account) {
+            res.status(404).json({ code: "NOT_FOUND" });
+            return;
+          }
+          if (revoke || !account.active)
+            for (const [key, session] of sessions)
+              if (session.demo?.username === username) sessions.delete(key);
+          res.json(account);
+        } catch {
+          deny(res, 503);
+        }
+      });
       app.get(demoMemberships, (_req, res) => {
         res.json({
           memberships: store!.listDemoMemberships(),

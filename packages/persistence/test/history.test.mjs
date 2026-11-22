@@ -281,7 +281,7 @@ test("cursor pagination and filters reach older records without truncating detai
   } while (after);
   assert.equal(count, 62);
 });
-test("v3 policy/usage ledger preserved byte-for-byte through v7; old SQL checksums unchanged", (t) => {
+test("v3 policy/usage ledger preserved byte-for-byte after upgrade; old SQL checksums unchanged", (t) => {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   for (const m of migrations.slice(0, 3)) {
@@ -304,10 +304,14 @@ test("v3 policy/usage ledger preserved byte-for-byte through v7; old SQL checksu
   );
   assert.deepEqual(db.prepare("SELECT * FROM policy_versions").all(), policy);
   migrate(db);
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 7);
-  db.exec("PRAGMA user_version=8");
+  const latest = migrations.at(-1).version;
+  assert.equal(db.prepare("PRAGMA user_version").get().user_version, latest);
+  db.exec(`PRAGMA user_version=${latest + 1}`);
   assert.throws(() => migrate(db));
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 8);
+  assert.equal(
+    db.prepare("PRAGMA user_version").get().user_version,
+    latest + 1,
+  );
 });
 test("event limit is visible, storage write failures throw, indexed pagination and measured overhead", (t) => {
   const { db, store } = fixture(t),

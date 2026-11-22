@@ -369,6 +369,7 @@ try {
   }
   const teacherPassphrase = "synthetic browser fixture teacher";
   const studentPassphrase = "synthetic browser fixture student";
+  const studentDisplayName = "SyntheticLearner".repeat(5).slice(0, 80);
   f.authStore.configureDemo("IA342", ...(await Promise.all(
     [teacherPassphrase, studentPassphrase].map(initializeOwnerCredential),
   )));
@@ -391,8 +392,8 @@ try {
     };
     const signOut = () => page.getByRole("button", { name: "Sign out / change role" }).click();
     await page.goto(f.origin);
+    await signIn("admin", testPassphrase);
     if (!mobile) {
-      await signIn("admin", testPassphrase);
       const panel = page.locator("details").filter({ hasText: "Demo memberships" });
       await panel.locator("summary").click();
       for (const username of ["demo-teacher", "demo-student"]) {
@@ -401,11 +402,26 @@ try {
         await panel.getByRole("button", { name: "Grant course" }).click();
         await panel.getByRole("button", { name: `Revoke ${username} · IA340` }).waitFor();
       }
-      await signOut();
     }
-    for (const [username, passphrase, label] of [
-      ["demo-teacher", teacherPassphrase, "Teacher"],
-      ["demo-student", studentPassphrase, "Student"],
+    const accounts = page.locator("details").filter({ hasText: "Practice accounts" });
+    await accounts.locator("summary").click();
+    const student = accounts.locator("li").filter({ hasText: "demo-student" });
+    await student.getByLabel("Display name").waitFor();
+    if (!mobile) {
+      await student.getByLabel("Display name").fill(studentDisplayName);
+      await student.getByRole("button", { name: "Save display name" }).click();
+      await accounts.getByText("Display name saved.", { exact: true }).waitFor();
+      await student.getByRole("button", { name: "Disable account" }).click();
+      await student.getByRole("button", { name: "Enable account" }).click();
+      await student.getByRole("button", { name: "Revoke sessions" }).click();
+      await accounts.getByText("Sessions revoked.", { exact: true }).waitFor();
+    }
+    assert.equal(await student.getByLabel("Display name").inputValue(), studentDisplayName);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    await signOut();
+    for (const [username, passphrase, label, displayName] of [
+      ["demo-teacher", teacherPassphrase, "Teacher", "Demo"],
+      ["demo-student", studentPassphrase, "Student", studentDisplayName],
     ]) {
       await signIn(username, passphrase);
       const selected = page.getByLabel("Current course");
@@ -413,9 +429,10 @@ try {
       assert.deepEqual(await selected.locator("option").allTextContents(), ["IA340", "IA342"]);
       assert.equal(await selected.inputValue(), "IA342");
       await selected.selectOption("IA340");
-      await page.getByText(`Demo · ${label} · IA340`, { exact: true }).waitFor();
+      await page.getByText(`${displayName} · ${label} · IA340`, { exact: true }).waitFor();
       assert.equal(await selected.inputValue(), "IA340");
       assert.equal(await page.getByText("Demo memberships", { exact: true }).count(), 0);
+      assert.equal(await page.getByText("Practice accounts", { exact: true }).count(), 0);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
       await signOut();
     }

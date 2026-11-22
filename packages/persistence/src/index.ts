@@ -97,6 +97,7 @@ export {
 
 export {
   demoUsernames,
+  normalizeDemoLabel,
   type DemoUsername,
   type OwnerAuthRepository,
   type OwnerCredential,

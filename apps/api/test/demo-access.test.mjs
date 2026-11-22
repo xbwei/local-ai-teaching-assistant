@@ -426,6 +426,134 @@ test("only Admin can grant another course and local course switching keeps Histo
   assert.equal((await status(f, teacherOtherCourse)).status, 401);
 });
 
+test("Admin can rename, suspend and revoke existing practice accounts across local courses and signed Canvas sessions", async (t) => {
+  const f = await fixture({
+    autoLogin: false,
+    history: true,
+    canvas: () => paired,
+    authNow: () => canvasNow,
+  });
+  t.after(() => f.close());
+  f.authStore.configureDemo("IA340", ...(await credentials));
+  const username = "demo-student";
+  f.authStore.grantDemoMembership(username, "IA342");
+  const grants = f.authStore.listDemoMemberships();
+  const admin = sessionCookie(await login(f, "admin", testPassphrase));
+  const teacher = sessionCookie(
+    await login(f, "demo-teacher", teacherPassphrase),
+  );
+  const student = sessionCookie(await login(f, username, studentPassphrase));
+  const otherCourseResponse = await post(
+    f,
+    "/api/v1/auth/course",
+    { course: "IA342" },
+    sessionCookie(await login(f, username, studentPassphrase)),
+  );
+  assert.equal(otherCourseResponse.status, 200);
+  const otherCourse = sessionCookie(otherCourseResponse);
+  const launchPath = "/api/v1/canvas/launch";
+  const launch = () =>
+    f.request(launchPath, {
+      method: "POST",
+      headers: {
+        origin: canvas.canvasOrigin,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: signed(f.config.publicOrigin + launchPath, {
+        roles: "Learner",
+        custom_canvas_user_id: paired.demo.studentUserId,
+        oauth_nonce: randomUUID(),
+      }),
+    });
+  const canvasLaunch = await launch();
+  assert.equal(canvasLaunch.status, 303);
+  const canvasStudent = sessionCookie(canvasLaunch);
+  const path = "/api/v1/auth/demo-accounts";
+  const list = (cookie) => f.request(path, { headers: { cookie } });
+  const update = (cookie, value) =>
+    post(f, path, { username, ...value }, cookie);
+  const summary = {
+    username,
+    role: "student",
+    label: "Demo Student",
+    active: true,
+  };
+  const suspend = { action: "active", active: false };
+  const restore = { action: "active", active: true };
+  const revoke = { action: "revoke-sessions" };
+  for (const cookie of [teacher, student, otherCourse, canvasStudent]) {
+    assert.equal((await list(cookie)).status, 403);
+    assert.equal((await update(cookie, suspend)).status, 403);
+  }
+  assert.deepEqual(await (await list(admin)).json(), {
+    accounts: [
+      summary,
+      {
+        username: "demo-teacher",
+        role: "teacher",
+        label: "Demo Teacher",
+        active: true,
+      },
+    ],
+  });
+  assert.equal(
+    (await update(admin, { ...suspend, username: "admin" })).status,
+    400,
+  );
+  assert.equal(
+    (await update(admin, { ...suspend, role: "teacher" })).status,
+    400,
+  );
+  assert.equal(
+    (await update(admin, { action: "rename", label: "<invalid>" })).status,
+    400,
+  );
+  await saveQuestion(f, student, "Synthetic existing account History");
+  const label = "Synthetic Learner";
+  assert.deepEqual(
+    await (
+      await update(admin, { action: "rename", label: ` ${label} ` })
+    ).json(),
+    {
+      ...summary,
+      label,
+    },
+  );
+  assert.deepEqual(await (await status(f, student)).json(), {
+    role: "student",
+    source: "local",
+    course: "IA340",
+    label,
+  });
+  assert.equal((await query(f, student)).length, 1);
+  assert.deepEqual(await query(f, otherCourse), []);
+
+  assert.equal((await update(admin, revoke)).status, 200);
+  for (const cookie of [student, otherCourse, canvasStudent])
+    assert.equal((await status(f, cookie)).status, 401);
+  const freshStudent = sessionCookie(
+    await login(f, username, studentPassphrase),
+  );
+  assert.equal((await status(f, freshStudent)).status, 200);
+
+  assert.deepEqual(await (await update(admin, suspend)).json(), {
+    ...summary,
+    label,
+    active: false,
+  });
+  assert.equal((await status(f, freshStudent)).status, 401);
+  assert.equal((await login(f, username, studentPassphrase)).status, 401);
+  assert.equal((await launch()).status, 403);
+  assert.deepEqual(f.authStore.listDemoMemberships(), grants);
+  assert.equal((await update(admin, restore)).status, 200);
+  assert.equal((await status(f, freshStudent)).status, 401);
+  assert.equal((await status(f, teacher)).status, 200);
+  assert.equal((await status(f, admin)).status, 200);
+  const restored = sessionCookie(await login(f, username, studentPassphrase));
+  assert.equal((await query(f, restored)).length, 1);
+  assert.equal((await launch()).status, 303);
+});
+
 test("signed Canvas roles and current grants intersect without granting Learner any REST controls", async (t) => {
   let configuration = paired;
   const fake = canvasPageFixture();
