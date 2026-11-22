@@ -215,6 +215,19 @@ form {
   padding-top: 14px;
   border-top: 1px solid #e3e1e5;
 }
+#teacher-chat-routing {
+  flex: 1 0 100%;
+  margin-bottom: 8px;
+}
+#teacher-chat-routing select {
+  max-width: 100%;
+}
+#teacher-chat-scope {
+  margin: 6px 0 0;
+}
+#teacher-chat-answer {
+  white-space: pre-wrap;
+}
 fieldset {
   display: flex;
   gap: 4px;
@@ -531,6 +544,9 @@ select {
     align-items: center;
     gap: 12px;
     padding-top: 8px;
+  }
+  #composer:has(#teacher-chat-routing:not([hidden])) {
+    flex-wrap: wrap;
   }
   fieldset {
     margin: 0;

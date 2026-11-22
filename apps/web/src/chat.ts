@@ -7,7 +7,11 @@ import {
 import { renderMessageText } from "./client/markdown.ts";
 import { localResidencyText } from "./client/presentation.ts";
 import { Microphone } from "./client/microphone.ts";
-import { InputApi } from "./client/api.ts";
+import { ClientError, InputApi } from "./client/api.ts";
+import {
+  teacherChatTools,
+  type TeacherChatTool,
+} from "./client/teacher-chat.ts";
 import {
   isVirtualKeyboardOpen,
   isTouchCapable,
@@ -31,6 +35,25 @@ let rendered = "",
   choiceTimer: ReturnType<typeof setTimeout>;
 const api = new InputApi();
 const client = new LearningClient(render, api);
+const toolMode = get<HTMLSelectElement>("teacher-chat-mode");
+const toolScope = get("teacher-chat-scope");
+const toolAnswer = get("teacher-chat-answer");
+const tools = new Map<string, TeacherChatTool>();
+let tool: TeacherChatTool | undefined;
+let toolRequest: AbortController | undefined;
+if (document.body.dataset.ownerRole === "teacher") {
+  void teacherChatTools(api, document.body.dataset.ownerSource)
+    .then((available) => {
+      for (const entry of available) {
+        tools.set(entry.id, entry);
+        toolMode.add(new Option(entry.label, entry.id));
+      }
+      get("teacher-chat-routing").hidden = tools.size === 0;
+    })
+    .catch(() => {
+      /* Unavailable Teacher tools leave general Chat usable. */
+    });
+}
 if (
   document.body.dataset.ownerRole === "teacher" &&
   document.body.dataset.ownerSource === "local"
@@ -61,11 +84,6 @@ if (
     .then(({ mountTeacherCanvasModules }) => mountTeacherCanvasModules(api))
     .catch(() => {
       /* Unavailable Canvas tools leave Chat usable. */
-    });
-  void import("./client/teacher-canvas-chat.ts")
-    .then(({ mountCanvasChat }) => mountCanvasChat(api))
-    .catch(() => {
-      /* An unconfigured plugin leaves standalone Chat available. */
     });
   void import("./client/teacher-canvas-feedback.ts")
     .then(({ mountTeacherCanvasFeedback }) => mountTeacherCanvasFeedback(api))
@@ -157,6 +175,7 @@ question.addEventListener("focus", syncVisualViewport);
 question.addEventListener("blur", syncVisualViewport);
 syncVisualViewport();
 function render() {
+  const busy = client.active || !!toolRequest;
   get("recording-status").textContent =
     client.recordingIncomplete ||
     playback.recordingIncomplete ||
@@ -169,22 +188,26 @@ function render() {
     !client.active &&
     client.choices &&
     !client.choices.providers.modes.some((m) => m.id === client.mode);
-  const visibleStatus =
+  const generalStatus =
     client.status ||
-    (unavailable
+    (!tool && unavailable
       ? "That mode is unavailable. Choose an available mode, or try again later."
       : "");
+  const visibleStatus = toolRequest ? "Working…" : generalStatus;
   get("status").textContent = visibleStatus;
   get("status").dataset.phase = client.phase;
-  get("activity").hidden = !visibleStatus && !client.active;
-  get("cancel").hidden = !client.active;
-  get<HTMLButtonElement>("cancel").disabled = client.phase === "connecting";
-  get("reset").hidden = client.active || client.messages.length === 0;
-  get("welcome").hidden = client.messages.length > 0;
+  get("activity").hidden = !visibleStatus && !busy;
+  get("cancel").hidden = !busy;
+  get<HTMLButtonElement>("cancel").disabled =
+    !toolRequest && client.phase === "connecting";
+  get("reset").hidden = busy || client.messages.length === 0;
+  get("welcome").hidden = !!tool || client.messages.length > 0;
   get("transcript-status").textContent = client.transcript
     ? `Recognized: ${client.transcript}`
     : "";
   const messages = get("messages");
+  messages.hidden = !!tool;
+  toolAnswer.hidden = !tool;
   const messageSnapshot = JSON.stringify([
     client.messages,
     playback.state,
@@ -326,7 +349,7 @@ function render() {
     queueMicrotask(() => void playback.play(automatic.audio!, true));
   const modes = client.choices?.providers.modes ?? [];
   const providers = get<HTMLFieldSetElement>("providers");
-  providers.hidden = false;
+  providers.hidden = !!tool;
   document
     .querySelectorAll<HTMLInputElement>('input[name="provider"]')
     .forEach((input) => {
@@ -346,16 +369,26 @@ function render() {
         ? ""
         : ` — ${code.toLowerCase().replaceAll("_", " ")}`;
     });
-  question.disabled = client.active;
-  get<HTMLButtonElement>("send").disabled = client.active || !client.connected;
+  toolMode.disabled = busy;
+  question.disabled = busy;
+  get<HTMLButtonElement>("send").disabled = busy || !client.connected;
+  get("cloud-disclosure").hidden = !!tool;
+  get("mic-disclosure").hidden = !!tool;
+  get("transcript-status").hidden = !!tool;
+  get("conversation-controls").hidden = !!tool;
   const listening = client.phase === "listening";
   get("mic-label").textContent = listening ? "Stop" : "Mic";
   get("mic-label").toggleAttribute("data-stop", listening);
   get("mic").setAttribute("aria-label", listening ? "Stop" : "Mic");
-  get<HTMLButtonElement>("mic").disabled = !listening && !client.canListen;
+  const microphone = get<HTMLButtonElement>("mic");
+  microphone.hidden = !!tool;
+  microphone.disabled = !!tool || (!listening && !client.canListen);
   const model = get<HTMLSelectElement>("local-model");
   model.value = client.localModel;
-  model.disabled = client.active;
+  model.disabled = busy;
+  model.hidden = tool?.localModel === false;
+  get("local-model-label").hidden = model.hidden;
+  get("model-status").hidden = model.hidden;
   get("model-status").textContent = localResidencyText(
     client.localModel,
     client.choices,
@@ -365,7 +398,7 @@ function render() {
       ? "speaking"
       : client.phase === "listening"
         ? "listening"
-        : client.phase === "waiting"
+        : toolRequest || client.phase === "waiting"
           ? "thinking"
           : client.phase === "error" || playback.state === "error"
             ? "error"
@@ -375,6 +408,7 @@ function render() {
   get("stop-audio").hidden = !["loading", "speaking"].includes(playback.state);
   if (previous === "listening" && !listening) mic.cancel();
   if (
+    !tool &&
     shouldAutofocusQuestion(
       client.connected,
       client.active,
@@ -389,16 +423,67 @@ get("local-model").addEventListener(
   "change",
   (e) => void client.selectLocalModel((e.target as HTMLSelectElement).value),
 );
+function showTool(next: TeacherChatTool | undefined) {
+  tool = next;
+  toolMode.value = next?.id ?? "conversation";
+  clearTimeout(choiceTimer);
+  question.value = "";
+  question.maxLength = next?.limit ?? 2000;
+  toolScope.textContent = next?.scope ?? "";
+  toolScope.hidden = !next;
+  if (next) question.setAttribute("aria-describedby", toolScope.id);
+  else question.removeAttribute("aria-describedby");
+  toolAnswer.textContent = "";
+  get("conversation").scrollTop = 0;
+}
+toolMode.addEventListener("change", () => {
+  if (client.active || toolRequest) {
+    toolMode.value = tool?.id ?? "conversation";
+    return;
+  }
+  playback.stop();
+  showTool(tools.get(toolMode.value));
+  render();
+});
+async function askTool(selected: TeacherChatTool, text: string) {
+  const controller = new AbortController();
+  toolRequest = controller;
+  toolAnswer.textContent = "";
+  render();
+  try {
+    const answer = await selected.ask(text, controller.signal);
+    controller.signal.throwIfAborted();
+    toolAnswer.textContent = answer;
+    question.value = "";
+  } catch (error) {
+    if (toolRequest !== controller) return;
+    toolAnswer.textContent = controller.signal.aborted
+      ? "Cancelled."
+      : error instanceof ClientError && [401, 403].includes(error.status)
+        ? selected.signIn
+        : selected.unavailable;
+  } finally {
+    if (toolRequest === controller) {
+      toolRequest = undefined;
+      render();
+    }
+  }
+}
 get("composer").addEventListener("submit", (event) => {
   event.preventDefault();
   const text = question.value;
-  if (!text.trim()) return;
+  if (!text.trim() || client.active || toolRequest) return;
+  if (tool) {
+    void askTool(tool, text);
+    return;
+  }
   question.value = "";
   clearTimeout(choiceTimer);
   void client.send(text);
 });
 question.addEventListener("input", () => {
   clearTimeout(choiceTimer);
+  if (tool) return;
   choiceTimer = setTimeout(
     () => void client.refreshChoices(question.value),
     350,
@@ -428,6 +513,10 @@ get("mic").addEventListener(
   () => void (client.phase === "listening" ? stop() : listen()),
 );
 get("cancel").addEventListener("click", () => {
+  if (toolRequest) {
+    toolRequest.abort();
+    return;
+  }
   mic.cancel();
   playback.stop();
   void client.cancel();
@@ -450,7 +539,9 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("pagehide", () => {
-  question.value = "";
+  toolRequest?.abort();
+  toolRequest = undefined;
+  showTool(undefined);
   mic.cancel();
   playback.reset();
   client.close();
