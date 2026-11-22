@@ -556,9 +556,10 @@ try {
     assert.equal(syntheticCanvas.writes.length, writes);
     await pageFormat.selectOption("text");
     assert.equal(await create.isVisible(), false);
-    const literal = "# Literal **marks**\n<sample> & text";
-    const literalHtml = "<p># Literal **marks**<br>&lt;sample&gt; &amp; text</p>";
+    const literal = "# Literal **marks**\r\n<sample> & text\rLast line";
+    const literalHtml = "<p># Literal **marks**<br>&lt;sample&gt; &amp; text<br>Last line</p>";
     await pageBody.fill(literal);
+    const originalPageBody = await pageBody.inputValue();
     await previewButton.click();
     await preview.locator("#canvas-page-preview-body").getByText(/# Literal \*\*marks\*\*/u).waitFor();
     assert.equal(await preview.locator("pre").textContent(), literalHtml);
@@ -576,7 +577,7 @@ try {
     assert.match(await excerpt.textContent(), /Literal <sample> & \*\*evidence\*\*/u);
     assert.equal(await excerpt.locator("sample,strong").count(), 0);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
-    assert.equal(await pageBody.inputValue(), literal);
+    assert.equal(await pageBody.inputValue(), originalPageBody);
     assert.equal(await pageFormat.inputValue(), "text");
     assert.equal(syntheticCanvas.writes.length, writes);
     const suggestion = pageDraft.getByLabel("Editable Local suggestion");
@@ -585,7 +586,7 @@ try {
     await suggestion.fill("Module plan\n-----------\n\nKeep out of the student body.");
     await applyPage.click();
     await pageDraft.getByText("No student-facing text to apply. Your editor is unchanged.").waitFor();
-    assert.equal(await pageBody.inputValue(), literal);
+    assert.equal(await pageBody.inputValue(), originalPageBody);
     assert.equal(await pageFormat.inputValue(), "text");
     assert.equal(await create.isVisible(), true);
     await suggestion.fill("Module plan\n-----------\n\nKeep out of the student body.\n\n## Grounded map suggestion\n\nRevised teaching content — 安全 🌍\n\n    ## Teacher notes\n    Literal code example.");
@@ -630,6 +631,7 @@ try {
     assert.equal(await assignmentFormat.inputValue(), "markdown");
     await assignmentFormat.selectOption("text");
     await assignmentBody.fill(literal);
+    const originalAssignmentBody = await assignmentBody.inputValue();
     await previewAssignment.click();
     await assignmentPreview.locator("#canvas-assignment-preview-body").getByText(/# Literal \*\*marks\*\*/u).waitFor();
     assert.equal(await assignmentPreview.locator("#canvas-assignment-html").textContent(), literalHtml);
@@ -641,7 +643,7 @@ try {
     await criteria.selectOption("yes");
     await tool.getByRole("button", { name: "Generate Local suggestion" }).click();
     await tool.getByText("docs/modules/module-6/practice.md · Lab 6", { exact: true }).waitFor();
-    assert.equal(await assignmentBody.inputValue(), literal);
+    assert.equal(await assignmentBody.inputValue(), originalAssignmentBody);
     assert.equal(await assignmentFormat.inputValue(), "text");
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await tool.getByRole("button", { name: "Apply suggestion to body" }).click();

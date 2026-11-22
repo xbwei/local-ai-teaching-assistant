@@ -113,7 +113,7 @@ export function canvasDraftMarkup(text: string, format: string) {
   const fragment = document.createElement("div");
   if (format === "text") {
     const paragraph = document.createElement("p");
-    text.split("\n").forEach((line, index) => {
+    text.split(/\r\n?|\n/u).forEach((line, index) => {
       if (index) paragraph.append(document.createElement("br"));
       paragraph.append(line);
     });
