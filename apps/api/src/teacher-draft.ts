@@ -1,7 +1,7 @@
 import express, { type RequestHandler } from "express";
 import { classifyInput } from "@laita/safety";
 import { courseIds, type CourseId } from "@laita/course-grounding";
-import type { ProviderRunResult } from "@laita/contracts";
+import { validCourseGrounding, type ProviderRunResult } from "@laita/contracts";
 import type { OwnerSessions } from "./owner-session.ts";
 
 export type TeacherDraft = (
@@ -77,14 +77,12 @@ export function createTeacherDraftHandler(
         return;
       }
       const leg = result?.legs[0];
+      const grounding = result?.grounding;
       if (
         result?.mode === "LOCAL" &&
-        result.grounding?.status === "GROUNDED" &&
-        result.grounding.course === value.course &&
-        result.grounding.sources.length > 0 &&
-        result.grounding.sources.every(
-          ({ course }) => course === value.course,
-        ) &&
+        grounding?.status === "GROUNDED" &&
+        grounding.course === value.course &&
+        validCourseGrounding(grounding) &&
         leg?.status === "COMPLETED" &&
         leg.provider === "LOCAL" &&
         leg.provenance?.actualProvider === "LOCAL" &&
@@ -92,11 +90,16 @@ export function createTeacherDraftHandler(
       ) {
         res.json({
           text: leg.output.text,
-          sources: result.grounding.sources.map(({ path, section, url }) => ({
-            path,
-            section,
-            url,
-          })),
+          sources: grounding.sources.map(
+            ({ repository, path, section, commit, url, excerpt }) => ({
+              repository,
+              path,
+              section,
+              commit,
+              url,
+              excerpt,
+            }),
+          ),
         });
         return;
       }

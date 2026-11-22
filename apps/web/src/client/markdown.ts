@@ -76,9 +76,51 @@ export function renderMessageText(
   }
 }
 
-export function canvasDraftMarkup(markdown: string) {
+function headingLabel(token: Token): string {
+  if (
+    token.type === "heading" ||
+    token.type === "strong" ||
+    token.type === "em"
+  )
+    return token.tokens?.map(headingLabel).join("") ?? token.raw;
+  return token.raw;
+}
+
+/** Remove explicitly labeled sections using the Canvas preview's Markdown grammar. */
+export function studentDraft(text: string) {
+  const content: string[] = [];
+  let excludedDepth = 0;
+  for (const token of Lexer.lex(text, { gfm: false })) {
+    if (
+      token.type === "heading" &&
+      (!excludedDepth || token.depth <= excludedDepth)
+    ) {
+      excludedDepth =
+        /^(?:teacher(?:-only)?(?:['’]s)?\s+notes?|module\s+plan)\b|^(?:教师|老师)备注|^模块规划/iu.test(
+          headingLabel(token),
+        )
+          ? token.depth
+          : 0;
+    }
+    if (!excludedDepth) content.push(token.raw);
+  }
+  // Retain leading spaces for indented Markdown code blocks.
+  const draft = content.join("");
+  return draft.trim() ? draft.replace(/^\n+|\n+$/gu, "") : "";
+}
+
+export function canvasDraftMarkup(text: string, format: string) {
   const fragment = document.createElement("div");
-  renderMessageText(fragment, { role: "answer", text: markdown });
+  if (format === "text") {
+    const paragraph = document.createElement("p");
+    text.split("\n").forEach((line, index) => {
+      if (index) paragraph.append(document.createElement("br"));
+      paragraph.append(line);
+    });
+    fragment.append(paragraph);
+    return fragment;
+  }
+  renderMessageText(fragment, { role: "answer", text });
   for (const heading of Array.from(fragment.querySelectorAll("h1,h4,h5,h6"))) {
     const replacement = document.createElement("h2");
     replacement.append(...Array.from(heading.childNodes));

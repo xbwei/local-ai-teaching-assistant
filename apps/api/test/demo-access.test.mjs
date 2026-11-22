@@ -676,6 +676,17 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
   let configuration = paired;
   let now = canvasNow;
   let run;
+  const revision = "a".repeat(40);
+  const publicSource = {
+    course: "IA340",
+    repository: "JMU-Data/IA340",
+    commit: revision,
+    path: "docs/modules/module-5/practice.md",
+    section: "Lab 5",
+    url: `https://github.com/JMU-Data/IA340/blob/${revision}/docs/modules/module-5/practice.md`,
+    excerpt: "Synthetic practice directions: compare two maps.",
+  };
+  let sources = [publicSource];
   const calls = [];
   const fake = canvasPageFixture({ assignments: true });
   const f = await fixture({
@@ -696,9 +707,8 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
         grounding: {
           status: "GROUNDED",
           course: "IA340",
-          sources: [
-            { course: "IA340", path: "docs/example.md", section: "Lab 5" },
-          ],
+          snapshot: revision,
+          sources,
         },
         legs: [
           {
@@ -771,6 +781,7 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
     400,
   );
   assert.deepEqual(calls, []);
+  const { course: _, ...reference } = publicSource;
   for (const [kind, options] of [
     ["PAGE", {}],
     ["ASSIGNMENT", {}],
@@ -780,7 +791,7 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       text: "Synthetic editable suggestion",
-      sources: [{ path: "docs/example.md", section: "Lab 5" }],
+      sources: [reference],
     });
   }
   assert.deepEqual(calls, [
@@ -788,6 +799,21 @@ test("Canvas Local drafting requires a current signed Teacher and the bound publ
     ["IA340", "ASSIGNMENT", "Lab 5", false],
     ["IA340", "ASSIGNMENT", "Lab 5", true],
   ]);
+  for (const unexpected of [
+    { course: "IA342" },
+    { repository: "example/private-course" },
+    { commit: "b".repeat(40) },
+    { url: "https://unapproved.example.test/reference" },
+    { excerpt: "é".repeat(451) },
+    { excerpt: "Synthetic\u202etext" },
+    { internalPath: "/runtime/course" },
+  ]) {
+    sources = [publicSource, { ...publicSource, ...unexpected }];
+    const rejected = await draft(teacher);
+    assert.equal(rejected.status, 200);
+    assert.deepEqual(await rejected.json(), { code: "LOCAL_UNAVAILABLE" });
+  }
+  sources = [publicSource];
 
   const active = (value) =>
     f.authStore.setDemoMembershipActive("demo-teacher", "IA340", value);

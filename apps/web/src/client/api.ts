@@ -49,6 +49,26 @@ type CanvasChatRouting = "direct" | "local";
 const canvasChatRoute = (routing: CanvasChatRouting) =>
   routing === "local" ? "/api/v1/canvas/chat/tools" : "/api/v1/canvas/chat";
 
+type TeacherDraftSource = {
+  repository: string;
+  path: string;
+  section: string;
+  commit: string;
+  excerpt: string;
+};
+
+function isTeacherDraftSource(value: unknown): value is TeacherDraftSource {
+  const source = responseRecord(value);
+  return (
+    !!source &&
+    typeof source.repository === "string" &&
+    typeof source.path === "string" &&
+    typeof source.section === "string" &&
+    typeof source.commit === "string" &&
+    typeof source.excerpt === "string"
+  );
+}
+
 function readCanvasTarget(value: unknown): CanvasPagePreview["target"] {
   const target = responseRecord(value);
   if (
@@ -170,8 +190,7 @@ export class InputApi {
     signal: AbortSignal,
     includeCriteria = false,
   ): Promise<
-    | { code: string }
-    | { text: string; sources: { path: string; section: string }[] }
+    { code: string } | { text: string; sources: TeacherDraftSource[] }
   > {
     const value = await this.request(
       "/api/v1/teacher-draft",
@@ -192,19 +211,11 @@ export class InputApi {
         typeof value.text === "string" &&
         "sources" in value &&
         Array.isArray(value.sources) &&
-        value.sources.every(
-          (source: unknown) =>
-            source &&
-            typeof source === "object" &&
-            "path" in source &&
-            typeof source.path === "string" &&
-            "section" in source &&
-            typeof source.section === "string",
-        )
+        value.sources.every(isTeacherDraftSource)
       )
         return {
           text: value.text,
-          sources: value.sources as { path: string; section: string }[],
+          sources: value.sources,
         };
     }
     throw new ClientError();

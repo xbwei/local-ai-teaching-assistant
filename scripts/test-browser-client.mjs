@@ -188,10 +188,12 @@ try {
     canvasPages: syntheticVerification.options,
     teacherDraft: async (course, kind, topic, _signal, includeCriteria) => {
       assert.equal(course, "IA342");
+      const revision = "a".repeat(40);
+      const path = "docs/modules/module-6/practice.md";
       const text = {
         "ASSIGNMENT:Lab 5": "## Practice task\nCompare two visual explanations.",
-        "PAGE:Lab 6": "## Grounded map suggestion\n\nLabel the source.",
-        "ASSIGNMENT:Lab 6": "## Map lab\n\nCompare two maps. 地图",
+        "PAGE:Lab 6": "## **Teacher notes**\n\nPreparation only.\n\n### Checklist\n\nTeacher checklist.\n\n## Grounded map suggestion\n\nLabel the source.\n\n## Module plan\n\nSuggested placement.",
+        "ASSIGNMENT:Lab 6": "## 教师备注\n\nPreparation only.\n\n## Map lab\n\nCompare two maps. 地图",
       }[`${kind}:${topic}`];
       assert.ok(text);
       const suggestion = includeCriteria
@@ -199,7 +201,12 @@ try {
         : text;
       return {
         mode: "LOCAL",
-        grounding: { status: "GROUNDED", course, sources: [{ course, path: "docs/example.md", section: topic }] },
+        grounding: {
+          status: "GROUNDED", course, snapshot: revision,
+          sources: [{ course, repository: "JMU-Data/IA342", commit: revision, path, section: topic,
+            url: `https://github.com/JMU-Data/IA342/blob/${revision}/${path}`,
+            excerpt: `Compare two maps.\nLiteral <sample> & **evidence**.\n${"literal".repeat(60)}` }],
+        },
         legs: [{ provider: "LOCAL", provenance: { actualProvider: "LOCAL" }, status: "COMPLETED", output: { text: suggestion } }],
       };
     },
@@ -310,7 +317,7 @@ try {
     await page.getByText("Draft ready. Check the sources and edit before use.").waitFor();
     const draft = page.getByLabel("Editable Markdown draft");
     assert.match(await draft.inputValue(), /Compare two visual explanations/);
-    await page.getByText("docs/example.md · Lab 5", { exact: true }).waitFor();
+    await page.getByText("docs/modules/module-6/practice.md · Lab 5", { exact: true }).waitFor();
     await draft.fill("Teacher revision");
     assert.equal(await draft.inputValue(), "Teacher revision");
     const askAbout = page.getByLabel("Ask about");
@@ -530,12 +537,14 @@ try {
     await page.getByText("Create a Canvas Page", { exact: true }).click();
     assert.equal(await page.getByText("Local teaching drafts", { exact: true }).isVisible(), false);
     const title = page.getByLabel("Page title");
-    const markdown = page.getByLabel("Page Markdown");
+    const pageBody = page.getByLabel("Page content");
+    const pageFormat = page.getByLabel("Page body format");
     const preview = page.getByRole("region", { name: "Canvas Page preview" });
     const previewButton = page.getByRole("button", { name: "Preview Canvas Page" });
     const create = page.getByRole("button", { name: "Create unpublished page" });
     await title.fill("Field exercise — 地图 🌍");
-    await markdown.fill("# Compare routes\n\nPlot a **synthetic** map. 地图 🌍");
+    assert.equal(await pageFormat.inputValue(), "markdown");
+    await pageBody.fill("# Compare routes\n\nPlot a **synthetic** map. 地图 🌍");
     assert.equal(await create.isVisible(), false);
     await previewButton.click();
     await preview.getByText(/^Synthetic Studio/).waitFor();
@@ -545,27 +554,61 @@ try {
     await preview.getByText("Exact HTML sent to Canvas").click();
     assert.equal(await preview.locator("pre").textContent(), "<h2>Compare routes</h2><p>Plot a <strong>synthetic</strong> map. 地图 🌍</p>");
     assert.equal(syntheticCanvas.writes.length, writes);
+    await pageFormat.selectOption("text");
+    assert.equal(await create.isVisible(), false);
+    const literal = "# Literal **marks**\n<sample> & text";
+    const literalHtml = "<p># Literal **marks**<br>&lt;sample&gt; &amp; text</p>";
+    await pageBody.fill(literal);
+    await previewButton.click();
+    await preview.locator("#canvas-page-preview-body").getByText(/# Literal \*\*marks\*\*/u).waitFor();
+    assert.equal(await preview.locator("pre").textContent(), literalHtml);
+    assert.equal(await preview.locator("sample,strong").count(), 0);
+    assert.equal(syntheticCanvas.writes.length, writes);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
     const pageDraft = page.locator("#teacher-canvas-pages");
     assert.equal(await pageDraft.getByLabel("Assessment criteria in the draft").count(), 0);
     await pageDraft.getByLabel("Topic or Lab/Week number").fill("Lab 6");
     await pageDraft.getByRole("button", { name: "Generate Local suggestion" }).click();
-    await pageDraft.getByText("docs/example.md · Lab 6").waitFor();
-    assert.equal(await markdown.inputValue(), "# Compare routes\n\nPlot a **synthetic** map. 地图 🌍");
+    const pageReference = pageDraft.getByText("docs/modules/module-6/practice.md · Lab 6", { exact: true });
+    await pageReference.click();
+    await pageDraft.getByText(`JMU-Data/IA342 · revision ${"a".repeat(40)}`, { exact: true }).waitFor();
+    const excerpt = pageDraft.locator(".course-source-excerpt");
+    assert.match(await excerpt.textContent(), /Literal <sample> & \*\*evidence\*\*/u);
+    assert.equal(await excerpt.locator("sample,strong").count(), 0);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    assert.equal(await pageBody.inputValue(), literal);
+    assert.equal(await pageFormat.inputValue(), "text");
     assert.equal(syntheticCanvas.writes.length, writes);
     const suggestion = pageDraft.getByLabel("Editable Local suggestion");
-    assert.match(await suggestion.inputValue(), /Grounded map suggestion/u);
-    await suggestion.fill("## Grounded map suggestion\n\nRevised teaching content — 安全 🌍");
-    await pageDraft.getByRole("button", { name: "Apply suggestion to body" }).click();
-    assert.match(await markdown.inputValue(), /Revised teaching content/u);
+    assert.equal(await suggestion.inputValue(), "## Grounded map suggestion\n\nLabel the source.");
+    const applyPage = pageDraft.getByRole("button", { name: "Apply suggestion to body" });
+    await suggestion.fill("Module plan\n-----------\n\nKeep out of the student body.");
+    await applyPage.click();
+    await pageDraft.getByText("No student-facing text to apply. Your editor is unchanged.").waitFor();
+    assert.equal(await pageBody.inputValue(), literal);
+    assert.equal(await pageFormat.inputValue(), "text");
+    assert.equal(await create.isVisible(), true);
+    await suggestion.fill("Module plan\n-----------\n\nKeep out of the student body.\n\n## Grounded map suggestion\n\nRevised teaching content — 安全 🌍\n\n    ## Teacher notes\n    Literal code example.");
+    await applyPage.click();
+    assert.equal(await pageBody.inputValue(), "## Grounded map suggestion\n\nRevised teaching content — 安全 🌍\n\n    ## Teacher notes\n    Literal code example.");
+    assert.equal(await pageFormat.inputValue(), "markdown");
     assert.equal(await create.isVisible(), false);
     await previewButton.click();
     await preview.getByText("Revised teaching content — 安全 🌍", { exact: true }).waitFor();
     assert.equal(syntheticCanvas.writes.length, writes);
+    if (mobile) {
+      await pageFormat.selectOption("text");
+      await pageBody.fill(literal);
+      assert.equal(await create.isVisible(), false);
+      await previewButton.click();
+      await preview.locator("#canvas-page-preview-body").getByText(/# Literal \*\*marks\*\*/u).waitFor();
+      assert.equal(await preview.locator("pre").textContent(), literalHtml);
+      assert.equal(syntheticCanvas.writes.length, writes);
+    }
     await create.click();
     await page.getByText("Canvas verified unpublished Page 9001.").waitFor();
     assert.equal(syntheticCanvas.writes.length, writes + 1);
-    assert.equal(syntheticCanvas.writes.at(-1)["wiki_page[body]"], "<h2>Grounded map suggestion</h2><p>Revised teaching content — 安全 🌍</p>");
+    assert.equal(syntheticCanvas.writes.at(-1)["wiki_page[body]"], mobile ? literalHtml : "<h2>Grounded map suggestion</h2><p>Revised teaching content — 安全 🌍</p><pre><code>## Teacher notes\nLiteral code example.</code></pre>");
     assert.equal(await create.isVisible(), false);
     assert.ok(requests.every((request) => new URL(request).origin === f.origin));
     assert.equal(requests.filter((request) => request.endsWith("/api/v1/canvas/pages/create")).length, 1);
@@ -582,17 +625,29 @@ try {
     const saveTitle = assignmentPreview.getByRole("button", { name: "Save assignment title" });
     const assignmentWrites = syntheticCanvas.assignmentWrites.length;
     await assignmentTitle.fill("Synthetic studio lab");
-    const assignmentBody = tool.getByLabel("Assignment Markdown");
+    const assignmentBody = tool.getByLabel("Assignment content");
+    const assignmentFormat = tool.getByLabel("Assignment body format");
+    assert.equal(await assignmentFormat.inputValue(), "markdown");
+    await assignmentFormat.selectOption("text");
+    await assignmentBody.fill(literal);
+    await previewAssignment.click();
+    await assignmentPreview.locator("#canvas-assignment-preview-body").getByText(/# Literal \*\*marks\*\*/u).waitFor();
+    assert.equal(await assignmentPreview.locator("#canvas-assignment-html").textContent(), literalHtml);
+    assert.equal(await assignmentPreview.locator("sample,strong").count(), 0);
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await tool.getByLabel("Topic or Lab/Week number").fill("Lab 6");
     const criteria = tool.getByLabel("Assessment criteria in the draft");
     assert.equal(await criteria.inputValue(), "no");
     await criteria.selectOption("yes");
     await tool.getByRole("button", { name: "Generate Local suggestion" }).click();
-    await tool.getByText("docs/example.md · Lab 6").waitFor();
-    assert.equal(await assignmentBody.inputValue(), "");
+    await tool.getByText("docs/modules/module-6/practice.md · Lab 6", { exact: true }).waitFor();
+    assert.equal(await assignmentBody.inputValue(), literal);
+    assert.equal(await assignmentFormat.inputValue(), "text");
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await tool.getByRole("button", { name: "Apply suggestion to body" }).click();
     assert.equal(await assignmentBody.inputValue(), "## Map lab\n\nCompare two maps. 地图\n\n### Assessment criteria\n\nExplain one visual difference.");
+    assert.equal(await assignmentFormat.inputValue(), "markdown");
+    assert.equal(await createAssignment.isVisible(), false);
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await tool.getByLabel("Points possible").fill("4.5");
     await tool.getByLabel("File Upload").check();
@@ -607,12 +662,22 @@ try {
     assert.equal(await createAssignment.isVisible(), false);
     await previewAssignment.click();
     await assignmentPreview.getByRole("heading", { name: "Reviewed studio lab" }).waitFor();
+    if (mobile) {
+      await assignmentFormat.selectOption("text");
+      await assignmentBody.fill(literal);
+      assert.equal(await createAssignment.isVisible(), false);
+      await previewAssignment.click();
+      await assignmentPreview.getByRole("heading", { name: "Reviewed studio lab" }).waitFor();
+      assert.equal(await assignmentPreview.locator("#canvas-assignment-html").textContent(), literalHtml);
+      assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
+    }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
     await createAssignment.click();
     await tool.getByText("Canvas verified assignment 91.").waitFor();
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites + 1);
     const savedBody = syntheticCanvas.assignmentRows.get("91").description;
-    assert.match(savedBody, /<h3>Assessment criteria<\/h3>/u);
+    if (mobile) assert.equal(savedBody, literalHtml);
+    else assert.match(savedBody, /<h3>Assessment criteria<\/h3>/u);
     const submitted = new URLSearchParams(syntheticCanvas.assignmentWrites.at(-1).fields);
     assert.equal(submitted.get("assignment[description]"), savedBody);
     assert.ok([...submitted.keys()].every((key) => !/rubric/iu.test(key)));
@@ -620,7 +685,8 @@ try {
     await tool.getByLabel("Assignment action").selectOption("TITLE");
     assert.equal(await tool.getByRole("button", { name: "Generate Local suggestion" }).isVisible(), false);
     await tool.getByLabel("Assignment to rename").selectOption("81");
-    assert.equal(await tool.getByLabel("Assignment Markdown").isVisible(), false);
+    assert.equal(await assignmentBody.isVisible(), false);
+    assert.equal(await assignmentFormat.isVisible(), false);
     const previousTitle = syntheticCanvas.assignmentRows.get("81").name;
     const updatedTitle = mobile ? "Reviewed title on phone" : "Reviewed title on desktop";
     await assignmentTitle.fill(updatedTitle);

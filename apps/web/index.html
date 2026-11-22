@@ -179,8 +179,15 @@
               required
             />
           </label>
+          <label class="teacher-field" for="canvas-page-format"
+            >Page body format
+            <select id="canvas-page-format">
+              <option value="markdown">Markdown</option>
+              <option value="text">Plain text</option>
+            </select>
+          </label>
           <label class="teacher-field canvas-page-body" for="canvas-page-body"
-            >Page Markdown
+            >Page content
             <textarea
               id="canvas-page-body"
               rows="6"
@@ -238,8 +245,15 @@
           </label>
           <fieldset id="canvas-assignment-create">
             <legend>New assignment settings</legend>
+            <label for="canvas-assignment-format"
+              >Assignment body format
+              <select id="canvas-assignment-format">
+                <option value="markdown">Markdown</option>
+                <option value="text">Plain text</option>
+              </select>
+            </label>
             <label for="canvas-assignment-body"
-              >Assignment Markdown
+              >Assignment content
               <textarea
                 id="canvas-assignment-body"
                 rows="6"

@@ -53,6 +53,7 @@ export {
   isProviderHealthSnapshot,
   isProviderRunRequest,
   isProviderRunResult,
+  validCourseGrounding,
 } from "./provider-control.ts";
 export type {
   ClientProviderFailureCode,

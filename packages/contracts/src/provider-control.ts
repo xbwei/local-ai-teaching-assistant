@@ -635,7 +635,7 @@ export function isProviderRunResult(
   });
 }
 
-function validCourseGrounding(value: unknown): value is CourseGrounding {
+export function validCourseGrounding(value: unknown): value is CourseGrounding {
   if (
     !value ||
     typeof value !== "object" ||
