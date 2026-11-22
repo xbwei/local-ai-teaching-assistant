@@ -290,20 +290,27 @@ export function createCanvasAuthoringHandlers(
     };
   }
 
-  async function describeConfiguredAssignmentGroup(
+  async function describeAssignmentGroups(
     res: Response,
     initial: ReturnType<typeof currentAccess>,
     get: () => ReturnType<typeof currentAccess>,
+    catalog: boolean,
   ) {
     if (busy) {
       res.status(409).json({ code: "BUSY" });
       return;
     }
     busy = true;
+    if (
+      catalog &&
+      saved?.resource === "assignment" &&
+      saved.key === initial.key
+    )
+      clearPreview();
     const controller = new AbortController();
     const signal = AbortSignal.any([
       controller.signal,
-      AbortSignal.timeout(5000),
+      AbortSignal.timeout(catalog ? 15_000 : 5000),
     ]);
     const disconnect = () => controller.abort();
     res.once("close", disconnect);
@@ -328,15 +335,20 @@ export function createCanvasAuthoringHandlers(
         signal,
       );
       await client.readTarget();
-      const group = await client.assignments.describeGroup(assignments.groupId);
+      const groupId = assignments.groupId;
+      if (!catalog && !groupId) throw new Error("CANVAS_UNAVAILABLE");
+      const groups = catalog
+        ? await client.assignments.groups()
+        : [await client.assignments.describeGroup(groupId!)];
+      if (catalog) await client.readTarget();
       const { settings, launchKeys } = assertCurrent();
       if (
         [...launchKeys, settings.canvasToken].some((secret) =>
-          group.name.includes(secret),
+          groups.some(({ name }) => name.includes(secret)),
         )
       )
         throw new Error("INVALID_CANVAS_TARGET");
-      if (!res.destroyed) res.json(group);
+      if (!res.destroyed) res.json(catalog ? { groups } : groups[0]);
     } catch {
       if (!res.destroyed) res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
     } finally {
@@ -368,8 +380,14 @@ export function createCanvasAuthoringHandlers(
         if (resource === "assignment") {
           res.setHeader("Cache-Control", "no-store");
           res.vary("X-Laita-Assignment-Group");
-          if (req.get("x-laita-assignment-group") === "1") {
-            await describeConfiguredAssignmentGroup(res, initial, get);
+          const mode = req.get("x-laita-assignment-group");
+          if (mode === "1" || mode === "catalog") {
+            await describeAssignmentGroups(
+              res,
+              initial,
+              get,
+              mode === "catalog",
+            );
             return;
           }
         }
@@ -521,7 +539,7 @@ export function createCanvasAuthoringHandlers(
           if (!assignments) throw new Error("CANVAS_UNAVAILABLE");
           subject = await client.assignments.preview(
             draft,
-            assignments.groupId,
+            action === "preview",
           );
         }
         const { launchKeys, settings } = assertCurrent();

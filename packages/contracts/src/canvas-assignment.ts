@@ -16,6 +16,7 @@ type SubmissionType = keyof typeof canvasAssignmentSubmissionTypes;
 export type CanvasAssignmentDraft =
   | {
       kind: "CREATE";
+      groupId: string;
       title: string;
       body: string;
       pointsPossible: number;
@@ -25,9 +26,16 @@ export type CanvasAssignmentDraft =
   | { kind: "TITLE"; assignmentId: string; title: string };
 
 export interface CanvasAssignmentScope {
-  groupId: string;
+  groupId?: string;
   editableIds: string[];
 }
+
+export interface CanvasAssignmentGroup {
+  id: string;
+  name: string;
+}
+
+export const canvasAssignmentGroupLimit = 250;
 
 export type CanvasAssignmentSubject =
   | { kind: "CREATE"; id: string; name: string }
@@ -54,18 +62,22 @@ export function readCanvasAssignmentScope(
   value: unknown,
 ): CanvasAssignmentScope {
   const row = value as Partial<CanvasAssignmentScope> | undefined;
+  const keys = row && Object.keys(row).sort().join(",");
   if (
     !row ||
     typeof row !== "object" ||
-    Object.keys(row).sort().join(",") !== "editableIds,groupId" ||
-    !canvasPageId(row.groupId) ||
+    (keys !== "editableIds" && keys !== "editableIds,groupId") ||
+    (keys === "editableIds,groupId" && !canvasPageId(row.groupId)) ||
     !Array.isArray(row.editableIds) ||
     row.editableIds.length > 12 ||
     !row.editableIds.every(canvasPageId) ||
     new Set(row.editableIds).size !== row.editableIds.length
   )
     throw new Error("INVALID_ASSIGNMENT_SCOPE");
-  return { groupId: row.groupId, editableIds: [...row.editableIds] };
+  return {
+    ...(row.groupId !== undefined && { groupId: row.groupId }),
+    editableIds: [...row.editableIds],
+  };
 }
 
 const submissionType = (value: unknown): value is SubmissionType =>
@@ -91,7 +103,8 @@ export function readCanvasAssignmentDraft(
     };
   if (
     draft.kind !== "CREATE" ||
-    keys !== "body,dueAt,kind,pointsPossible,submissionTypes,title" ||
+    keys !== "body,dueAt,groupId,kind,pointsPossible,submissionTypes,title" ||
+    !canvasPageId(draft.groupId) ||
     typeof draft.pointsPossible !== "number" ||
     !Number.isFinite(draft.pointsPossible) ||
     draft.pointsPossible < 0 ||
@@ -116,6 +129,7 @@ export function readCanvasAssignmentDraft(
 
   return {
     kind: "CREATE",
+    groupId: draft.groupId,
     title: draft.title,
     body: safeLessonHtml(draft.body),
     pointsPossible: draft.pointsPossible,

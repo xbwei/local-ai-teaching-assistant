@@ -14,6 +14,8 @@ import {
   readCanvasAssignmentDraft,
   readCanvasAssignmentScope,
   type CanvasAssignmentDraft,
+  type CanvasAssignmentGroup,
+  canvasAssignmentGroupLimit,
   type CanvasAssignmentPreview,
   type CanvasAssignmentResult,
   readCanvasFeedbackDraft,
@@ -279,19 +281,32 @@ export class InputApi {
     );
   }
 
-  async canvasAssignmentGroup(signal: AbortSignal) {
-    const group = responseRecord(
+  async canvasAssignmentGroups(
+    signal: AbortSignal,
+  ): Promise<CanvasAssignmentGroup[]> {
+    const catalog = responseRecord(
       await this.request(
         "/api/v1/canvas/assignments",
         "GET",
         undefined,
         signal,
-        { "x-laita-assignment-group": "1" },
+        { "x-laita-assignment-group": "catalog" },
       ),
     );
-    if (!canvasPageId(group?.id) || !canvasPageTitle(group.name))
+    if (
+      !Array.isArray(catalog?.groups) ||
+      catalog.groups.length > canvasAssignmentGroupLimit
+    )
       throw new ClientError();
-    return { id: group.id, name: group.name };
+    const groups = catalog.groups.map((value: unknown) => {
+      const group = responseRecord(value);
+      if (!canvasPageId(group?.id) || !canvasPageTitle(group.name))
+        throw new ClientError();
+      return { id: group.id, name: group.name };
+    });
+    if (new Set(groups.map(({ id }) => id)).size !== groups.length)
+      throw new ClientError();
+    return groups;
   }
 
   async canvasInventoryOptions() {
@@ -366,7 +381,8 @@ export class InputApi {
       JSON.stringify(readCanvasAssignmentDraft(value.draft)) !==
         JSON.stringify(draft) ||
       (draft.kind === "CREATE" &&
-        responseRecord(value.draft)?.body !== draft.body)
+        (responseRecord(value.draft)?.body !== draft.body ||
+          subject.id !== draft.groupId))
     )
       throw new ClientError();
     if (draft.kind === "TITLE") {
