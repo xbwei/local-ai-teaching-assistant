@@ -81,7 +81,10 @@ export function moduleAuthoring(
     return { name: row.name, position: position(row.position), items };
   }
 
-  async function readResource({ kind, contentId }: LinkDraft) {
+  async function readResource({
+    kind,
+    contentId,
+  }: Pick<LinkDraft, "kind" | "contentId">) {
     if (kind === "LINK_PAGE") {
       const row = await request(`${course}/pages/page_id:${id(contentId)}`);
       if (
@@ -149,6 +152,18 @@ export function moduleAuthoring(
   type LinkPreview = Awaited<ReturnType<typeof preview>>;
   return {
     preview,
+    async describeDestination(moduleId: string) {
+      const module = await readModule(moduleId);
+      return { id: moduleId, title: module.name, published: false };
+    },
+    async describeItem(kind: LinkDraft["kind"], contentId: string) {
+      const resource = await readResource({ kind, contentId });
+      return {
+        id: contentId,
+        title: resource.name,
+        published: resource.published,
+      };
+    },
     async write(
       draft: CanvasModuleDraft,
       link: LinkPreview | undefined,

@@ -24,7 +24,7 @@ export function assignmentAuthoring(
     if (!canvasPageId(id)) throw new Error("INVALID_CANVAS_TARGET");
     return `${course}/assignments/${id}`;
   };
-  async function readAssignment(id: string, draft: CanvasAssignmentDraft) {
+  async function readAssignment(id: string, draft?: CanvasAssignmentDraft) {
     const row = await request(path(id), draft);
     if (
       canvasResponseId(row.id) !== id ||
@@ -34,6 +34,13 @@ export function assignmentAuthoring(
     return row;
   }
   return {
+    async describe(assignmentId: string) {
+      const row = await readAssignment(assignmentId);
+      if (!canvasPageTitle(row.name) || typeof row.published !== "boolean")
+        throw new Error("INVALID_CANVAS_TARGET");
+      return { id: assignmentId, title: row.name, published: row.published };
+    },
+
     async preview(
       draft: CanvasAssignmentDraft,
       groupId: string,

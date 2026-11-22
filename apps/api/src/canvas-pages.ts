@@ -5,9 +5,11 @@ import express, {
   type RequestHandler,
 } from "express";
 import {
+  canvasInventoryKinds,
   canvasPageId,
   canvasPagePlanId,
   canvasPageTitle,
+  isCanvasInventoryKind,
   readCanvasAssignmentDraft,
   readCanvasAssignmentScope,
   readCanvasFeedbackDraft,
@@ -20,6 +22,8 @@ import {
   type CanvasAssignmentScope,
   type CanvasAssignmentSubject,
   type CanvasFeedbackDraft,
+  type CanvasInventory,
+  type CanvasInventoryKind,
   type CanvasTestStudentScope,
   type CanvasModuleDraft,
   type CanvasModuleScope,
@@ -226,7 +230,7 @@ export function createCanvasAuthoringHandlers(
   function currentAccess(
     req: Request,
     actor: NonNullable<ReturnType<typeof authorizeTeacher>>,
-    resource: Resource | "chat" | "verification",
+    resource: Resource | "chat" | "inventory" | "verification",
     draft?: Draft,
   ) {
     if (!sessions.isCurrent(req, actor.binding))
@@ -697,6 +701,111 @@ export function createCanvasAuthoringHandlers(
     }
   }
 
+  const inventory: RequestHandler = async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const actor = authorizeTeacher(req, res);
+    if (!actor) return;
+    const kind = req.params.kind;
+    if (kind !== undefined && !isCanvasInventoryKind(kind)) {
+      res.status(400).json({ code: "INVALID_REQUEST" });
+      return;
+    }
+    const unavailable = () =>
+      res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
+    const get = () => currentAccess(req, actor, "inventory");
+    let initial: ReturnType<typeof get>;
+    try {
+      initial = get();
+    } catch {
+      unavailable();
+      return;
+    }
+    const { origin, courseId, teacherId, assignments, modules } =
+      initial.settings;
+    const ids = {
+      pages: modules?.pageIds ?? [],
+      "editable-assignments": assignments?.editableIds ?? [],
+      "module-assignments": modules?.assignmentIds ?? [],
+      modules: modules?.moduleIds ?? [],
+    } satisfies Record<CanvasInventoryKind, string[]>;
+    if (!kind) {
+      res.json({
+        kinds: canvasInventoryKinds.filter((key) => ids[key].length),
+      });
+      return;
+    }
+    if (!ids[kind].length) {
+      res.status(403).json({ code: "FORBIDDEN" });
+      return;
+    }
+    if (busy) {
+      res.status(409).json({ code: "BUSY" });
+      return;
+    }
+    busy = true;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(15_000),
+    ]);
+    const disconnect = () => controller.abort();
+    res.once("close", disconnect);
+    const assertCurrent = () => {
+      signal.throwIfAborted();
+      const current = get();
+      if (current.key !== initial.key) throw new Error("INVALID_CANVAS_TARGET");
+      return current;
+    };
+    try {
+      const client = createCanvasPageClient(
+        {
+          origin,
+          courseId,
+          teacherId,
+          refresh: () =>
+            createSecretHandleForProvider(assertCurrent().settings.canvasToken),
+          ...(options.fetcher ? { fetcher: options.fetcher } : {}),
+        },
+        signal,
+      );
+      const target = await client.readTarget();
+      const read = {
+        pages: (id: string) => client.modules.describeItem("LINK_PAGE", id),
+        "editable-assignments": client.assignments.describe,
+        "module-assignments": (id: string) =>
+          client.modules.describeItem("LINK_ASSIGNMENT", id),
+        modules: client.modules.describeDestination,
+      }[kind];
+      const entries: CanvasInventory["entries"] = [];
+      for (const id of ids[kind]) entries.push(await read(id));
+      entries.sort(
+        (a, b) =>
+          a.title.localeCompare(b.title, "en", {
+            numeric: true,
+            sensitivity: "base",
+          }) || a.id.localeCompare(b.id, "en", { numeric: true }),
+      );
+      const result: CanvasInventory = { target, entries };
+      const { launchKeys, settings } = assertCurrent();
+      const fields = [
+        ...Object.values(target),
+        ...entries.flatMap(({ id, title }) => [id, title]),
+      ];
+      if (
+        [...launchKeys, settings.canvasToken].some((secret) =>
+          fields.some((field) => field.includes(secret)),
+        )
+      )
+        throw new Error("INVALID_CANVAS_TARGET");
+      res.json(result);
+    } catch {
+      if (!res.destroyed) unavailable();
+    } finally {
+      busy = false;
+      res.off("close", disconnect);
+    }
+  };
+
   const verification = createCanvasVerificationHandler(
     options.verification,
     (req, res) => {
@@ -752,6 +861,7 @@ export function createCanvasAuthoringHandlers(
     },
     chat: (req: Request, res: Response) => chatHandler(req, res),
     chatTools: (req: Request, res: Response) => chatHandler(req, res, true),
+    inventory,
     verification,
     close: clearPreview,
   };

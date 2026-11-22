@@ -42,7 +42,7 @@ const owner = "a".repeat(64);
 function authenticated(cookieValue, extra = {}) {
   return { cookie: cookieValue, "x-owner-client": owner, ...extra };
 }
-async function launch(f, changes = {}, extra = {}) {
+async function launch(f, changes = {}, extra = {}, secret) {
   return f.request("/api/v1/canvas/launch", {
     method: "POST",
     headers: {
@@ -52,7 +52,11 @@ async function launch(f, changes = {}, extra = {}) {
       cookie: "",
       ...extra,
     },
-    body: signed(`${f.config.publicOrigin}/api/v1/canvas/launch`, changes),
+    body: signed(
+      `${f.config.publicOrigin}/api/v1/canvas/launch`,
+      changes,
+      secret,
+    ),
   });
 }
 async function session(f, cookieValue) {
@@ -1338,15 +1342,19 @@ const authoredDraft = {
   title: "Studio — 地图 🌍",
   body: "<h2>地图</h2><p>Compare <strong>two</strong> routes &amp; explain&nbsp;🌍.</p>",
 };
-async function pageEntries(synthetic, route = pagesPath) {
+async function pageEntries(
+  synthetic,
+  route = pagesPath,
+  launchConfig = canvas,
+) {
   const clock = { now };
   const f = await fixture({
     autoLogin: false,
-    canvas: () => canvas,
+    canvas: () => launchConfig,
     authNow: () => clock.now,
     canvasPages: synthetic.options,
   });
-  const response = await launch(f);
+  const response = await launch(f, {}, {}, launchConfig.sharedSecret);
   assert.equal(response.status, 303);
   const canvasCookie = cookie(response);
   const request = (phase, body, selected = canvasCookie, extra = {}, signal) =>
@@ -1964,6 +1972,131 @@ const linkAssignment = {
   moduleId: "61",
   contentId: "81",
 };
+
+const inventoryPath = "/api/v1/canvas/inventory";
+
+test("Canvas inventory reads only approved metadata for the current signed Teacher", async (t) => {
+  const synthetic = canvasPageFixture({ assignments: true, modules: true });
+  const { f, canvasCookie } = await pageEntries(synthetic, inventoryPath);
+  t.after(() => f.close());
+  const get = (suffix = "", selected = canvasCookie) =>
+    f.request(inventoryPath + suffix, { headers: authenticated(selected) });
+  const first = synthetic.assignmentRows.get("81");
+  first.name = "Studio 10";
+  synthetic.assignmentRows.set("82", {
+    ...first,
+    id: 82,
+    name: "Studio 2",
+    published: false,
+  });
+
+  assert.equal((await get("/pages", "")).status, 401);
+  for (const role of ["admin", "teacher", "student"]) {
+    assert.equal((await f.login(role)).status, 200);
+    assert.equal((await get("/pages", f.cookie())).status, 403);
+  }
+  const options = await get();
+  assert.equal(options.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await options.json(), {
+    kinds: ["pages", "editable-assignments", "module-assignments", "modules"],
+  });
+  assert.equal((await get("/unknown")).status, 400);
+  for (const query of ["/pages?id=9001", "/pages?courseId=123"])
+    assert.equal((await get(query)).status, 403);
+  assert.deepEqual(synthetic.calls, []);
+
+  const course = `/courses/${canvas.courseId}`;
+  for (const [kind, entries, paths] of [
+    [
+      "editable-assignments",
+      [
+        { id: "82", title: "Studio 2", published: false },
+        { id: "81", title: "Studio 10", published: true },
+      ],
+      ["/assignments/81", "/assignments/82"],
+    ],
+    [
+      "pages",
+      [{ id: "9002", title: "Maps and examples", published: true }],
+      ["/pages/page_id:9002"],
+    ],
+    [
+      "module-assignments",
+      [{ id: "81", title: "Studio 10", published: true }],
+      ["/assignments/81"],
+    ],
+    [
+      "modules",
+      [{ id: "61", title: "Studio module", published: false }],
+      ["/modules/61"],
+    ],
+  ]) {
+    const response = await get(`/${kind}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    const result = await response.json();
+    assert.equal(result.target.courseId, canvas.courseId);
+    assert.deepEqual(result.entries, entries);
+    assert.deepEqual(synthetic.calls.splice(0), [
+      ["GET", "/users/self"],
+      ["GET", course],
+      ...paths.map((suffix) => ["GET", course + suffix]),
+    ]);
+  }
+
+  synthetic.linkedPage.title = "Revised Maps";
+  assert.equal(
+    (await (await get("/pages")).json()).entries[0].title,
+    "Revised Maps",
+  );
+  synthetic.calls.length = 0;
+  synthetic.settings.modules.pageIds = [];
+  assert.equal((await get("/pages")).status, 403);
+  assert.deepEqual(synthetic.calls, []);
+});
+
+test("Canvas inventory withholds results after scope drift, invalid metadata, or an echoed secret", async (t) => {
+  const synthetic = canvasPageFixture({ assignments: true });
+  const launchConfig = {
+    ...canvas,
+    sharedSecret: `${canvas.sharedSecret}"\\sample`,
+  };
+  const { f, canvasCookie } = await pageEntries(
+    synthetic,
+    inventoryPath,
+    launchConfig,
+  );
+  t.after(() => f.close());
+  const get = () =>
+    f.request(inventoryPath + "/editable-assignments", {
+      headers: authenticated(canvasCookie),
+    });
+  const course = `/courses/${canvas.courseId}`;
+  synthetic.remote.before = (_method, endpoint) => {
+    if (endpoint === course + "/assignments/81")
+      synthetic.settings.assignments.editableIds = ["82"];
+  };
+  const drifted = await get();
+  assert.equal(drifted.status, 503);
+  assert.deepEqual(await drifted.json(), { code: "SERVICE_UNAVAILABLE" });
+  assert.deepEqual(synthetic.calls.splice(0), [
+    ["GET", "/users/self"],
+    ["GET", course],
+    ["GET", course + "/assignments/81"],
+  ]);
+
+  synthetic.remote.before = undefined;
+  synthetic.settings.assignments.editableIds = ["81"];
+  const row = synthetic.assignmentRows.get("81");
+  const courseId = row.course_id;
+  row.course_id = 123;
+  assert.equal((await get()).status, 503);
+  row.course_id = courseId;
+  row.name = launchConfig.sharedSecret;
+  const echoed = await get();
+  assert.equal(echoed.status, 503);
+  assert.deepEqual(await echoed.json(), { code: "SERVICE_UNAVAILABLE" });
+});
 
 test("Canvas Modules is opt-in and sends one exact reviewed change per confirmation", async (t) => {
   const original = canvasPageFixture();

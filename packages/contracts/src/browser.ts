@@ -19,4 +19,5 @@ export * from "./canvas-page.ts";
 export * from "./canvas-assignment.ts";
 export * from "./canvas-module.ts";
 export * from "./canvas-feedback.ts";
+export * from "./canvas-inventory.ts";
 export * from "./canvas-verification.ts";
