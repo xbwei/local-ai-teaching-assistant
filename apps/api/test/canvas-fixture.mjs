@@ -120,6 +120,7 @@ export function canvasPageFixture({
     page_id: 9002,
     title: "Maps and examples",
     url: "maps-and-examples",
+    updated_at: "2026-11-20T12:00:00Z",
     published: true,
   };
   let page;
@@ -136,6 +137,7 @@ export function canvasPageFixture({
     afterAssignmentWrite: undefined,
     afterModuleWrite: undefined,
     moduleRead: (value) => value,
+    moduleCatalog: (_kind, _url, rows) => Response.json(rows),
     studentView: [{ id: Number(testStudent), name: "Synthetic Test Student" }],
     feedbackRead: (value) => value,
     feedbackReceipt: (value) => value,
@@ -175,8 +177,18 @@ export function canvasPageFixture({
       const groupPath = `${coursePath}/assignment_groups`;
       const studentViewPath = `${coursePath}/users`;
       const submissionPath = `${coursePath}/assignments/81/submissions/${testStudent}`;
-      if (endpoint === groupPath) {
-        assert.equal(target.searchParams.get("per_page"), "50");
+      const catalogKind =
+        modules &&
+        init.method === "GET" &&
+        ["modules", "pages", "assignments"].find(
+          (kind) => endpoint === `${coursePath}/${kind}`,
+        );
+      if (endpoint === groupPath || catalogKind) {
+        if (
+          !target.searchParams.has("page") ||
+          target.searchParams.has("per_page")
+        )
+          assert.equal(target.searchParams.get("per_page"), "50");
       } else
         assert.equal(
           target.search,
@@ -199,6 +211,14 @@ export function canvasPageFixture({
         return Response.json({ id: remote.actorId });
       if (init.method === "GET" && endpoint === coursePath)
         return Response.json(remote.course);
+      if (catalogKind) {
+        const rows = {
+          modules: [...moduleRows.values()],
+          pages: page ? [page, linkedPage] : [linkedPage],
+          assignments: [...assignmentRows.values()],
+        };
+        return remote.moduleCatalog(catalogKind, target, rows[catalogKind]);
+      }
       if ((chat || feedback) && init.method === "GET") {
         if (endpoint === studentViewPath)
           return Response.json(remote.studentView, {
@@ -244,6 +264,8 @@ export function canvasPageFixture({
         page = {
           page_id: 9001,
           title: fields["wiki_page[title]"],
+          url: "synthetic-lesson-page",
+          updated_at: "2026-11-20T12:00:01Z",
           body: fields["wiki_page[body]"],
           published: fields["wiki_page[published]"] === "true",
           editing_roles: fields["wiki_page[editing_roles]"],
@@ -285,20 +307,29 @@ export function canvasPageFixture({
           await remote.afterModuleWrite?.(row);
           return Response.json({ id: row.id });
         }
-        if (init.method === "POST" && endpoint === modulePath + "/61/items") {
+        if (
+          init.method === "POST" &&
+          endpoint.startsWith(modulePath + "/") &&
+          endpoint.endsWith("/items")
+        ) {
           const fields = Object.fromEntries(new URLSearchParams(init.body));
           moduleWrites.push({ endpoint, fields });
-          const row = moduleRows.get("61");
-          const page = fields["module_item[type]"] === "Page";
+          const row = moduleRows.get(
+            endpoint.slice(modulePath.length + 1, -"/items".length),
+          );
+          const addingPage = fields["module_item[type]"] === "Page";
+          const resource = addingPage
+            ? [linkedPage, page].find(
+                (entry) => entry?.url === fields["module_item[page_url]"],
+              )
+            : assignmentRows.get(fields["module_item[content_id]"]);
           const item = {
             id: 101 + row.items.length,
             module_id: row.id,
             position: (row.items.at(-1)?.position ?? 0) + 1,
             type: fields["module_item[type]"],
-            published: page
-              ? linkedPage.published
-              : assignmentRows.get("81").published,
-            ...(page
+            published: resource.published,
+            ...(addingPage
               ? { page_url: fields["module_item[page_url]"] }
               : { content_id: Number(fields["module_item[content_id]"]) }),
           };
@@ -356,6 +387,7 @@ export function canvasPageFixture({
                 ),
                 due_at: fields.get("assignment[due_at]"),
                 published: fields.get("assignment[published]") === "true",
+                is_quiz_assignment: false,
               }
             : {
                 ...previous,

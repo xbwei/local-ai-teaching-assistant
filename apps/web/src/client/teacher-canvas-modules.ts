@@ -2,6 +2,7 @@ import {
   canvasModuleOrderLimit,
   readCanvasModuleDraft,
   type CanvasInventoryEntry,
+  type CanvasModuleCatalog,
   type CanvasModuleLinkItem,
   type CanvasModulePreview,
   type CanvasModuleStep,
@@ -37,46 +38,62 @@ export async function mountTeacherCanvasModules(
     'button[type="submit"]',
   )!;
   const abort = get<HTMLButtonElement>("abort");
+  const refresh = get<HTMLButtonElement>("refresh");
   const confirm = get<HTMLButtonElement>("confirm");
   const preview = get("preview");
   const status = get("status");
   let pending: AbortController | undefined;
   let approved: CanvasModulePreview | undefined;
-  const choices = [
-    ...scope.pageIds.map((contentId) => ({
-      kind: "LINK_PAGE" as const,
-      contentId,
-    })),
-    ...scope.assignmentIds.map((contentId) => ({
-      kind: "LINK_ASSIGNMENT" as const,
-      contentId,
-    })),
-  ];
+  const dynamic = scope.organizeSavedResources === true;
+  let destinations: { id: string; label: string }[] = [];
+  let choices: { item: CanvasModuleLinkItem; label: string }[] = [];
   const selected: { item: CanvasModuleLinkItem; label: string }[] = [];
   const itemType = (kind: CanvasModuleLinkItem["kind"]) =>
     kind === "LINK_PAGE" ? "Page" : "Assignment";
 
-  kind.querySelector<HTMLOptionElement>(
-    'option[value="LINK_ORDERED"]',
-  )!.disabled = !scope.moduleIds.length || choices.length < 2;
-  orderPick.replaceChildren(
-    ...choices.map(
-      ({ kind, contentId }, index) =>
-        new Option(`${itemType(kind)} ${contentId}`, String(index)),
-    ),
-  );
+  const placeholder = (label: string) =>
+    dynamic ? [new Option(label, "")] : [];
 
-  for (const [action, ids] of [
-    ["LINK_PAGE", scope.pageIds],
-    ["LINK_ASSIGNMENT", scope.assignmentIds],
-  ] as const) {
+  function setChoices(catalog?: CanvasModuleCatalog) {
+    destinations = dynamic
+      ? (catalog?.modules ?? []).map(({ id, title }) => ({
+          id,
+          label: `${title} · Module ${id}`,
+        }))
+      : scope.moduleIds.map((id) => ({ id, label: `Module ${id}` }));
+    choices = [];
+    for (const [action, ids, entries] of [
+      ["LINK_PAGE", scope.pageIds, catalog?.pages ?? []],
+      ["LINK_ASSIGNMENT", scope.assignmentIds, catalog?.assignments ?? []],
+    ] as const) {
+      const section = dynamic
+        ? entries.map(({ id, title, published }) => ({
+            item: { kind: action, contentId: id },
+            label: `${title} · ${itemType(action)} ${id} · ${published ? "Published" : "Unpublished"}`,
+          }))
+        : ids.map((id) => ({
+            item: { kind: action, contentId: id },
+            label: `${itemType(action)} ${id}`,
+          }));
+      choices.push(...section);
+      kind.querySelector<HTMLOptionElement>(
+        `option[value="${action}"]`,
+      )!.disabled = !destinations.length || !section.length;
+    }
     kind.querySelector<HTMLOptionElement>(
-      `option[value="${action}"]`,
-    )!.disabled = !scope.moduleIds.length || !ids.length;
+      'option[value="LINK_ORDERED"]',
+    )!.disabled = !destinations.length || choices.length < 2;
+    if (kind.selectedOptions[0]?.disabled) kind.value = "CREATE_MODULE";
+    orderPick.replaceChildren(
+      ...placeholder("Choose an item"),
+      ...choices.map(({ label }, index) => new Option(label, String(index))),
+    );
+    module.replaceChildren(
+      ...placeholder("Choose an unpublished module"),
+      ...destinations.map(({ id, label }) => new Option(label, id)),
+    );
+    fillItems();
   }
-  module.replaceChildren(
-    ...scope.moduleIds.map((id) => new Option(`Module ${id}`, id)),
-  );
 
   function syncForm() {
     const adding = kind.value !== "CREATE_MODULE";
@@ -90,20 +107,26 @@ export async function mountTeacherCanvasModules(
     content.disabled = !adding || ordering || !!pending;
     orderPick.disabled = !ordering || !!pending;
     orderAdd.disabled =
-      orderPick.disabled || selected.length >= canvasModuleOrderLimit;
+      orderPick.disabled ||
+      orderPick.value === "" ||
+      selected.length >= canvasModuleOrderLimit;
     order.querySelectorAll("button").forEach((button) => {
       button.disabled = !!pending;
     });
     kind.disabled = confirm.disabled = !!pending;
-    previewButton.disabled = !!pending || (ordering && selected.length < 2);
+    refresh.disabled = !!pending;
+    previewButton.disabled =
+      !!pending ||
+      (ordering && selected.length < 2) ||
+      (dynamic && adding && (!module.value || (!ordering && !content.value)));
   }
 
   function fillItems() {
-    const page = kind.value === "LINK_PAGE";
     content.replaceChildren(
-      ...(page ? scope.pageIds : scope.assignmentIds).map(
-        (id) => new Option(`${page ? "Page" : "Assignment"} ${id}`, id),
-      ),
+      ...placeholder("Choose a saved item"),
+      ...choices
+        .filter(({ item }) => item.kind === kind.value)
+        .map(({ item, label }) => new Option(label, item.contentId)),
     );
   }
 
@@ -159,8 +182,7 @@ export async function mountTeacherCanvasModules(
     renderOrder();
   }
 
-  function addToOrder(item: CanvasModuleLinkItem, name?: string) {
-    const label = `${itemType(item.kind)} ${item.contentId}`;
+  function addToOrder(item: CanvasModuleLinkItem, label: string) {
     if (
       selected.some(
         ({ item: choice }) =>
@@ -174,7 +196,7 @@ export async function mountTeacherCanvasModules(
       status.textContent = `An order can have up to ${canvasModuleOrderLimit} items.`;
       return;
     }
-    selected.push({ item, label: name ? `${label} · ${name}` : label });
+    selected.push({ item, label });
     orderChanged();
   }
 
@@ -244,6 +266,8 @@ export async function mountTeacherCanvasModules(
     preview.hidden = false;
   }
 
+  setChoices();
+  refresh.hidden = !dynamic;
   tool.hidden = false;
   syncForm();
   kind.addEventListener("change", () => {
@@ -251,8 +275,38 @@ export async function mountTeacherCanvasModules(
     if (kind.value === "LINK_ORDERED") orderChanged();
   });
   orderAdd.onclick = () => {
-    const item = choices[orderPick.selectedIndex];
-    if (!pending && item) addToOrder(item);
+    const choice =
+      orderPick.value === "" ? undefined : choices[Number(orderPick.value)];
+    if (!pending && choice) addToOrder(choice.item, choice.label);
+  };
+  refresh.onclick = async () => {
+    if (!dynamic || pending) return;
+    clearPreview();
+    selected.length = 0;
+    setChoices();
+    const controller = new AbortController();
+    pending = controller;
+    renderOrder();
+    abort.hidden = false;
+    abort.textContent = "Cancel resource refresh";
+    status.textContent =
+      "Refreshing saved Pages, Assignments and unpublished Modules…";
+    try {
+      const catalog = await api.canvasModuleCatalog(controller.signal);
+      if (pending !== controller || controller.signal.aborted) return;
+      setChoices(catalog);
+      status.textContent =
+        destinations.length && choices.length
+          ? "Choose an unpublished module and saved items, then preview the change."
+          : "No eligible module and saved item are available yet. Create them separately and refresh.";
+    } catch {
+      if (pending === controller)
+        status.textContent = controller.signal.aborted
+          ? "Resource refresh cancelled."
+          : "The complete resource list is unavailable. Check Canvas access and refresh again.";
+    } finally {
+      finish(controller);
+    }
   };
   form.addEventListener("input", () => {
     if (approved) status.textContent = "Selection changed. Preview again.";
@@ -344,11 +398,11 @@ export async function mountTeacherCanvasModules(
     const controller = new AbortController();
     pending = controller;
     syncForm();
-    if (plan.draft.kind === "LINK_ORDERED") {
+    const creating = plan.draft.kind === "CREATE_MODULE";
+    if (plan.draft.kind === "LINK_ORDERED" || (dynamic && !creating)) {
       abort.textContent = "Stop module plan";
       abort.hidden = false;
     }
-    const creating = plan.draft.kind === "CREATE_MODULE";
     const resultLabel = creating ? "module" : "module item";
     status.textContent = "Applying and verifying the reviewed module change…";
     const uncertain =
@@ -360,9 +414,13 @@ export async function mountTeacherCanvasModules(
         showOrderResult(result.steps, plan.draft.items.length);
       } else if (result.status === "VERIFIED") {
         status.textContent = `Canvas verified ${resultLabel} ${result.resourceId}.`;
-        if (creating && !scope.moduleIds.includes(result.resourceId))
-          status.textContent +=
-            " To add items through LAITA, approve this module ID in the REST settings and reload.";
+        if (
+          creating &&
+          !destinations.some(({ id }) => id === result.resourceId)
+        )
+          status.textContent += dynamic
+            ? " Refresh saved Canvas resources to select this module."
+            : " To add items through LAITA, approve this module ID in the REST settings and reload.";
         form.reset();
         content.replaceChildren();
       } else {
@@ -389,6 +447,7 @@ export async function mountTeacherCanvasModules(
     form.reset();
     content.replaceChildren();
     selected.length = 0;
+    if (dynamic) setChoices();
     renderOrder();
     abort.hidden = true;
     status.textContent = "";
@@ -396,11 +455,15 @@ export async function mountTeacherCanvasModules(
   });
 
   return (action, item) => {
-    const ids = action === "LINK_PAGE" ? scope.pageIds : scope.assignmentIds;
-    if (pending || !scope.moduleIds.length || !ids.includes(item.id))
-      return false;
+    const choice = choices.find(
+      ({ item: entry }) => entry.kind === action && entry.contentId === item.id,
+    );
+    if (pending || !destinations.length || !choice) return false;
     if (kind.value === "LINK_ORDERED") {
-      addToOrder({ kind: action, contentId: item.id }, item.title);
+      addToOrder(
+        choice.item,
+        dynamic ? choice.label : `${choice.label} · ${item.title}`,
+      );
       tool.open = true;
       orderPick.focus();
       return true;
