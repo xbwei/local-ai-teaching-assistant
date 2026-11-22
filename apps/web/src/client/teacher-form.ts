@@ -48,4 +48,5 @@ export function bindTeacherForm(
     cancel.hidden = true;
     status.textContent = "";
   });
+  return () => pending?.abort();
 }

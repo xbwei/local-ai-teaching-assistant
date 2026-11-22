@@ -376,6 +376,122 @@ test("signed Canvas roles and current grants intersect without granting Learner 
   assert.equal((await launch(learner)).status, 403);
 });
 
+test("Canvas Local drafting requires a current signed Teacher and the bound public course", async (t) => {
+  let configuration = paired;
+  let now = canvasNow;
+  let run;
+  const calls = [];
+  const fake = canvasPageFixture({ assignments: true });
+  const f = await fixture({
+    autoLogin: false,
+    canvas: () => configuration,
+    canvasPages: fake.options,
+    authNow: () => now,
+    async teacherDraft(course, kind, topic, signal) {
+      calls.push([course, kind, topic]);
+      if (run) {
+        const current = run;
+        current.entered.resolve();
+        await current.release.promise;
+        signal.throwIfAborted();
+      }
+      return {
+        mode: "LOCAL",
+        grounding: {
+          status: "GROUNDED",
+          course: "IA340",
+          sources: [
+            { course: "IA340", path: "docs/example.md", section: "Lab 5" },
+          ],
+        },
+        legs: [
+          {
+            provider: "LOCAL",
+            provenance: { actualProvider: "LOCAL" },
+            status: "COMPLETED",
+            output: { text: "Synthetic editable suggestion" },
+          },
+        ],
+      };
+    },
+  });
+  t.after(() => f.close());
+  f.authStore.configureDemo("IA340", ...(await credentials));
+  const launch = async (claims = {}) => {
+    const path = "/api/v1/canvas/launch";
+    const response = await f.request(path, {
+      method: "POST",
+      headers: {
+        origin: canvas.canvasOrigin,
+        cookie: "",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: signed(f.config.publicOrigin + path, {
+        oauth_nonce: randomUUID(),
+        oauth_timestamp: String(Math.floor(now / 1000)),
+        ...claims,
+      }),
+    });
+    assert.equal(response.status, 303);
+    return sessionCookie(response);
+  };
+  const draft = (cookie, course = "IA340", kind = "PAGE") =>
+    post(f, "/api/v1/teacher-draft", { course, kind, topic: "Lab 5" }, cookie);
+  const teacher = await launch();
+  const learner = await launch({
+    roles: "Learner",
+    custom_canvas_user_id: paired.demo.studentUserId,
+  });
+  assert.equal((await draft("")).status, 401);
+  assert.equal((await draft(learner)).status, 403);
+  assert.equal((await draft(teacher, "IA342")).status, 403);
+  assert.deepEqual(calls, []);
+  for (const kind of ["PAGE", "ASSIGNMENT"]) {
+    const response = await draft(teacher, "IA340", kind);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      text: "Synthetic editable suggestion",
+      sources: [{ path: "docs/example.md", section: "Lab 5" }],
+    });
+  }
+  assert.deepEqual(calls, [
+    ["IA340", "PAGE", "Lab 5"],
+    ["IA340", "ASSIGNMENT", "Lab 5"],
+  ]);
+
+  const active = (value) =>
+    f.authStore.setDemoMembershipActive("demo-teacher", "IA340", value);
+  for (const invalidate of [
+    () => {
+      configuration = { ...paired, demo: { ...paired.demo, course: "IA342" } };
+    },
+    () => active(false),
+    () => {
+      now += 8 * 3600000;
+    },
+  ]) {
+    const current = await launch();
+    const before = calls.length;
+    run = {
+      entered: Promise.withResolvers(),
+      release: Promise.withResolvers(),
+    };
+    const request = draft(current);
+    await run.entered.promise;
+    invalidate();
+    run.release.resolve();
+    const changed = await request;
+    assert.equal(changed.status, 401);
+    assert.deepEqual(await changed.json(), { code: "UNAUTHENTICATED" });
+    assert.equal((await draft(current)).status, 401);
+    assert.equal(calls.length, before + 1);
+    configuration = paired;
+    active(true);
+  }
+  assert.deepEqual(fake.calls, []);
+  assert.deepEqual(fake.writes, []);
+});
+
 test("bound course refuses other-course grounding before any retrieval or provider call", async () => {
   let retrieves = 0,
     runs = 0;

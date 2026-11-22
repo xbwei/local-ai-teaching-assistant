@@ -4,6 +4,7 @@ import {
 } from "@laita/contracts/browser";
 import type { InputApi } from "./api.ts";
 import { canvasDraftMarkup } from "./markdown.ts";
+import { mountCanvasLocalDraft } from "./teacher-local.ts";
 
 const get = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
@@ -25,6 +26,7 @@ export function mountTeacherCanvasPages(api: InputApi) {
   const confirm = get<HTMLButtonElement>("canvas-page-confirm");
   let pending: AbortController | undefined;
   let approved: CanvasPagePreview | undefined;
+  let syncDraft: ReturnType<typeof mountCanvasLocalDraft>;
 
   function clearPreview() {
     approved = undefined;
@@ -35,6 +37,7 @@ export function mountTeacherCanvasPages(api: InputApi) {
     html.textContent = "";
   }
   function lock(locked: boolean) {
+    syncDraft?.(true, locked);
     title.disabled =
       body.disabled =
       previewButton.disabled =
@@ -47,6 +50,8 @@ export function mountTeacherCanvasPages(api: InputApi) {
     .then((enabled) => {
       if (!enabled) throw new Error("CANVAS_UNAVAILABLE");
       form.hidden = false;
+      syncDraft = mountCanvasLocalDraft(api, form, body, "PAGE");
+      syncDraft?.(true, false);
       status.textContent =
         "Use non-sensitive teaching material. Preview checks the destination. Create sends the reviewed content to Canvas.";
     })

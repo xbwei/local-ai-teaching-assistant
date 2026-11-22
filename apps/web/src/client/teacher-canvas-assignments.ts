@@ -6,6 +6,7 @@ import {
 } from "@laita/contracts/browser";
 import { ClientError, type InputApi } from "./api.ts";
 import { canvasDraftMarkup } from "./markdown.ts";
+import { mountCanvasLocalDraft } from "./teacher-local.ts";
 
 const get = <T extends HTMLElement>(id: string) =>
   document.getElementById(`canvas-assignment-${id}`) as T;
@@ -37,9 +38,11 @@ export async function mountTeacherCanvasAssignments(api: InputApi) {
   editChoice.disabled = scope.editableIds.length === 0;
   let pending: AbortController | undefined;
   let approved: CanvasAssignmentPreview | undefined;
+  const syncDraft = mountCanvasLocalDraft(api, form, body, "ASSIGNMENT");
 
   function syncForm() {
     const editing = kind.value === "TITLE";
+    syncDraft?.(!editing, !!pending);
     createFields.hidden = editing;
     createFields.disabled = editing || !!pending;
     assignment.closest("label")!.hidden = !editing;
