@@ -41,6 +41,9 @@ const responseRecord = (value: unknown) =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+type CanvasChatRouting = "direct" | "local";
+const canvasChatRoute = (routing: CanvasChatRouting) =>
+  routing === "local" ? "/api/v1/canvas/chat/tools" : "/api/v1/canvas/chat";
 
 function readCanvasTarget(value: unknown): CanvasPagePreview["target"] {
   const target = responseRecord(value);
@@ -475,9 +478,9 @@ export class InputApi {
     throw new ClientError();
   }
 
-  async canvasChatEnabled() {
+  async canvasChatEnabled(routing: CanvasChatRouting = "direct") {
     return (
-      responseRecord(await this.request("/api/v1/canvas/chat", "GET"))
+      responseRecord(await this.request(canvasChatRoute(routing), "GET"))
         ?.enabled === true
     );
   }
@@ -505,10 +508,14 @@ export class InputApi {
     );
   }
 
-  async canvasChat(question: string, signal: AbortSignal) {
+  async canvasChat(
+    question: string,
+    signal: AbortSignal,
+    routing: CanvasChatRouting = "direct",
+  ) {
     const value = responseRecord(
       await this.request(
-        "/api/v1/canvas/chat",
+        canvasChatRoute(routing),
         "POST",
         JSON.stringify({ question }),
         signal,

@@ -18,6 +18,7 @@ import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseConfiguration, initializeRuntimePaths } from "@laita/runtime";
 import { initializePersistence } from "@laita/persistence";
+import { canvas, canvasPageFixture, signed } from "./canvas-fixture.mjs";
 import { testCredential, testPassphrase } from "./owner-fixture.mjs";
 
 for (const cloud of [false, true]) {
@@ -71,11 +72,25 @@ for (const cloud of [false, true]) {
     const summaryQuestion = "Which themes kept coming up in the sample?";
     const unrelatedQuestion =
       "Show a separate participant's recorded questions.";
-    // Every provider request is intercepted in the child. No real Ollama/Cloud/Keychain use.
+    const canvasQuestion =
+      "For Synthetic draft, what was the Test Student's score?";
+    const canvasFile = path.join(root, "synthetic-canvas.json");
+    const restFile = path.join(root, "synthetic-canvas-rest.json");
+    if (cloud) {
+      writeFileSync(canvasFile, JSON.stringify(canvas), { mode: 0o600 });
+      writeFileSync(
+        restFile,
+        JSON.stringify(canvasPageFixture({ chat: true }).settings),
+        { mode: 0o600 },
+      );
+    }
+    // Every provider request is intercepted in the child. Only synthetic responses are available.
     const preload = path.join(root, "synthetic-provider.mjs");
     writeFileSync(
       preload,
       `import express from ${JSON.stringify(import.meta.resolve("express"))};
+    import { canvasPageFixture } from ${JSON.stringify(new URL("./canvas-fixture.mjs", import.meta.url).href)};
+    const canvasMock = canvasPageFixture({ chat: true });
     const listen = express.application.listen;
     express.application.listen = function (port, host) {
       if (port !== ${config.server.port} || host !== '127.0.0.1')
@@ -87,12 +102,16 @@ for (const cloud of [false, true]) {
     let toolLookups = 0;
     globalThis.fetch = async (input, init) => {
       const u = new URL(String(input));
+      if (${cloud} && u.origin === ${JSON.stringify(canvas.canvasOrigin)}) {
+        if (init.method !== 'GET') throw new Error('Unexpected Canvas write');
+        return canvasMock.options.fetcher(u, init);
+      }
       if (u.origin !== 'http://127.0.0.1:11434') throw new Error('Unexpected network request');
       if (u.pathname === '/api/tags') return Response.json({ models: ['gemma4:12b-mlx','llama3.1:8b'].map(model => ({model,digest:'a'.repeat(64),size:1000})) });
       if (u.pathname === '/api/ps') return Response.json({models:[]});
       if (u.pathname === '/api/show' && ${cloud}) {
         if (JSON.parse(init.body).model !== 'gemma4:12b-mlx') throw new Error('Unexpected selected model');
-        return Response.json({capabilities: ++toolLookups <= 3 ? ['completion', 'tools'] : ['completion']});
+        return Response.json({capabilities: ++toolLookups === 4 ? ['completion'] : ['completion', 'tools']});
       }
       if (u.pathname === '/api/chat' && ${cloud}) {
         const request = JSON.parse(init.body);
@@ -101,8 +120,13 @@ for (const cloud of [false, true]) {
         if (request.tools) {
           const question = request.messages.at(-1).content;
           const names = request.tools.map(({function: tool}) => tool.name).join(',');
-          if (request.stream || names !== 'history_count,history_summary' || request.messages[0].role !== 'system' || prompt.includes(${JSON.stringify(sampleQuestion)}) || prompt.includes(${JSON.stringify(ordinaryQuestion)}))
+          if (request.stream || request.messages[0].role !== 'system' || prompt.includes(${JSON.stringify(sampleQuestion)}) || prompt.includes(${JSON.stringify(ordinaryQuestion)}) || prompt.includes(canvasMock.settings.canvasToken))
             throw new Error('Unexpected Local tool request');
+          if (names === 'canvas_submission_count,canvas_assignment_score') {
+            if (question !== ${JSON.stringify(canvasQuestion.replace("Test Student", "configured sample"))}) throw new Error('Unexpected Canvas question');
+            return Response.json({ model: request.model, done: true, done_reason: 'stop', prompt_eval_count: 51, eval_count: 10, message: { role: 'assistant', content: '', tool_calls: [{ type: 'function', function: { name: 'canvas_assignment_score', arguments: { assignment: 'Synthetic draft' } } }] } });
+          }
+          if (names !== 'history_count,history_summary') throw new Error('Unexpected History tools');
           const name = question === ${JSON.stringify(countQuestion)} ? 'history_count'
             : question === ${JSON.stringify(summaryQuestion)} ? 'history_summary' : undefined;
           if (name)
@@ -159,7 +183,13 @@ for (const cloud of [false, true]) {
       {
         env: {
           APP_CONFIG_JSON: JSON.stringify(config),
-          ...(cloud ? { LAITA_HISTORY_SAMPLE_ID: sampleId } : {}),
+          ...(cloud
+            ? {
+                LAITA_HISTORY_SAMPLE_ID: sampleId,
+                LAITA_CANVAS_CONFIG_FILE: canvasFile,
+                LAITA_CANVAS_REST_FILE: restFile,
+              }
+            : {}),
         },
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       },
@@ -259,6 +289,36 @@ for (const cloud of [false, true]) {
           (await (await ask(countQuestion)).json()).text,
           /unavailable on the selected Local model/,
         );
+        const launchPath = "/api/v1/canvas/launch";
+        const launched = await fetch(origin + launchPath, {
+          method: "POST",
+          redirect: "manual",
+          headers: {
+            ...headers,
+            cookie: "",
+            origin: canvas.canvasOrigin,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: signed(config.access.publicOrigin + launchPath, {
+            oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+            oauth_nonce: randomUUID(),
+          }),
+        });
+        assert.equal(launched.status, 303);
+        const canvasAnswer = await fetch(origin + "/api/v1/canvas/chat/tools", {
+          method: "POST",
+          headers: {
+            ...headers,
+            cookie: launched.headers.get("set-cookie").split(";")[0],
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ question: canvasQuestion }),
+        });
+        assert.equal(canvasAnswer.status, 200);
+        assert.match(
+          (await canvasAnswer.json()).text,
+          /^Score for Synthetic draft is 6\.5 of 7 points/,
+        );
         const ledger = new DatabaseSync(databaseFile, { readOnly: true });
         try {
           const entries = ledger
@@ -266,14 +326,14 @@ for (const cloud of [false, true]) {
               "SELECT provider, outcome, usage_basis FROM provider_usage ORDER BY rowid",
             )
             .all();
-          assert.equal(entries.length, 5);
+          assert.equal(entries.length, 6);
           assert.ok(entries.every(({ provider }) => provider === "LOCAL"));
           assert.equal(
             entries.filter(
               ({ outcome, usage_basis }) =>
                 outcome === "COMPLETED" && usage_basis === "PROVIDER_REPORTED",
             ).length,
-            4,
+            5,
           );
           assert.equal(
             entries.filter(({ outcome }) => outcome === "FAILED").length,

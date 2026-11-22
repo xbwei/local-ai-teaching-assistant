@@ -170,6 +170,14 @@ try {
   const sampleContext = "5".repeat(64);
   const syntheticCanvas = canvasPageFixture({ assignments: true, modules: true, chat: true, feedback: true });
   const syntheticVerification = canvasVerificationFixture(syntheticCanvas);
+  syntheticVerification.options.selectChatTool = async (question) => {
+    const assignment = syntheticCanvas.assignmentRows.get("81").name;
+    if (question === `Tell me the submission tally for ${assignment}.`)
+      return { name: "canvas_submission_count", arguments: { assignment } };
+    if (question === `For ${assignment}, what score was recorded?`)
+      return { name: "canvas_assignment_score", arguments: { assignment } };
+    return null;
+  };
   f = await fixture({
     history: persistence.history(),
     persistence,
@@ -489,16 +497,25 @@ try {
     const browserRequests = requests.length;
     const providerRequests = syntheticCanvas.calls.length;
     await canvasChat.locator("summary").click();
-    await canvasQuestion.fill(`How many submissions for ${updatedTitle}?`);
+    const queryMode = canvasChat.getByRole("combobox", { name: "Canvas query mode" });
+    assert.equal(await queryMode.inputValue(), "local");
+    await canvasQuestion.fill(`Tell me the submission tally for ${updatedTitle}.`);
     await askCanvas.click();
     await canvasChat.getByText(/^1 submission.*configured Test Student/).waitFor();
-    await canvasQuestion.fill(`What is the score for ${updatedTitle}?`);
+    await canvasQuestion.fill(`For ${updatedTitle}, what score was recorded?`);
     await askCanvas.click();
     await canvasChat.getByText(/is 6\.5 of 7 points.*configured Test Student/).waitFor();
     await canvasQuestion.fill("What are the class grades?");
     await askCanvas.click();
     await canvasChat.getByText(/^Ask how many submissions or what score/).waitFor();
-    assert.ok(requests.slice(browserRequests).every(request => request === f.origin + "/api/v1/canvas/chat"));
+    await queryMode.selectOption("direct");
+    await canvasQuestion.fill(`How many submissions for ${updatedTitle}?`);
+    await askCanvas.click();
+    await canvasChat.getByText(/^1 submission.*configured Test Student/).waitFor();
+    assert.deepEqual(requests.slice(browserRequests), [
+      ...Array(3).fill(f.origin + "/api/v1/canvas/chat/tools"),
+      f.origin + "/api/v1/canvas/chat",
+    ]);
     assert.ok(syntheticCanvas.calls.slice(providerRequests).every(([method]) => method === "GET"));
     results.push({ name: mobile ? "canvas-chat-phone" : "canvas-chat-desktop", width, height, status: "PASS", requests: requests.length });
 

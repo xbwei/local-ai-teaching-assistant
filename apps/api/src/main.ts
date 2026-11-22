@@ -43,13 +43,20 @@ import {
   createProviderOrchestrator,
   type ProviderExecutionInput,
 } from "@laita/orchestration";
-import { OllamaLocalAdapter, OpenAIResponsesAdapter } from "@laita/providers";
+import {
+  OllamaLocalAdapter,
+  OpenAIResponsesAdapter,
+  type OllamaToolPrompt,
+} from "@laita/providers";
 import { MacOSKeychainSecretProvider } from "@laita/runtime";
 
 import { createLocalHealthRefresh } from "./local-health.ts";
 import { createCourseGrounder } from "@laita/course-grounding";
 import { createCourseAwareExecution } from "./course-execution.ts";
 import { historyToolPrompt } from "./teacher-history.ts";
+import { canvasChatToolPrompt } from "./canvas-chat-tools.ts";
+
+type TeacherTool = "HISTORY_TOOL" | "CANVAS_TOOL";
 
 const logger = createOperationalLogger();
 const correlationId = createCorrelationId();
@@ -392,36 +399,40 @@ try {
       },
     } satisfies Parameters<typeof createProviderOrchestrator>[0];
     const orchestrator = createProviderOrchestrator(orchestration);
-    const toolPromptBytes = Buffer.byteLength(
-      JSON.stringify(historyToolPrompt),
-    );
-    const historyToolOrchestrator = createProviderOrchestrator({
-      ...orchestration,
-      maxOutputTokens: 128,
-      adapters: {
-        ...orchestration.adapters,
-        LOCAL: {
-          provider: localAdapter.provider,
-          configuration: localAdapter.configuration,
-          invoke: (request, context) =>
-            localAdapter.invokeWithTools(request, context, historyToolPrompt),
-          stream: localAdapter.stream.bind(localAdapter),
+    function createToolOrchestrator(prompt: OllamaToolPrompt) {
+      const toolPromptBytes = Buffer.byteLength(JSON.stringify(prompt));
+      return createProviderOrchestrator({
+        ...orchestration,
+        maxOutputTokens: 128,
+        adapters: {
+          ...orchestration.adapters,
+          LOCAL: {
+            provider: localAdapter.provider,
+            configuration: localAdapter.configuration,
+            invoke: (request, context) =>
+              localAdapter.invokeWithTools(request, context, prompt),
+            stream: localAdapter.stream.bind(localAdapter),
+          },
         },
-      },
-      usage: {
-        ...usageControls,
-        admit: (request) =>
-          usageControls.admit(
-            isUsageAdmissionRequest(request)
-              ? {
-                  ...request,
-                  // Reserve for the tool declarations and extra system message.
-                  inputTokens: request.inputTokens + toolPromptBytes + 32,
-                }
-              : request,
-          ),
-      },
-    });
+        usage: {
+          ...usageControls,
+          admit: (request) =>
+            usageControls.admit(
+              isUsageAdmissionRequest(request)
+                ? {
+                    ...request,
+                    // Reserve for the tool declarations and extra system message.
+                    inputTokens: request.inputTokens + toolPromptBytes + 32,
+                  }
+                : request,
+            ),
+        },
+      });
+    }
+    const tools = {
+      HISTORY_TOOL: createToolOrchestrator(historyToolPrompt),
+      CANVAS_TOOL: createToolOrchestrator(canvasChatToolPrompt),
+    };
     function executeForOwner(
       execution: typeof orchestrator,
       request: ProviderRunRequest,
@@ -463,21 +474,17 @@ try {
           trace,
         );
       },
-      selectHistoryTool(
+      selectTool(
+        tool: TeacherTool,
         request: ProviderRunRequest,
         signal: AbortSignal,
         sessionRef: `session-${string}`,
       ) {
         if (request.mode !== "LOCAL")
           return Promise.reject(
-            new Error("History tool selection requires Local"),
+            new Error("Teacher tool selection requires Local"),
           );
-        return executeForOwner(
-          historyToolOrchestrator,
-          request,
-          signal,
-          sessionRef,
-        );
+        return executeForOwner(tools[tool], request, signal, sessionRef);
       },
     };
   })();
@@ -504,7 +511,7 @@ try {
   async function runTeacherLocal(
     text: string,
     signal: AbortSignal,
-    task?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" } | "HISTORY_TOOL",
+    task?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" } | TeacherTool,
   ) {
     const available = await capabilities.read("instructor", text);
     const model = localAdapter.selectedModel;
@@ -531,8 +538,9 @@ try {
         capabilityIdentity: available.identity,
       } as const;
       const session = `session-${randomUUID()}` as const;
-      if (task === "HISTORY_TOOL")
-        return await providerControls.selectHistoryTool(
+      if (typeof task === "string")
+        return await providerControls.selectTool(
+          task,
           request,
           signal,
           session,
@@ -558,9 +566,13 @@ try {
     )
       return leg.output?.text;
   }
-  async function selectTestStudentTool(question: string, signal: AbortSignal) {
+  async function selectTeacherTool(
+    tool: TeacherTool,
+    question: string,
+    signal: AbortSignal,
+  ) {
     const text = localTeacherText(
-      await runTeacherLocal(question, signal, "HISTORY_TOOL"),
+      await runTeacherLocal(question, signal, tool),
       signal,
     );
     return text === undefined ? undefined : (JSON.parse(text) as unknown);
@@ -610,6 +622,14 @@ try {
           canvasPages: {
             settings: () =>
               readCanvasPageSettings(process.env.LAITA_CANVAS_REST_FILE),
+            ...(configuration.value.features.local && {
+              selectChatTool: (question: string, signal: AbortSignal) =>
+                selectTeacherTool(
+                  "CANVAS_TOOL",
+                  question.replace(/\bTest Student\b/giu, "configured sample"),
+                  signal,
+                ),
+            }),
             ...(process.env.LAITA_CANVAS_VERIFICATION_FILE && {
               verification: {
                 settings: () =>
@@ -633,7 +653,8 @@ try {
             context: sampleContext,
             read: () =>
               persistence!.history({ role: "student", context: sampleContext }),
-            select: selectTestStudentTool,
+            select: (question, signal) =>
+              selectTeacherTool("HISTORY_TOOL", question, signal),
             summarize: summarizeTestStudent,
           },
         }
