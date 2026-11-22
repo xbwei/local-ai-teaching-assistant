@@ -8,12 +8,12 @@ import {
   verificationSecretMarker,
 } from "./canvas-verification-fixture.mjs";
 
-async function setup(t, count) {
+async function setup(t, count, now = () => canvasNow) {
   const synthetic = canvasVerificationFixture(undefined, count);
   const f = await fixture({
     autoLogin: false,
     canvas: () => canvas,
-    authNow: () => canvasNow,
+    authNow: now,
     canvasPages: synthetic.options,
   });
   t.after(() => f.close());
@@ -315,6 +315,62 @@ test("MongoDB-only verification withholds changed or incomplete evidence and rej
   assert.equal((await post(plan.scope, "MONGODB", student)).status, 409);
   assert.equal(synthetic.state.activeWorkers, 0);
   assert.deepEqual(synthetic.calls.github, []);
+});
+
+test("GitHub expiry leaves approved MongoDB verification available and retains the secret reuse guard", async (t) => {
+  let now = canvasNow;
+  const { synthetic, scope, request, post } = await setup(t, 2, () => now);
+  const [student] = synthetic.ids;
+  const settings = synthetic.configuration;
+  settings.github.expiresAt = new Date(now + 1).toISOString();
+  const beforeExpiry = await scope();
+  now++;
+
+  const plan = await scope();
+  assert.deepEqual(plan.assignments, [beforeExpiry.assignments[1]]);
+  assert.notEqual(plan.scope, beforeExpiry.scope);
+  assert.ok(!JSON.stringify(plan).includes(settings.github.token));
+  assert.equal(
+    (await post(beforeExpiry.scope, "MONGODB", student)).status,
+    409,
+  );
+  assert.equal((await post(plan.scope, "GITHUB", student)).status, 403);
+  assert.deepEqual(synthetic.calls.canvas, []);
+  assert.deepEqual(synthetic.calls.github, []);
+  assert.deepEqual(synthetic.calls.mongo, []);
+
+  synthetic.state.source = (row) => ({
+    ...row,
+    body: row.body.replace(
+      verificationSecretMarker + student,
+      settings.github.token,
+    ),
+  });
+  assert.deepEqual(await (await post(plan.scope, "MONGODB", student)).json(), {
+    state: "UNKNOWN",
+    reason: "SOURCE_UNAVAILABLE",
+  });
+  assert.deepEqual(synthetic.calls.mongo, []);
+
+  synthetic.state.source = (row) => row;
+  assert.deepEqual(await (await post(plan.scope, "MONGODB", student)).json(), {
+    state: "OBSERVED",
+    attempt: 1,
+    submittedAt: "2026-11-20T12:00:00Z",
+    checks: ["PRESENT", "PRESENT"],
+  });
+  assert.deepEqual(synthetic.calls.mongo, [student]);
+
+  const [github] = settings.assignments;
+  settings.assignments.push(github);
+  assert.equal((await request()).status, 503);
+  settings.assignments.pop();
+  const previousExpiry = settings.github.expiresAt;
+  settings.github.expiresAt = "invalid";
+  assert.equal((await request()).status, 503);
+  settings.github.expiresAt = previousExpiry;
+  settings.assignments = [github];
+  assert.equal((await request()).status, 503);
 });
 
 test("verification admits one operation and cancels the GitHub request without starting the next row", async (t) => {

@@ -56,10 +56,18 @@ export function createCanvasVerificationHandler(
         now(),
         [target.canvasToken, ...target.launchKeys],
       );
+      // Validate and bind the full configuration, including inactive grants.
+      // Keep the private GitHub token available to the MongoDB reuse check.
+      const assignments = configuration.githubReady
+        ? configuration.assignments
+        : configuration.assignments.filter(
+            (entry) => entry.provider !== "GITHUB",
+          );
+      if (!assignments.length) throw new Error("UNAVAILABLE");
       const scope = createHmac("sha256", scopeKey)
         .update(JSON.stringify([target.binding, configuration]))
         .digest("hex");
-      return { target, configuration, scope };
+      return { target, configuration, assignments, scope };
     }
     let initial: ReturnType<typeof load>;
     try {
@@ -103,7 +111,7 @@ export function createCanvasVerificationHandler(
         res.status(409).json({ code: "SCOPE_CHANGED" });
         return;
       }
-      const assignment = initial.configuration.assignments.find(
+      const assignment = initial.assignments.find(
         (entry) =>
           entry.assignmentId === assignmentId && entry.provider === provider,
       );
@@ -173,7 +181,7 @@ export function createCanvasVerificationHandler(
         if (!res.destroyed)
           res.json({
             scope: initial.scope,
-            assignments: initial.configuration.assignments.map(
+            assignments: initial.assignments.map(
               ({ assignmentId, provider, students }) => ({
                 assignmentId,
                 provider,
