@@ -240,6 +240,7 @@ export type {
   OllamaModelStatus,
   OllamaModelSwitchResult,
   OllamaRuntimeSnapshot,
+  OllamaToolPrompt,
   OllamaUnloadResult,
 } from "./ollama.ts";
 

@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseConfiguration, initializeRuntimePaths } from "@laita/runtime";
 import { initializePersistence } from "@laita/persistence";
@@ -65,6 +66,11 @@ for (const cloud of [false, true]) {
     const sampleQuestion = "How can two visual examples be compared?";
     const ordinaryQuestion = "Ordinary outside sample";
     const summary = "The sample explores comparing visual examples.";
+    const countQuestion =
+      "Give me the tally of questions in the past seven days.";
+    const summaryQuestion = "Which themes kept coming up in the sample?";
+    const unrelatedQuestion =
+      "Show a separate participant's recorded questions.";
     // Every provider request is intercepted in the child. No real Ollama/Cloud/Keychain use.
     const preload = path.join(root, "synthetic-provider.mjs");
     writeFileSync(
@@ -78,17 +84,36 @@ for (const cloud of [false, true]) {
       server.once('listening', () => process.send({ port: server.address().port }));
       return server;
     };
+    let toolLookups = 0;
     globalThis.fetch = async (input, init) => {
       const u = new URL(String(input));
       if (u.origin !== 'http://127.0.0.1:11434') throw new Error('Unexpected network request');
       if (u.pathname === '/api/tags') return Response.json({ models: ['gemma4:12b-mlx','llama3.1:8b'].map(model => ({model,digest:'a'.repeat(64),size:1000})) });
       if (u.pathname === '/api/ps') return Response.json({models:[]});
+      if (u.pathname === '/api/show' && ${cloud}) {
+        if (JSON.parse(init.body).model !== 'gemma4:12b-mlx') throw new Error('Unexpected selected model');
+        return Response.json({capabilities: ++toolLookups <= 3 ? ['completion', 'tools'] : ['completion']});
+      }
       if (u.pathname === '/api/chat' && ${cloud}) {
         const request = JSON.parse(init.body);
         const prompt = request.messages.map(({content}) => content).join(' ');
-        if (!prompt.includes(${JSON.stringify(sampleQuestion)}) || prompt.includes(${JSON.stringify(ordinaryQuestion)}))
+        let message = { role: 'assistant', content: ${JSON.stringify(summary)} };
+        if (request.tools) {
+          const question = request.messages.at(-1).content;
+          const names = request.tools.map(({function: tool}) => tool.name).join(',');
+          if (request.stream || names !== 'history_count,history_summary' || request.messages[0].role !== 'system' || prompt.includes(${JSON.stringify(sampleQuestion)}) || prompt.includes(${JSON.stringify(ordinaryQuestion)}))
+            throw new Error('Unexpected Local tool request');
+          const name = question === ${JSON.stringify(countQuestion)} ? 'history_count'
+            : question === ${JSON.stringify(summaryQuestion)} ? 'history_summary' : undefined;
+          if (name)
+            message = { role: 'assistant', content: '', tool_calls: [{ type: 'function', function: { name, arguments: { window: 'recent' } } }] };
+          else if (question === ${JSON.stringify(unrelatedQuestion)})
+            message = { role: 'assistant', content: '{"name":"history_count","arguments":{"window":"recent"}}' };
+          else throw new Error('Unexpected synthetic tool input');
+        } else if (!prompt.includes(${JSON.stringify(sampleQuestion)}) || prompt.includes(${JSON.stringify(ordinaryQuestion)})) {
           throw new Error('Unexpected synthetic sample scope');
-        const response = { model: request.model, message: { role: 'assistant', content: ${JSON.stringify(summary)} }, done: true, done_reason: 'stop' };
+        }
+        const response = { model: request.model, message, done: true, done_reason: 'stop', prompt_eval_count: 51, eval_count: 10 };
         return request.stream
           ? new Response(JSON.stringify(response) + '\\n', { headers: { 'content-type': 'application/x-ndjson' } })
           : Response.json(response);
@@ -101,6 +126,7 @@ for (const cloud of [false, true]) {
     assert.equal(paths.ok, true);
     const db = initializePersistence(paths.value);
     assert.equal(db.ok, true);
+    const databaseFile = paths.value.prepareDatabaseFile();
     db.value.ownerAuth().setCredential(await testCredential);
     if (cloud) {
       const context = createHash("sha256")
@@ -219,13 +245,43 @@ for (const cloud of [false, true]) {
             body: JSON.stringify({ question }),
           });
         assert.match(
-          (await (await ask("How many questions?")).json()).text,
+          (await (await ask(countQuestion)).json()).text,
           /^1 question recorded/,
         );
-        assert.deepEqual(
-          await (await ask("Summarize recent questions.")).json(),
-          { text: summary },
+        assert.deepEqual(await (await ask(summaryQuestion)).json(), {
+          text: summary,
+        });
+        assert.match(
+          (await (await ask(unrelatedQuestion)).json()).text,
+          /one local sample/,
         );
+        assert.match(
+          (await (await ask(countQuestion)).json()).text,
+          /unavailable on the selected Local model/,
+        );
+        const ledger = new DatabaseSync(databaseFile, { readOnly: true });
+        try {
+          const entries = ledger
+            .prepare(
+              "SELECT provider, outcome, usage_basis FROM provider_usage ORDER BY rowid",
+            )
+            .all();
+          assert.equal(entries.length, 5);
+          assert.ok(entries.every(({ provider }) => provider === "LOCAL"));
+          assert.equal(
+            entries.filter(
+              ({ outcome, usage_basis }) =>
+                outcome === "COMPLETED" && usage_basis === "PROVIDER_REPORTED",
+            ).length,
+            4,
+          );
+          assert.equal(
+            entries.filter(({ outcome }) => outcome === "FAILED").length,
+            1,
+          );
+        } finally {
+          ledger.close();
+        }
       }
       assert.equal(output.includes(config.runtimeRoot), false);
       assert.equal(output.includes(sampleQuestion), false);

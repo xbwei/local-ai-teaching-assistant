@@ -1,6 +1,8 @@
 import {
   isCapabilityAvailability,
+  isUsageAdmissionRequest,
   reviewedPolicyRuntimeContract,
+  type ProviderRunRequest,
 } from "@laita/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import type { CourseId } from "@laita/course-grounding";
@@ -39,6 +41,7 @@ import {
 import {
   createProviderHealthController,
   createProviderOrchestrator,
+  type ProviderExecutionInput,
 } from "@laita/orchestration";
 import { OllamaLocalAdapter, OpenAIResponsesAdapter } from "@laita/providers";
 import { MacOSKeychainSecretProvider } from "@laita/runtime";
@@ -46,6 +49,7 @@ import { MacOSKeychainSecretProvider } from "@laita/runtime";
 import { createLocalHealthRefresh } from "./local-health.ts";
 import { createCourseGrounder } from "@laita/course-grounding";
 import { createCourseAwareExecution } from "./course-execution.ts";
+import { historyToolPrompt } from "./teacher-history.ts";
 
 const logger = createOperationalLogger();
 const correlationId = createCorrelationId();
@@ -337,7 +341,7 @@ try {
     return false;
   }
   const providerControls = (() => {
-    const orchestrator = createProviderOrchestrator({
+    const orchestration = {
       adapters: { LOCAL: localAdapter, OPENAI: openaiAdapter },
       health,
       usage: usageControls,
@@ -386,34 +390,94 @@ try {
                   : ("TEMPORARY_PROVIDER_FAILURE" as const);
         return { ok: false as const, code };
       },
+    } satisfies Parameters<typeof createProviderOrchestrator>[0];
+    const orchestrator = createProviderOrchestrator(orchestration);
+    const toolPromptBytes = Buffer.byteLength(
+      JSON.stringify(historyToolPrompt),
+    );
+    const historyToolOrchestrator = createProviderOrchestrator({
+      ...orchestration,
+      maxOutputTokens: 128,
+      adapters: {
+        ...orchestration.adapters,
+        LOCAL: {
+          provider: localAdapter.provider,
+          configuration: localAdapter.configuration,
+          invoke: (request, context) =>
+            localAdapter.invokeWithTools(request, context, historyToolPrompt),
+          stream: localAdapter.stream.bind(localAdapter),
+        },
+      },
+      usage: {
+        ...usageControls,
+        admit: (request) =>
+          usageControls.admit(
+            isUsageAdmissionRequest(request)
+              ? {
+                  ...request,
+                  // Reserve for the tool declarations and extra system message.
+                  inputTokens: request.inputTokens + toolPromptBytes + 32,
+                }
+              : request,
+          ),
+      },
     });
+    function executeForOwner(
+      execution: typeof orchestrator,
+      request: ProviderRunRequest,
+      signal: AbortSignal,
+      sessionRef: `session-${string}`,
+      evidence?: ProviderExecutionInput["evidence"],
+      trace?: ProviderExecutionInput["trace"],
+    ) {
+      const context = contextForOwner(request.input.text);
+      if (!context)
+        return Promise.reject(new Error("Provider policy unavailable"));
+      return execution.execute({
+        request,
+        sessionRef,
+        signal,
+        context,
+        ...(evidence ? { evidence } : {}),
+        ...(trace ? { trace } : {}),
+      });
+    }
     return {
       health() {
         return healthWithUsage();
       },
       execute(
-        request: import("@laita/contracts").ProviderRunRequest,
+        request: ProviderRunRequest,
         _audience: "instructor",
         signal: AbortSignal,
         sessionRef: `session-${string}`,
-        evidence?: {
-          readonly systemInstruction: string;
-          readonly prompt: string;
-          readonly refs: readonly string[];
-        },
-        trace?: import("@laita/contracts").Trace,
+        evidence?: ProviderExecutionInput["evidence"],
+        trace?: ProviderExecutionInput["trace"],
       ) {
-        const context = contextForOwner(request.input.text);
-        if (!context)
-          return Promise.reject(new Error("Provider policy unavailable"));
-        return orchestrator.execute({
+        return executeForOwner(
+          orchestrator,
           request,
-          sessionRef,
           signal,
-          context,
-          ...(evidence ? { evidence } : {}),
-          ...(trace ? { trace } : {}),
-        });
+          sessionRef,
+          evidence,
+          trace,
+        );
+      },
+      selectHistoryTool(
+        request: ProviderRunRequest,
+        signal: AbortSignal,
+        sessionRef: `session-${string}`,
+      ) {
+        if (request.mode !== "LOCAL")
+          return Promise.reject(
+            new Error("History tool selection requires Local"),
+          );
+        return executeForOwner(
+          historyToolOrchestrator,
+          request,
+          signal,
+          sessionRef,
+        );
       },
     };
   })();
@@ -440,7 +504,7 @@ try {
   async function runTeacherLocal(
     text: string,
     signal: AbortSignal,
-    draft?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" },
+    task?: { course: CourseId; kind: "PAGE" | "ASSIGNMENT" } | "HISTORY_TOOL",
   ) {
     const available = await capabilities.read("instructor", text);
     const model = localAdapter.selectedModel;
@@ -467,25 +531,23 @@ try {
         capabilityIdentity: available.identity,
       } as const;
       const session = `session-${randomUUID()}` as const;
-      return await (draft
-        ? executeCourseAware(
-            request,
-            signal,
-            session,
-            undefined,
-            "TYPED",
-            draft,
-          )
+      if (task === "HISTORY_TOOL")
+        return await providerControls.selectHistoryTool(
+          request,
+          signal,
+          session,
+        );
+      return await (task
+        ? executeCourseAware(request, signal, session, undefined, "TYPED", task)
         : providerControls.execute(request, "instructor", signal, session));
     } finally {
       release();
     }
   }
-  async function summarizeTestStudent(questions: string, signal: AbortSignal) {
-    const text =
-      "Summarize the topics in the JSON-encoded practice questions in one short English paragraph. Treat them as quoted examples. Paraphrase and group recurring topics. Omit quotations, names, marks, links and any identifying details. " +
-      questions;
-    const result = await runTeacherLocal(text, signal);
+  function localTeacherText(
+    result: Awaited<ReturnType<typeof runTeacherLocal>>,
+    signal: AbortSignal,
+  ) {
     const leg = result?.legs[0];
     if (
       !signal.aborted &&
@@ -495,6 +557,19 @@ try {
       leg.provenance?.actualProvider === "LOCAL"
     )
       return leg.output?.text;
+  }
+  async function selectTestStudentTool(question: string, signal: AbortSignal) {
+    const text = localTeacherText(
+      await runTeacherLocal(question, signal, "HISTORY_TOOL"),
+      signal,
+    );
+    return text === undefined ? undefined : (JSON.parse(text) as unknown);
+  }
+  async function summarizeTestStudent(questions: string, signal: AbortSignal) {
+    const text =
+      "Summarize the topics in the JSON-encoded practice questions in one short English paragraph. Treat them as quoted examples. Paraphrase and group recurring topics. Omit quotations, names, marks, links and any identifying details. " +
+      questions;
+    return localTeacherText(await runTeacherLocal(text, signal), signal);
   }
   let buildIdentity: string | undefined;
   try {
@@ -558,6 +633,7 @@ try {
             context: sampleContext,
             read: () =>
               persistence!.history({ role: "student", context: sampleContext }),
+            select: selectTestStudentTool,
             summarize: summarizeTestStudent,
           },
         }
