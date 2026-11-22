@@ -28,7 +28,13 @@ export function createTeacherDraftHandler(
   return async (req, res) => {
     const actor = sessions.authorize(req, res);
     if (!actor) return;
-    if (actor.role !== "teacher" || actor.source !== "local") {
+    // Canvas drafting requires the course bound by the signed launch and the
+    // current membership. A legacy launch has no approved public course.
+    const boundCourse = actor.demo?.course;
+    if (
+      actor.role !== "teacher" ||
+      (actor.source === "canvas" && !boundCourse)
+    ) {
       res.status(403).json({ code: "FORBIDDEN" });
       return;
     }
@@ -46,7 +52,7 @@ export function createTeacherDraftHandler(
       res.status(400).json({ code: "INVALID_REQUEST" });
       return;
     }
-    if (actor.demo && value.course !== actor.demo.course) {
+    if (boundCourse && value.course !== boundCourse) {
       res.status(403).json({ code: "FORBIDDEN" });
       return;
     }

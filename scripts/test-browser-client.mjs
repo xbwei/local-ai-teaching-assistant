@@ -22,6 +22,7 @@ import { execFileSync } from "node:child_process";
 import { fixture } from "../apps/api/test/browser-fixture.mjs";
 import { canvas, canvasNow, canvasPageFixture, signed } from "../apps/api/test/canvas-fixture.mjs";
 import { canvasVerificationFixture } from "../apps/api/test/canvas-verification-fixture.mjs";
+import { initializeOwnerCredential } from "../apps/api/dist/owner-credential.js";
 import { wav } from "../apps/web/src/client/microphone.ts";
 const { chromium } = await import(
   pathToFileURL(process.env.PLAYWRIGHT_MODULE).href
@@ -178,20 +179,25 @@ try {
       return { name: "canvas_assignment_score", arguments: { assignment } };
     return null;
   };
+  let launchSettings = canvas;
   f = await fixture({
     history: persistence.history(),
     persistence,
-    canvas: () => canvas,
+    canvas: () => launchSettings,
     authNow: () => canvasNow,
     canvasPages: syntheticVerification.options,
     teacherDraft: async (course, kind, topic) => {
       assert.equal(course, "IA342");
-      assert.equal(kind, "ASSIGNMENT");
-      assert.equal(topic, "Lab 5");
+      const text = {
+        "ASSIGNMENT:Lab 5": "## Practice task\nCompare two visual explanations.",
+        "PAGE:Lab 6": "## Grounded map suggestion\n\nLabel the source.",
+        "ASSIGNMENT:Lab 6": "## Map lab\n\nCompare two maps. 地图",
+      }[`${kind}:${topic}`];
+      assert.ok(text);
       return {
         mode: "LOCAL",
-        grounding: { status: "GROUNDED", course: "IA342", sources: [{ course: "IA342", path: "docs/example.md", section: "Lab 5" }] },
-        legs: [{ provider: "LOCAL", provenance: { actualProvider: "LOCAL" }, status: "COMPLETED", output: { text: "## Practice task\nCompare two visual explanations." } }],
+        grounding: { status: "GROUNDED", course, sources: [{ course, path: "docs/example.md", section: topic }] },
+        legs: [{ provider: "LOCAL", provenance: { actualProvider: "LOCAL" }, status: "COMPLETED", output: { text } }],
       };
     },
     teacherHistory: {
@@ -361,6 +367,10 @@ try {
     results.push({ name, width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
+  f.authStore.configureDemo("IA342", ...(await Promise.all(
+    ["synthetic browser fixture teacher", "synthetic browser fixture student"].map(initializeOwnerCredential),
+  )));
+  launchSettings = { ...canvas, demo: { course: "IA342", studentUserId: "73002" } };
   for (const { name, width, height, mobile } of [
     { name: "canvas-page-desktop", width: 1280, height: 800, mobile: false },
     { name: "canvas-page-phone", width: 390, height: 844, mobile: true },
@@ -459,7 +469,17 @@ try {
     assert.equal(await preview.locator("pre").textContent(), "<h2>Compare routes</h2><p>Plot a <strong>synthetic</strong> map. 地图 🌍</p>");
     assert.equal(syntheticCanvas.writes.length, writes);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
-    await markdown.fill("Revised teaching content — 安全 🌍");
+    const pageDraft = page.locator("#teacher-canvas-pages");
+    await pageDraft.getByLabel("Topic or Lab/Week number").fill("Lab 6");
+    await pageDraft.getByRole("button", { name: "Generate Local suggestion" }).click();
+    await pageDraft.getByText("docs/example.md · Lab 6").waitFor();
+    assert.equal(await markdown.inputValue(), "# Compare routes\n\nPlot a **synthetic** map. 地图 🌍");
+    assert.equal(syntheticCanvas.writes.length, writes);
+    const suggestion = pageDraft.getByLabel("Editable Local suggestion");
+    assert.match(await suggestion.inputValue(), /Grounded map suggestion/u);
+    await suggestion.fill("## Grounded map suggestion\n\nRevised teaching content — 安全 🌍");
+    await pageDraft.getByRole("button", { name: "Apply suggestion to body" }).click();
+    assert.match(await markdown.inputValue(), /Revised teaching content/u);
     assert.equal(await create.isVisible(), false);
     await previewButton.click();
     await preview.getByText("Revised teaching content — 安全 🌍", { exact: true }).waitFor();
@@ -467,7 +487,7 @@ try {
     await create.click();
     await page.getByText("Canvas verified unpublished Page 9001.").waitFor();
     assert.equal(syntheticCanvas.writes.length, writes + 1);
-    assert.equal(syntheticCanvas.writes.at(-1)["wiki_page[body]"], "<p>Revised teaching content — 安全 🌍</p>");
+    assert.equal(syntheticCanvas.writes.at(-1)["wiki_page[body]"], "<h2>Grounded map suggestion</h2><p>Revised teaching content — 安全 🌍</p>");
     assert.equal(await create.isVisible(), false);
     assert.ok(requests.every((request) => new URL(request).origin === f.origin));
     assert.equal(requests.filter((request) => request.endsWith("/api/v1/canvas/pages/create")).length, 1);
@@ -484,7 +504,14 @@ try {
     const saveTitle = assignmentPreview.getByRole("button", { name: "Save assignment title" });
     const assignmentWrites = syntheticCanvas.assignmentWrites.length;
     await assignmentTitle.fill("Synthetic studio lab");
-    await tool.getByLabel("Assignment Markdown").fill("## Map lab\n\nCompare two maps. 地图");
+    const assignmentBody = tool.getByLabel("Assignment Markdown");
+    await tool.getByLabel("Topic or Lab/Week number").fill("Lab 6");
+    await tool.getByRole("button", { name: "Generate Local suggestion" }).click();
+    await tool.getByText("docs/example.md · Lab 6").waitFor();
+    assert.equal(await assignmentBody.inputValue(), "");
+    await tool.getByRole("button", { name: "Apply suggestion to body" }).click();
+    assert.equal(await assignmentBody.inputValue(), "## Map lab\n\nCompare two maps. 地图");
+    assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites);
     await tool.getByLabel("Points possible").fill("4.5");
     await tool.getByLabel("File Upload").check();
     await tool.getByLabel("Due date and time (UTC, optional)").fill("2026-12-21T10:30");
@@ -503,6 +530,7 @@ try {
     assert.equal(syntheticCanvas.assignmentWrites.length, assignmentWrites + 1);
 
     await tool.getByLabel("Assignment action").selectOption("TITLE");
+    assert.equal(await tool.getByRole("button", { name: "Generate Local suggestion" }).isVisible(), false);
     await tool.getByLabel("Assignment to rename").selectOption("81");
     assert.equal(await tool.getByLabel("Assignment Markdown").isVisible(), false);
     const previousTitle = syntheticCanvas.assignmentRows.get("81").name;
@@ -732,6 +760,7 @@ try {
     results.push({ name: mobile ? "canvas-verification-phone" : "canvas-verification-desktop", width, height, status: "PASS", requests: requests.length });
     await context.close();
   }
+  launchSettings = canvas;
   for (const scenario of [
     { name: "phone", width: 390, height: 844 },
     { name: "tablet", width: 820, height: 1180 },

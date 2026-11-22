@@ -122,6 +122,28 @@
           ></textarea>
         </label>
       </details>
+      <template id="canvas-local-draft-template">
+        <form autocomplete="off" hidden>
+          <fieldset>
+            <legend>Local draft for new content</legend>
+            <label class="teacher-field">
+              Topic or Lab/Week number
+              <input type="text" maxlength="160" required />
+            </label>
+            <button type="submit">Generate Local suggestion</button>
+            <button type="button" hidden>Cancel drafting</button>
+            <p role="status"></p>
+            <ul aria-label="Public course sources"></ul>
+            <label class="teacher-field">
+              Editable Local suggestion
+              <textarea rows="5" spellcheck="false"></textarea>
+            </label>
+            <button type="button" data-apply-draft disabled>
+              Apply suggestion to body
+            </button>
+          </fieldset>
+        </form>
+      </template>
       <details id="teacher-canvas-inventory" class="teacher-tool" hidden>
         <summary>Browse approved Canvas resources</summary>
         <form autocomplete="off">
