@@ -19,6 +19,7 @@ import { initializePersistence } from "@laita/persistence";
 import { canonicalJson } from "@laita/contracts";
 import { migrate, migrations } from "../dist/migrations.js";
 
+const currentVersion = migrations.at(-1).version;
 const unavailable = { ok: false, code: "SERVICE_UNAVAILABLE" };
 function fixture(t) {
   const root = realpathSync(
@@ -134,10 +135,11 @@ test("real disk SQLite initialization is minimal, durable, idempotent and closes
     assert.equal(result.value.isReady(), false);
     const database = new DatabaseSync(file, { readOnly: true });
     try {
-      assert.equal(version(database), 6);
+      assert.equal(version(database), currentVersion);
       assert.deepEqual(tables(database), [
         "canvas_nonces",
-        "demo_memberships",
+        "demo_accounts",
+        "demo_course_memberships",
         "history_answers",
         "history_conversation_order",
         "history_conversations",
@@ -158,7 +160,8 @@ test("real disk SQLite initialization is minimal, durable, idempotent and closes
         "provider_usage_week",
         "schema_migrations",
         "sqlite_autoindex_canvas_nonces_1",
-        "sqlite_autoindex_demo_memberships_1",
+        "sqlite_autoindex_demo_accounts_1",
+        "sqlite_autoindex_demo_course_memberships_1",
         "sqlite_autoindex_history_answers_1",
         "sqlite_autoindex_history_conversations_1",
         "sqlite_autoindex_history_events_1",
@@ -168,7 +171,7 @@ test("real disk SQLite initialization is minimal, durable, idempotent and closes
         "sqlite_autoindex_provider_usage_reconciliations_1",
         "sqlite_sequence",
       ]);
-      assert.equal(rows(database).length, 6);
+      assert.equal(rows(database).length, currentVersion);
       assert.match(
         database
           .prepare(
@@ -202,18 +205,18 @@ test("synthetic migrations run in deterministic order and repeat without destruc
   const synthetic = [
     ...migrations,
     {
-      version: 7,
+      version: currentVersion + 1,
       sql: "CREATE TABLE synthetic (id INTEGER PRIMARY KEY) STRICT",
     },
-    { version: 8, sql: "INSERT INTO synthetic VALUES (8)" },
+    { version: currentVersion + 2, sql: "INSERT INTO synthetic VALUES (8)" },
   ];
   try {
     migrate(database, synthetic);
     migrate(database, synthetic);
-    assert.equal(version(database), 8);
+    assert.equal(version(database), currentVersion + 2);
     assert.deepEqual(
       rows(database).map((row) => row.version),
-      [1, 2, 3, 4, 5, 6, 7, 8],
+      Array.from({ length: currentVersion + 2 }, (_, index) => index + 1),
     );
     assert.equal(
       database.prepare("SELECT count(*) AS count FROM synthetic").get().count,
@@ -224,7 +227,7 @@ test("synthetic migrations run in deterministic order and repeat without destruc
   }
   const again = new DatabaseSync(file);
   try {
-    assert.equal(version(again), 8);
+    assert.equal(version(again), currentVersion + 2);
   } finally {
     again.close();
   }
@@ -243,18 +246,21 @@ test("failed initial and later migration batches roll back DDL, rows and version
         migrate(database, [
           ...migrations,
           {
-            version: 7,
+            version: currentVersion + 1,
             sql: "CREATE TABLE synthetic_partial (id INTEGER) STRICT",
           },
-          { version: 8, sql: "INSERT INTO synthetic_missing VALUES (1)" },
+          {
+            version: currentVersion + 2,
+            sql: "INSERT INTO synthetic_missing VALUES (1)",
+          },
         ]),
       );
       assert.equal(database.isTransaction, false);
-      assert.equal(version(database), initialized ? 6 : 0);
+      assert.equal(version(database), initialized ? currentVersion : 0);
       assert.deepEqual(tables(database), before);
-      if (initialized) assert.equal(rows(database).length, 6);
+      if (initialized) assert.equal(rows(database).length, currentVersion);
       migrate(database);
-      assert.equal(version(database), 6);
+      assert.equal(version(database), currentVersion);
     } finally {
       database.close();
     }
@@ -268,7 +274,7 @@ test("unknown, inconsistent and altered migration state fails closed without res
     "PRAGMA user_version = 0",
     "DELETE FROM schema_migrations",
     "UPDATE schema_migrations SET checksum = 'synthetic-changed'",
-    "UPDATE schema_migrations SET version = 7 WHERE version = 2",
+    `UPDATE schema_migrations SET version = ${currentVersion + 1} WHERE version = 2`,
     "DROP TABLE schema_migrations",
     "ALTER TABLE schema_migrations ADD COLUMN unexpected TEXT",
   ]) {
@@ -293,7 +299,7 @@ test("unknown unversioned schema and unordered or duplicate migration inputs are
   try {
     for (const list of [
       [],
-      [...migrations, { version: 8, sql: "SELECT 1" }],
+      [...migrations, { version: currentVersion + 2, sql: "SELECT 1" }],
       [...migrations, migrations[0]],
     ]) {
       assert.throws(() => migrate(database, list));
@@ -354,7 +360,7 @@ test("test database roots are independent and removed", (t) => {
   assert.equal(existsSync(first.root), false);
   const database = new DatabaseSync(second.file, { readOnly: true });
   try {
-    assert.equal(version(database), 6);
+    assert.equal(version(database), currentVersion);
   } finally {
     database.close();
   }

@@ -504,7 +504,7 @@ test("nonce replay survives SQLite reopen and concurrent repositories; Owner cre
     .map((x) => x.name);
   assert.deepEqual(
     tables.filter((name) => /users|memberships|accounts/u.test(name)),
-    ["demo_memberships"],
+    ["demo_accounts", "demo_course_memberships"],
   );
   assert.deepEqual(repo.listDemoMemberships(), []);
 });

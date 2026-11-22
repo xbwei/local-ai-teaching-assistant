@@ -198,6 +198,7 @@ test("separate local credentials, roles, course scope, private History, and boun
   const list = await f.request(membershipPath, { headers: { cookie: admin } });
   assert.equal(list.status, 200);
   assert.deepEqual(await list.json(), {
+    courses: ["IA340", "IA342"],
     memberships: [
       {
         username: "demo-student",
@@ -246,8 +247,15 @@ test("separate local credentials, roles, course scope, private History, and boun
   assert.equal((await query(f, fresh))[0].id, privateRecord.id);
   assert.equal((await post(f, "/api/v1/auth/logout", {}, fresh)).status, 200);
   assert.equal((await status(f, fresh)).status, 401);
-  f.authStore.configureDemo("IA342", ...(await credentials));
+  const rotated = await Promise.all(
+    [teacherPassphrase, studentPassphrase].map(initializeOwnerCredential),
+  );
+  f.authStore.configureDemo("IA342", ...rotated);
   assert.equal((await status(f, teacher)).status, 401);
+  assert.deepEqual(f.authStore.activeDemoCourses("demo-student"), [
+    "IA340",
+    "IA342",
+  ]);
   const otherCourseStudent = sessionCookie(
     await login(f, "demo-student", studentPassphrase),
   );
@@ -256,6 +264,166 @@ test("separate local credentials, roles, course scope, private History, and boun
     JSON.stringify(f.logs),
     /synthetic fixture (student|teacher) passphrase/u,
   );
+});
+
+test("only Admin can grant another course and local course switching keeps History, roles and session lifetime scoped", async (t) => {
+  let now = canvasNow;
+  let afterMembershipRead;
+  const draftCourses = [];
+  const f = await fixture({
+    autoLogin: false,
+    history: true,
+    canvas: () => paired,
+    authNow: () => {
+      const read = afterMembershipRead;
+      afterMembershipRead = undefined;
+      read?.();
+      return now;
+    },
+    async teacherDraft(course) {
+      draftCourses.push(course);
+    },
+  });
+  t.after(() => f.close());
+  f.authStore.configureDemo("IA340", ...(await credentials));
+  const admin = sessionCookie(await login(f, "admin", testPassphrase));
+  const teacher = sessionCookie(
+    await login(f, "demo-teacher", teacherPassphrase),
+  );
+  const student = sessionCookie(
+    await login(f, "demo-student", studentPassphrase),
+  );
+  assert.ok(admin && teacher && student);
+  const coursePath = "/api/v1/auth/course";
+  const list = (cookie) => f.request(coursePath, { headers: { cookie } });
+  const change = (cookie, course) => post(f, coursePath, { course }, cookie);
+  const malformed = (cookie) =>
+    f.request(coursePath, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: "{",
+    });
+  const update = (cookie, body) => post(f, membershipPath, body, cookie);
+  const newStudentGrant = {
+    action: "grant",
+    course: "IA342",
+    username: "demo-student",
+  };
+  assert.equal((await list(admin)).status, 403);
+  assert.equal((await list("")).status, 401);
+  assert.equal((await malformed("")).status, 401);
+  assert.equal((await malformed(admin)).status, 403);
+  assert.equal((await malformed(student)).status, 400);
+  assert.equal((await change(student, "IA342")).status, 403);
+  assert.equal((await update(teacher, newStudentGrant)).status, 403);
+  assert.equal((await update(student, newStudentGrant)).status, 403);
+  assert.equal(
+    (await update(admin, { ...newStudentGrant, role: "admin" })).status,
+    400,
+  );
+  assert.equal((await update(admin, newStudentGrant)).status, 200);
+  assert.equal(
+    (
+      await post(f, coursePath, { course: "IA342" }, student, {
+        origin: "https://other.example.test",
+      })
+    ).status,
+    403,
+  );
+  assert.deepEqual(await (await list(student)).json(), {
+    courses: ["IA340", "IA342"],
+  });
+  assert.deepEqual(await (await list(teacher)).json(), { courses: ["IA340"] });
+  await saveQuestion(f, student, "Synthetic first-course question");
+  const [first] = await query(f, student);
+  assert.ok(first);
+
+  const path = "/api/v1/canvas/launch";
+  const launch = await f.request(path, {
+    method: "POST",
+    headers: {
+      origin: canvas.canvasOrigin,
+      cookie: "",
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: signed(f.config.publicOrigin + path, {
+      roles: "Learner",
+      custom_canvas_user_id: paired.demo.studentUserId,
+    }),
+  });
+  assert.equal(launch.status, 303);
+  const canvasStudent = sessionCookie(launch);
+  assert.equal((await change(canvasStudent, "IA342")).status, 403);
+
+  now += 3600000;
+  const switched = await change(student, "IA342");
+  assert.equal(switched.status, 200);
+  assert.equal(
+    switched.headers.get("set-cookie")?.match(/Max-Age=(\d+)$/u)?.[1],
+    "25200",
+  );
+  const second = sessionCookie(switched);
+  assert.ok(second && second !== student);
+  assert.equal((await status(f, student)).status, 401);
+  assert.deepEqual(await (await status(f, second)).json(), {
+    role: "student",
+    source: "local",
+    course: "IA342",
+  });
+  assert.deepEqual(await query(f, second), []);
+  await saveQuestion(f, second, "Synthetic second-course question");
+  const [secondRecord] = await query(f, second);
+  assert.ok(secondRecord && secondRecord.id !== first.id);
+  const firstAgain = sessionCookie(await change(second, "IA340"));
+  assert.ok(firstAgain);
+  assert.equal((await status(f, second)).status, 401);
+  assert.deepEqual(
+    (await query(f, firstAgain)).map(({ id }) => id),
+    [first.id],
+  );
+
+  const separate = sessionCookie(
+    await login(f, "demo-student", studentPassphrase),
+  );
+  const activeSecond = sessionCookie(await change(separate, "IA342"));
+  assert.ok(activeSecond);
+  const revoke = { username: "demo-student", course: "IA342", active: false };
+  assert.equal((await update(admin, revoke)).status, 200);
+  assert.equal((await status(f, activeSecond)).status, 401);
+  assert.equal((await change(firstAgain, "IA342")).status, 403);
+  assert.equal((await status(f, canvasStudent)).status, 200);
+  assert.equal((await status(f, teacher)).status, 200);
+  assert.equal((await update(admin, { ...revoke, active: true })).status, 200);
+  assert.equal((await status(f, activeSecond)).status, 401);
+  const restored = sessionCookie(await change(firstAgain, "IA342"));
+  assert.deepEqual(
+    (await query(f, restored)).map(({ id }) => id),
+    [secondRecord.id],
+  );
+  assert.equal(
+    (await update(admin, { ...newStudentGrant, username: "demo-teacher" }))
+      .status,
+    200,
+  );
+  const teacherOtherCourse = sessionCookie(await change(teacher, "IA342"));
+  assert.ok(teacherOtherCourse);
+  const generate = (course) =>
+    post(
+      f,
+      "/api/v1/teacher-draft",
+      { course, kind: "PAGE", topic: "Synthetic topic" },
+      teacherOtherCourse,
+    );
+  assert.equal((await generate("IA340")).status, 403);
+  assert.equal((await generate("IA342")).status, 200);
+  assert.deepEqual(draftCourses, ["IA342"]);
+  afterMembershipRead = () =>
+    f.authStore.setDemoMembershipActive("demo-student", "IA342", false);
+  const stale = await change(restored, "IA340");
+  assert.equal(stale.status, 401);
+  assert.equal(stale.headers.get("set-cookie"), null);
+  now = canvasNow + 8 * 3600000;
+  assert.equal((await status(f, teacherOtherCourse)).status, 401);
 });
 
 test("signed Canvas roles and current grants intersect without granting Learner any REST controls", async (t) => {
