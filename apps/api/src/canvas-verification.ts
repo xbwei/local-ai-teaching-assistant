@@ -1,10 +1,12 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Request, Response, RequestHandler } from "express";
 import {
   canvasPageId,
   canvasPagePlanId,
   isAssignmentVerifier,
+  readAssignmentVerificationPreview,
   readAssignmentVerificationResult,
+  type AssignmentVerificationPreview,
   type AssignmentVerificationResult,
 } from "@laita/contracts";
 import {
@@ -13,6 +15,7 @@ import {
   submissionLinkText,
   verifyGitHub,
   verifyMongoDB,
+  type MongoExpectation,
 } from "@laita/providers";
 import { createSecretHandleForProvider } from "@laita/runtime";
 import {
@@ -34,15 +37,17 @@ interface Access {
   launchKeys: string[];
 }
 
-export function createCanvasVerificationHandler(
+type Phase = "scope" | "preview" | "verify";
+
+export function createCanvasVerificationHandlers(
   options: CanvasVerificationOptions | undefined,
   authorize: (req: Request, res: Response) => (() => Access) | undefined,
   enter: () => (() => void) | undefined,
   now: () => number,
   canvasFetcher?: typeof fetch,
-): RequestHandler {
+): Record<Phase, RequestHandler> {
   const scopeKey = randomBytes(32);
-  return async (req, res) => {
+  async function handle(phase: Phase, req: Request, res: Response) {
     res.setHeader("Cache-Control", "no-store");
     const access = authorize(req, res);
     if (!access) return;
@@ -81,28 +86,30 @@ export function createCanvasVerificationHandler(
           assignment: VerifierAssignment;
           assignmentId: string;
           studentId: string;
+          version?: string;
         }
       | undefined;
-    if (req.method !== "GET") {
+    if (phase !== "scope") {
       if (
         !req.is("json") ||
         !req.body ||
         typeof req.body !== "object" ||
         Object.keys(req.body).sort().join(",") !==
-          "assignmentId,provider,scope,studentId"
+          (phase === "preview"
+            ? "assignmentId,provider,scope,studentId"
+            : "assignmentId,provider,scope,studentId,version")
       ) {
         res.status(400).json({ code: "INVALID_REQUEST" });
         return;
       }
-      const { assignmentId, provider, scope, studentId } = req.body as Record<
-        string,
-        unknown
-      >;
+      const { assignmentId, provider, scope, studentId, version } =
+        req.body as Record<string, unknown>;
       if (
         !canvasPageId(assignmentId) ||
         !canvasPageId(studentId) ||
         !isAssignmentVerifier(provider) ||
-        !canvasPagePlanId(scope)
+        !canvasPagePlanId(scope) ||
+        (phase === "verify" && !canvasPagePlanId(version))
       ) {
         res.status(400).json({ code: "INVALID_REQUEST" });
         return;
@@ -122,7 +129,12 @@ export function createCanvasVerificationHandler(
         res.status(403).json({ code: "FORBIDDEN" });
         return;
       }
-      selection = { assignment, assignmentId, studentId };
+      selection = {
+        assignment,
+        assignmentId,
+        studentId,
+        ...(canvasPagePlanId(version) && { version }),
+      };
     }
     const leave = enter();
     if (!leave) {
@@ -157,7 +169,9 @@ export function createCanvasVerificationHandler(
         operation,
       );
     }
-    function send(value: AssignmentVerificationResult) {
+    function send(
+      value: AssignmentVerificationResult | AssignmentVerificationPreview,
+    ) {
       if (res.destroyed) return;
       try {
         current();
@@ -165,7 +179,31 @@ export function createCanvasVerificationHandler(
         res.status(409).json({ code: "SCOPE_CHANGED" });
         return;
       }
-      res.json(readAssignmentVerificationResult(value));
+      res.json(
+        phase === "preview"
+          ? readAssignmentVerificationPreview(value)
+          : readAssignmentVerificationResult(value),
+      );
+    }
+    function checkedMongoSource(raw: string, expectation: MongoExpectation) {
+      const source = mongoSubmission(raw, expectation);
+      const { username, password } = JSON.parse(source.credential) as {
+        username: string;
+        password: string;
+      };
+      const { target, configuration } = current();
+      if (
+        [
+          ...target.launchKeys,
+          target.canvasToken,
+          configuration.githubToken,
+        ].some(
+          (secret) =>
+            secret && (username.includes(secret) || password.includes(secret)),
+        )
+      )
+        throw new Error("SOURCE_UNAVAILABLE");
+      return source;
     }
     const failure: {
       reason: Extract<
@@ -194,9 +232,47 @@ export function createCanvasVerificationHandler(
       const { assignment, assignmentId, studentId } = selection;
       const before = await client.verificationSource(assignmentId, studentId);
       if (!before) {
-        send({ state: "UNKNOWN", reason: "NOT_SUBMITTED" });
+        send(
+          phase === "preview"
+            ? { state: "NOT_APPLICABLE" }
+            : { state: "UNKNOWN", reason: "ATTEMPT_CHANGED" },
+        );
         return;
       }
+      // Bind the preview to its signed session, approved selection and exact
+      // source without exposing an unkeyed digest of the private submission.
+      const version = createHmac("sha256", scopeKey)
+        .update(
+          JSON.stringify([
+            "verification-preview.v1",
+            initial.scope,
+            assignment.provider,
+            assignmentId,
+            studentId,
+            before.digest,
+          ]),
+        )
+        .digest("hex");
+      if (
+        phase === "verify" &&
+        (!selection.version ||
+          !timingSafeEqual(
+            Buffer.from(selection.version, "hex"),
+            Buffer.from(version, "hex"),
+          ))
+      ) {
+        send({ state: "UNKNOWN", reason: "ATTEMPT_CHANGED" });
+        return;
+      }
+      const ready = () => {
+        signal.throwIfAborted();
+        send({
+          state: "READY",
+          version,
+          attempt: before.attempt,
+          submittedAt: before.submittedAt,
+        });
+      };
       const recheck = async (operation: AbortSignal) => {
         const observer = createClient(operation);
         const latest = await observer.verificationSource(
@@ -231,6 +307,10 @@ export function createCanvasVerificationHandler(
           (href !== undefined && href !== text.trim())
         )
           throw new Error("SOURCE_UNAVAILABLE");
+        if (phase === "preview") {
+          ready();
+          return;
+        }
         const tokenReference = {
           kind: "opaque",
           id: "canvas-verifier",
@@ -275,6 +355,11 @@ export function createCanvasVerificationHandler(
         const expectation = assignment.students.find(
           (e) => e.studentId === studentId,
         )!;
+        if (phase === "preview") {
+          checkedMongoSource(before.source, expectation);
+          ready();
+          return;
+        }
         const evidence = await verifyMongoDB(
           () => {
             current();
@@ -283,23 +368,7 @@ export function createCanvasVerificationHandler(
               revision: initial.scope,
               async source(operation: AbortSignal) {
                 const latest = await recheck(operation);
-                const source = mongoSubmission(latest.source, expectation);
-                const { username, password } = JSON.parse(
-                  source.credential,
-                ) as { username: string; password: string };
-                const { target, configuration } = current();
-                if (
-                  [
-                    ...target.launchKeys,
-                    target.canvasToken,
-                    configuration.githubToken,
-                  ].some(
-                    (secret) =>
-                      secret &&
-                      (username.includes(secret) || password.includes(secret)),
-                  )
-                )
-                  throw new Error("SOURCE_UNAVAILABLE");
+                const source = checkedMongoSource(latest.source, expectation);
                 failure.reason = "PROVIDER_UNAVAILABLE";
                 return source;
               },
@@ -353,6 +422,10 @@ export function createCanvasVerificationHandler(
           res.status(503).json({ code: "SERVICE_UNAVAILABLE" });
         return;
       }
+      if (phase === "preview") {
+        send({ state: "BLOCKED" });
+        return;
+      }
       // Errors, provider bodies, and authorization inputs never become response text.
       send({
         state: "UNKNOWN",
@@ -365,5 +438,10 @@ export function createCanvasVerificationHandler(
       res.off("close", disconnect);
       leave();
     }
+  }
+  return {
+    scope: (req, res) => handle("scope", req, res),
+    preview: (req, res) => handle("preview", req, res),
+    verify: (req, res) => handle("verify", req, res),
   };
 }

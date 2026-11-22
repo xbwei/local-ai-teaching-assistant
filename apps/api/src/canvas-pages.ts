@@ -39,7 +39,7 @@ import {
 } from "./canvas.ts";
 import type { OwnerSessions } from "./owner-session.ts";
 import {
-  createCanvasVerificationHandler,
+  createCanvasVerificationHandlers,
   type CanvasVerificationOptions,
 } from "./canvas-verification.ts";
 
@@ -806,7 +806,7 @@ export function createCanvasAuthoringHandlers(
     }
   };
 
-  const verification = createCanvasVerificationHandler(
+  const verification = createCanvasVerificationHandlers(
     options.verification,
     (req, res) => {
       const actor = authorizeTeacher(req, res);

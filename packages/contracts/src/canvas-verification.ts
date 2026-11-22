@@ -16,6 +16,32 @@ export interface AssignmentVerificationScope {
   }[];
 }
 
+export type AssignmentVerificationPreview =
+  | { state: "NOT_APPLICABLE" | "BLOCKED" }
+  | { state: "READY"; version: string; attempt: number; submittedAt: string };
+
+export function readAssignmentVerificationPreview(
+  value: unknown,
+): AssignmentVerificationPreview {
+  const preview = value as AssignmentVerificationPreview;
+  if (preview?.state === "BLOCKED" || preview?.state === "NOT_APPLICABLE")
+    return { state: preview.state };
+  if (
+    preview?.state === "READY" &&
+    canvasPagePlanId(preview.version) &&
+    Number.isSafeInteger(preview.attempt) &&
+    preview.attempt > 0 &&
+    canvasFeedbackSubmittedAt(preview.submittedAt)
+  )
+    return {
+      state: preview.state,
+      version: preview.version,
+      attempt: preview.attempt,
+      submittedAt: preview.submittedAt,
+    };
+  throw new Error("INVALID_PREVIEW");
+}
+
 export const verificationOutcomes = [
   "PRESENT",
   "ABSENT",
