@@ -280,6 +280,7 @@ try {
     await signIn("student", true);
     assert.match(await page.locator(".owner-role").innerText(), /Test Student sample/);
     assert.equal(await page.getByLabel("Ask about").isVisible(), false);
+    assert.equal(await page.getByText("Browse approved Canvas resources", { exact: true }).isVisible(), false);
     if (!mobile) {
       await page.locator("#question:not([disabled])").fill("How can I compare two visual explanations?");
       await page.locator("#composer").getByRole("button", { name: "Send", exact: true }).click();
@@ -397,6 +398,24 @@ try {
     page.on("request", (request) => requests.push(request.url()));
     const writes = syntheticCanvas.writes.length;
     await page.goto(f.origin);
+    const inventory = page.locator("#teacher-canvas-inventory");
+    await inventory.getByText("Browse approved Canvas resources", { exact: true }).click();
+    const inventoryKind = inventory.getByLabel("Resource type");
+    const loadInventory = inventory.getByRole("button", { name: "Load from Canvas" });
+    const inventoryRows = inventory.getByRole("list", { name: "Approved Canvas resources" });
+    const browseCalls = syntheticCanvas.calls.length;
+    await inventoryKind.selectOption("pages");
+    await loadInventory.click();
+    await inventoryRows.getByText("Maps and examples · ID 9002 · Published", { exact: true }).waitFor();
+    await inventoryKind.selectOption("modules");
+    assert.equal(await inventoryRows.getByRole("listitem").count(), 0);
+    await loadInventory.click();
+    await inventoryRows.getByText("Studio module · ID 61 · Unpublished", { exact: true }).waitFor();
+    assert.equal(syntheticCanvas.writes.length, writes);
+    assert.ok(syntheticCanvas.calls.slice(browseCalls).every(([method]) => method === "GET"));
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    results.push({ name: mobile ? "canvas-inventory-phone" : "canvas-inventory-desktop", width, height, status: "PASS", requests: requests.length });
+    await inventory.getByText("Browse approved Canvas resources", { exact: true }).click();
     await page.getByText("Create a Canvas Page", { exact: true }).click();
     assert.equal(await page.getByText("Local teaching drafts", { exact: true }).isVisible(), false);
     const title = page.getByLabel("Page title");

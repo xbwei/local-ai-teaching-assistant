@@ -5,6 +5,10 @@ import {
   canvasPageId,
   canvasPagePlanId,
   canvasPageTitle,
+  canvasInventoryKinds,
+  isCanvasInventoryKind,
+  type CanvasInventory,
+  type CanvasInventoryKind,
   canvasFeedbackSubmittedAt,
   readCanvasAssignmentDraft,
   readCanvasAssignmentScope,
@@ -254,6 +258,55 @@ export class InputApi {
     return readCanvasAssignmentScope(
       await this.request("/api/v1/canvas/assignments", "GET"),
     );
+  }
+
+  async canvasInventoryOptions() {
+    const value = responseRecord(
+      await this.request("/api/v1/canvas/inventory", "GET"),
+    );
+    const kinds = value?.kinds;
+    if (
+      !Array.isArray(kinds) ||
+      kinds.length > canvasInventoryKinds.length ||
+      !kinds.every(isCanvasInventoryKind) ||
+      new Set(kinds).size !== kinds.length
+    )
+      throw new ClientError();
+    return kinds;
+  }
+
+  async canvasInventory(
+    kind: CanvasInventoryKind,
+    signal: AbortSignal,
+  ): Promise<CanvasInventory> {
+    const value = responseRecord(
+      await this.request(
+        `/api/v1/canvas/inventory/${encodeURIComponent(kind)}`,
+        "GET",
+        undefined,
+        signal,
+      ),
+    );
+    const target = readCanvasTarget(value?.target);
+    if (
+      !Array.isArray(value?.entries) ||
+      value.entries.length < 1 ||
+      value.entries.length > 12
+    )
+      throw new ClientError();
+    const entries = value.entries.map((entry: unknown) => {
+      const item = responseRecord(entry);
+      if (
+        !canvasPageId(item?.id) ||
+        !canvasPageTitle(item?.title) ||
+        typeof item?.published !== "boolean"
+      )
+        throw new ClientError();
+      return { id: item.id, title: item.title, published: item.published };
+    });
+    if (new Set(entries.map((entry) => entry.id)).size !== entries.length)
+      throw new ClientError();
+    return { target, entries };
   }
 
   async previewCanvasAssignment(

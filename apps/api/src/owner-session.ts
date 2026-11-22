@@ -521,6 +521,7 @@ export function createOwnerSessions(options: {
           feedback,
           chat,
           chatTools,
+          inventory,
           verification,
         } = authoring;
         const parser = createCanvasPageParser();
@@ -551,6 +552,10 @@ export function createOwnerSessions(options: {
         app.post(chatPath, createCanvasPageParser(2048), chat);
         app.get(chatPath + "/tools", chatTools);
         app.post(chatPath + "/tools", createCanvasPageParser(2048), chatTools);
+        const inventoryPath = "/api/v1/canvas/inventory";
+        app.use(inventoryPath, entryLimit);
+        app.get(inventoryPath, inventory);
+        app.get(inventoryPath + "/:kind", inventory);
         const verificationPath = "/api/v1/canvas/verification";
         app.use(verificationPath, entryLimit);
         app.get(verificationPath, verification);

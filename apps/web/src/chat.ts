@@ -68,6 +68,11 @@ if (
   document.body.dataset.ownerRole === "teacher" &&
   document.body.dataset.ownerSource === "canvas"
 ) {
+  void import("./client/teacher-canvas-inventory.ts")
+    .then(({ mountCanvasInventory }) => mountCanvasInventory(api))
+    .catch(() => {
+      /* Unavailable inventory leaves the other Teacher tools usable. */
+    });
   void import("./client/teacher-canvas-pages.ts")
     .then(({ mountTeacherCanvasPages }) => mountTeacherCanvasPages(api))
     .catch(() => {

@@ -122,6 +122,21 @@
           ></textarea>
         </label>
       </details>
+      <details id="teacher-canvas-inventory" class="teacher-tool" hidden>
+        <summary>Browse approved Canvas resources</summary>
+        <form autocomplete="off">
+          <label class="teacher-field" for="canvas-inventory-kind">
+            Resource type
+            <select id="canvas-inventory-kind"></select>
+          </label>
+          <div>
+            <button type="submit">Load from Canvas</button>
+            <button type="button" hidden>Cancel request</button>
+          </div>
+        </form>
+        <p role="status" dir="auto"></p>
+        <ul aria-label="Approved Canvas resources"></ul>
+      </details>
       <details id="teacher-canvas-pages" class="teacher-tool" hidden>
         <summary>Create a Canvas Page</summary>
         <p id="canvas-page-status" role="status">Checking Canvas Page setup…</p>
