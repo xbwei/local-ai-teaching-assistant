@@ -38,3 +38,9 @@ These exact media derivatives have Owner authorization. That permission does not
 The [install guide](assets/screenshots/laita-phone-entry.png) and [phone composer](assets/screenshots/laita-phone-chat.png) show the built UI at 390 × 844 in Chromium. The local browser fixture uses synthetic responses and captures the app without browser chrome. The PNGs contain no participant records, credentials, or operator endpoints. Their metadata was stripped. Physical iPhone installation remains unverified.
 
 The 180, 192 and 512 pixel app icons in `apps/web/public/assets/pwa/` are raster renders of the repository's LAITA wordmark.
+
+## Six supplied DEV GIFs — v0.3.0 release review pending
+
+The Owner supplied six animated walkthroughs (Admin, Student, Teacher Chat, Teacher Generate, Teacher Verify and mobile/PWA) in a shared Drive collection. They are **Private DEV** recordings, not exact captures of the current Public v0.3.0 candidate. A prior audit on the older Public baseline found substantive UI/scope differences. Although subsequent #95 code PRs improved parity, merge success alone does **not** certify each recorded frame against the current Public implementation, public privacy rules or permitted media redistribution. No new DEV GIF was silently imported here.
+
+Before embedding any in README: examine the full sequence for private identifiers, students, Canvas origins/IDs/credentials, hidden data and accurate current Public role/capability labels; record source/build provenance. If mismatched, label as a separate DEV demonstration or produce an exact-Public synthetic capture. Do not convert a synthetic scene into a claim of real live Canvas or physical phone acceptance. Existing v0.2 GIF and synthetic Chromium phone images remain explicitly version-labeled.

@@ -4,7 +4,7 @@ Use this optional tool in an authorized practice course with non-sensitive submi
 
 ## Configure one course
 
-Follow the [signed Teacher launch and REST setup](CANVAS.md#5-set-up-optional-canvas-rest-authoring). The REST token must identify the signed Teacher, with permission to read the course, active student enrollment, assignment and individual submissions. Use active **StudentEnrollment** IDs in the configured course. The Test Student scope used by the other Canvas tools remains separate.
+Follow the [signed Teacher launch and REST setup](CANVAS.md#5-set-up-optional-canvas-rest-authoring). The REST token must identify the signed Teacher, with permission to read the course, active student enrollment, assignment and individual submissions. Use numeric **Canvas User IDs** in `students[].id`, **not** StudentEnrollment record IDs. LAITA separately verifies an active StudentEnrollment for each configured Canvas user in the same course. The Test Student scope used by the other Canvas tools remains separate.
 
 Create a private JSON file with the same owner-only directory/file permissions as the Canvas REST file. Export only its path as `LAITA_CANVAS_VERIFICATION_FILE` in the foreground API environment. The API reads the file before use and rejects unknown fields or ambiguous scope. Enter your own values inside the protected file. Fill the example's GitHub token placeholder only in that file.
 
@@ -70,7 +70,7 @@ Use an Atlas replica set hostname under `mongodb.net` and simple database, colle
 
 ## Run and read the results
 
-Open **Verify Canvas submissions** in the signed Teacher view, select a configured provider and assignment, and choose **Verify configured students**. The browser checks one student at a time. Each row is bounded to 40 seconds and the queue has a 15-minute limit. It shows one row per configured student, including unknown and unchecked results. **Cancel verification** stops the current request and marks the remaining rows cancelled. A browser reload clears the displayed results. The application stores no results or credentials from a submission.
+Open **Verify Canvas submissions** in the signed Teacher view and choose a configured provider/assignment. **Preview the current selected or batch submissions first**: attempt, submitted-at time and readiness are bound to this preview. Confirm the eligible rows before verification. A changed submission content/version/attempt invalidates the preview and requires another fresh preview; the verifier must not use the earlier stale selection. The browser checks one student at a time. Each row is bounded to 40 seconds and the queue has a 15-minute limit. It shows one row per configured student, including unknown and unchecked results. **Cancel verification** stops the current request and marks the remaining rows cancelled. A browser reload clears the displayed results. The application stores no results or credentials from a submission.
 
 **Observed** describes the recorded checks for the displayed attempt. A file or collection can be absent in an observed result. **Partial** indicates a bounded sample or an incomplete provider response. **Unknown** includes missing submissions, unavailable data and changed attempts. Review the actual authorized source where a result is partial or unknown. A changed or expired session, scope error or rate limit stops the queue and marks unresolved rows unchecked. Live provider acceptance is separate from synthetic testing.
 

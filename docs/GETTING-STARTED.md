@@ -1,6 +1,6 @@
 # Getting started — Local first
 
-Use a reviewed revision or an approved release of this repository. Run the commands from its checkout root. No private development checkout or OpenAI credential is required. [Product homepage](../README.md).
+This guide describes the Public v0.3.0 **code candidate**; a release tag still requires Owner approval. Run the commands from the checkout root. No private development checkout or OpenAI credential is required. [Product homepage](../README.md).
 
 ## Prerequisites
 
@@ -51,14 +51,19 @@ Public course refresh is optional for general chat. It needs read-only access to
 
 For standalone course Chat, name the supported course and the specific lab or numbered week. For example, ask “What must I submit for IA342’s fifth assignment?” or “What do we cover in IA340 Week 5?” Verify the cited source. Use a week number for a question about “this week,” and ask about one assignment at a time.
 
-Before first start, initialize the one Owner credential for local Admin / Teacher / Student. Stop LAITA for later credential maintenance. Input is hidden; there is no usable default password:
+## Initialize accounts and course access
 
-```bash
+With LAITA stopped, initialize **three separate credentials**. Admin uses the Owner passphrase, while the provisioned Demo Teacher and Demo Student require different passphrases. All prompts are interactive and hidden; no usable default credentials or `.env` password fallback exists.
+
+~~~bash
 export APP_CONFIG_JSON="$(cat "$HOME/.local/share/laita/config/application.json")"
 npm run owner:setup
-```
+npm run demo:setup -- IA340
+~~~
 
-This writes only salted scrypt material to the existing runtime SQLite. Keep the passphrase private; all three roles belong to you. See [roles, credential recovery and optional Canvas setup](CANVAS.md).
+The second command configures the fixed `demo-teacher` and `demo-student` practice identities and an initial authorized course. Use IA342 instead only if that is the intended initial supported course. In Admin, grant or revoke the other supported course; changing a course selection in the browser is not an enrollment or authorization. Avoid casually rerunning setup because credentials can change. The three roles are not real enrolled student accounts.
+
+Sign in as `admin`, `demo-teacher` or `demo-student` with the **corresponding** passphrase. The Admin interface can rename, enable/disable and revoke sessions for the two practice accounts and adjust their supported course grants. Teacher/Student may switch only among active granted courses. Signed Canvas Instructor/Learner launch is an *optional, separate* mapped entry, and LTI credentials do not authorize REST writes. [Canvas and roles](CANVAS.md).
 
 In one terminal, start the API, which also serves the built UI:
 
@@ -72,9 +77,9 @@ In another terminal, from the same checkout, start the loopback HTTPS edge:
 caddy run --config ops/reference/Caddyfile --adapter caddyfile
 ```
 
-Open **https://localhost:3443**, choose Teacher (or your local Admin/Student role), and sign in with your initialized Owner passphrase. Trust only the local CA you installed yourself; do not bypass unexpected certificate errors. The backend port 3100 is loopback-only and is not the browser entry. The HTTPS edge requires the exact Host and fixes security forwarding headers. It preserves each page’s random, non-secret transient client reference, so opening or resetting another browser/tab does not reset the first. Authenticated pages share the global one-operation limit; History is scoped by role and, for Canvas, launch context; overlapping generation returns BUSY without a queue. This reference is not a login or authority credential.
+Open **https://localhost:3443** and sign in with the separate credential for your selected Admin, Demo Teacher or Demo Student account. Trust only the local CA you installed yourself; do not bypass unexpected certificate errors. The backend port 3100 is loopback-only and is not the browser entry. The HTTPS edge requires the exact Host and fixes security forwarding headers. It preserves each page’s random, non-secret transient client reference, so opening or resetting another browser/tab does not reset the first. Authenticated pages share the global one-operation limit; History is scoped by role and, for Canvas, launch context; overlapping generation returns BUSY without a queue. This reference is not a login or authority credential.
 
-Try a general question, then a follow-up. For Teacher drafting and optional Test Student History, follow [standalone Teacher tools](TEACHING-WORKFLOW.md). Open `/history` from the UI. Stop foreground processes with Ctrl-C. Unset `APP_CONFIG_JSON` selects a fail-closed developer scaffold rather than this full operator profile; `.env` is not loaded automatically.
+Try a general question, then a follow-up. For Teacher drafting and authorized, course-scoped Demo Student History, follow [Teacher tools](TEACHING-WORKFLOW.md). Open `/history` from the UI. Stop foreground processes with Ctrl-C. Unset `APP_CONFIG_JSON` selects a fail-closed developer scaffold rather than this full operator profile; `.env` is not loaded automatically.
 
 ### iPhone home-screen entry
 
@@ -99,5 +104,7 @@ Local-only configuration sets `features.openai` and `features.compare` to `false
 | BUSY | Wait for/cancel the admitted operation; no queue or background worker is created. |
 | Invalid configuration | Check complete JSON and v4 provenance; empty/malformed `APP_CONFIG_JSON` does not fall back to defaults. |
 | History recording incomplete | Stop admissions and preserve the local runtime; check storage permissions/capacity. Do not treat partial capture as success. |
+| Course access denied | Check the correct Demo account, enabled status, selected course and explicit Admin grant; revoked sessions must authenticate again. |
+| Canvas Group or Module resources not visible | Confirm signed Teacher launch and separate REST access. Refresh the current-course catalog. Dynamic Module mode uses one-time `organizeSavedResources: true`, not manually edited resource IDs. |
 | Speech unavailable / long answer silent | Check validated profile/voices, mute/autoplay status and documented speech bounds. Complete text remains available. |
 | Restart budget exhausted | Fix the cause, then explicitly restart using `service.sh`; do not blindly loop retries. |

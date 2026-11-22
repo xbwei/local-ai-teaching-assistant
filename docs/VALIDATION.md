@@ -1,5 +1,14 @@
 # Validation and limitations
 
+## Public v0.3.0 source candidate evidence
+
+At code candidate commit `0a888602c9ea237ca0156948121fee07edaad479`, the GitHub **post-merge 9/9 check runs** completed successfully. The #114 engineering evidence reports **736 Node tests**, independent locked clean build, reference HTTPS, synthetic v0.2.0 and prior-main upgrades/recovery, and **24 synthetic Chromium scenarios** including dynamic current-course saved-resource selection without post-create JSON edits. #113/#114 passed exact-head CRITICAL Antigravity, hosted Gemini and DOT independent diff reviews. Tests are source/synthetic evidence, not live-provider or physical-device results.
+
+**NOT_RUN for this Public source SHA:** live Canvas Instructor/Learner LTI and REST, physical iPhone/Android/PWA Safari, real MongoDB Atlas/GitHub practice targets, real local speech/model quality and educational outcomes. Older DEV Sandbox Test Student recordings are evidence for that DEV setup only, not proof of this Public SHA's live interoperability.
+
+**Approved v0.3.0 boundaries:** Summary-failure persistent support numbers are deferred; DEV's broader Admin delegation/role variation and audited per-person History access are not claimed in Public. New Canvas Pages/Assignments/Modules remain Unpublished; publishing is done in Canvas. The specifically disclosed overlapping-assignment-title lookup limitation is accepted for this version only with DEV-first repair planned; no broader access/privacy flaw is accepted. See [candidate release notes](RELEASE-NOTES-v0.3.0.md).
+
+
 LAITA Public V1 is covered by deterministic engineering validation using synthetic fixtures. Use Node 24.16.0/npm 11.13.0, Caddy 2.11.6 and Python 3.12.14/uv 0.12.23 for these maintainer/CI gates. The source build (`npm ci --ignore-scripts && npm run build`) needs no Python, uv, Ruff or Codex. `.uv-version` pins the uv CLI independently of Python packaging; `python/pyproject.toml` retains `package = false` and the Ruff development group without an unused build backend. `npm run validate` installs locked dependencies and runs build, typecheck, import boundaries, formatting, Node/API/provider/history/speech/grounding/ops tests, process/workspace smoke, Python architecture fixtures, npm/uv audits, lockfile/runtime-cleanliness negatives and policy-contract/schema checks.
 
 The compatibility gate uses Node 24.19.0/npm 11.17.0 and runs runtime/persistence/API/smoke validation. CI also checks actionlint, Git-history secrets using offline TruffleHog and Semgrep CE JavaScript/Python rules. These scans do not use paid AI/security services. The public repository has CodeQL default setup, hosted secret scanning and push protection enabled. Automated checks do not establish real model quality, speech/hardware acceptance or operator deployment readiness.

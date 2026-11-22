@@ -1,180 +1,95 @@
-# Optional Canvas course App
+# Optional Canvas course App — Public v0.3.0 candidate
 
-This early-adopter reference connects **one Owner, one Canvas course and one Instructor identity** to the existing local Teacher role. Admin, Teacher and Student are three views operated by that same Owner, not three real people. The signed launch enters the same local API, Chat, course grounding, SQLite and History. A separate optional REST configuration enables unpublished Page, Assignment and Module creation, approved Assignment renaming, and adding approved Pages or Assignments to unpublished Modules. The integration does not provision Canvas accounts or memberships.
+Canvas is **optional**. Standalone Local Chat, source grounding and History do not require an LMS. The candidate supports **course-level LTI 1.1 / Paste XML** signed Instructor and Learner entry, mapped to currently authorized practice roles. A **separate Canvas REST token** is required for the Teacher to read/write limited Canvas resources. The LTI consumer key/shared secret cannot read/write assignments and must not be mistaken for a REST token.
+
+This is one operator's self-managed installation with separate Admin and fixed practice Teacher/Student credentials, **not** a real multi-user school service. Only configure an authorized test course with non-sensitive content; school policies may disallow course-level External Apps or LTI 1.1. No real student records, live institutional configuration, universal Canvas compatibility or physical-device success is claimed.
 
 ## 1. Install and initialize standalone access
 
-Complete [Getting started](GETTING-STARTED.md), including the pinned Node/npm installation, build, operator configuration, models and loopback HTTPS edge. No Canvas configuration, API token, OpenAI key or cloud speech service is needed for standalone use. Credential/configuration checks require macOS/Linux POSIX ownership; Windows is unsupported and fails closed.
+Complete [Getting Started](GETTING-STARTED.md#initialize-accounts-and-course-access). With LAITA stopped, run `npm run owner:setup` for Admin, then `npm run demo:setup -- IA340` (or `IA342`) for separate Demo Teacher and Demo Student passphrases and one initial course. Admin may subsequently grant/revoke supported courses. Keep the runtime and config private, outside Git. You can use LAITA locally even if Canvas is never configured.
 
-Stop LAITA before credential maintenance. In its checkout, load the same operator configuration/runtime that you will use to start the API:
+The reference HTTPS Caddyfile is loopback-only. The Canvas browser must reach your own trusted LAITA HTTPS origin. A separately reachable/protected remote origin requires its own reviewed network setup and is not created by this guide. Never expose the API's loopback port directly.
 
-```bash
+## 2. Prepare an authorized Canvas course App
+
+Confirm that your Canvas permissions allow **Settings → Apps → View App Configurations → + App → Paste XML** (labels vary). The integration currently uses **LTI 1.1 signed launch**, not LTI 1.3 or school-wide registration. Identify your allowed Canvas HTTPS origin, numeric course and Instructor user IDs. Generate a unique consumer key and shared secret; keep them in your own password manager for the Canvas App and interactive setup.
+
+A Canvas **Student View Test Student** can be used in certain sandbox submission exercises, but is not proof that an External App can be launched as a signed Learner from Student View. If your course can legitimately issue a Learner launch, validate that entry separately. A Learner never receives Teacher/REST/Admin authority simply by launching the App.
+
+## 3. Save the protected LTI configuration
+
+Using the **same** operator configuration and stopped instance, run:
+
+~~~bash
 export APP_CONFIG_JSON="$(cat "$HOME/.local/share/laita/config/application.json")"
-npm run owner:setup
-```
-
-Type and repeat one Owner passphrase in the Terminal's hidden prompts. Use at least 15 characters (maximum 1024 UTF-8 bytes), preferably a unique password-manager-generated passphrase. Input is not echoed, accepted from redirected stdin, passed as a command argument or read from a password environment variable. There is no built-in usable password. SQLite stores only a random 128-bit salt, a 256-bit scrypt verifier and a random credential revision. The fixed scrypt parameters are N=131072, r=8, p=1; the application permits one derivation at a time and 20 login attempts per minute. A pinned Express rate-limit middleware additionally bounds the authentication entry and control routes to a shared 600 requests/minute using one constant Owner key, without collecting IP/person identities.
-
-Start LAITA and its HTTPS edge as documented. Open `https://localhost:3443`, choose Admin, Teacher or Student and enter the same Owner passphrase. Sign out to change role. Simultaneous roles require separate browser profiles: a cookie is shared by tabs in one profile. Never give this passphrase to students or other instructors. Re-running `owner:setup` replaces the credential and invalidates existing role sessions without deleting History.
-
-| Entry              | Authority and History                                                                                                                 |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Standalone Admin   | Local administrative control APIs and all Owner History, including pre-v0.2 records                                                   |
-| Standalone Teacher | Chat and Teacher History, including this Owner's Canvas contexts; cannot use Admin control APIs                                       |
-| Standalone Student | Chat and Student History/feedback; cannot review records as Owner or use Admin control APIs                                           |
-| Canvas Teacher     | Same Teacher identity, with History restricted to the configured Canvas origin/course/identity context; cannot use Admin control APIs |
-
-Sessions use an opaque, random, Secure/HttpOnly/SameSite=Lax cookie with an eight-hour maximum lifetime. No passphrase or bearer is saved in browser storage. Server-side browser sessions are transient; API restart signs them out. Conversation references are bound to both the authenticated session and each page's random client reference. Copying a conversation reference into a different role/session does not transfer access. The existing one-operation BUSY/no-queue limit remains global.
-
-## 2. Prepare the optional Canvas connection
-
-Your Canvas permissions must allow **course-level external Apps installed with Paste XML and a consumer key/shared secret**. Ask your Canvas administrator about availability if this UI is disabled. This implementation does not support institution-wide registration or LTI 1.3.
-
-The Owner's browser must reach both Canvas and the configured LAITA HTTPS origin. For an instructor working on the same Mac, the existing trusted `https://localhost:3443` entry can be used; the browser posts the launch form to localhost. Canvas servers do not need to call the LAITA API. Browser private-network/loopback policies or institution policy may block this. Confirm on your own authorized setup. The supplied Caddyfile stays loopback-only. A remote browser requires a separately configured, independently protected Owner entry with the exact public origin and fixed forwarding headers; it is outside this reference setup. Do not open the loopback API or expose this reference as a hosted service.
-
-Identify your own numeric Canvas **course ID** and **user ID** using your authorized Canvas UI/course profile or your Canvas administrator. The LTI `context_id` and opaque `user_id` are not substitutes for these numeric Canvas values. The signed launch by itself makes no Canvas REST calls. The integration does not ingest rosters, grades, submissions or Canvas course material for Chat. Generic examples are `https://canvas.example.test`, course `42001`, user `73001`; these are synthetic and will not connect to a service.
-
-Generate a new random consumer key (at least 16 characters) and shared secret (at least 32 random characters, ideally 256 bits) in your password manager. Store them privately there for transfer into the Canvas App settings and the next hidden Terminal prompts. These are launch credentials, not a Canvas password or Canvas REST API token. Do not use institutional login credentials. Do not put secrets into shell commands/history, Git, issue reports, screenshots, application JSON or browser local/session storage.
-
-## 3. Save one private local configuration
-
-Use the same Terminal/operator configuration as above:
-
-```bash
-umask 077
-mkdir -p "$HOME/.local/share/laita/config"
-chmod 700 "$HOME/.local/share/laita/config"
 export LAITA_CANVAS_CONFIG_FILE="$HOME/.local/share/laita/config/canvas.json"
-npm run canvas:setup
-```
+npm run canvas:setup -- --demo-course IA340
+~~~
 
-The hidden prompts request Canvas HTTPS origin (origin only, no trailing slash/path), numeric course ID, numeric Owner user ID, consumer key and shared secret. The command creates a new 0600 file outside Git in a canonical owner-only directory; it refuses to overwrite an existing file. All ancestors must be trusted. No credential values are printed. The shared secret must be available for HMAC verification, so it resides in this protected local file, separate from SQLite, rather than as a password hash. Keep your account/disk protected; no new encrypted vault is claimed.
+The hidden prompts ask for the Canvas origin, numeric IDs and launch credentials, and create a protected `0600` file outside Git. Match the same supported practice course used in the identity setup. Do not enter actual secrets in shell arguments, chat messages, screenshots or GitHub Issues. This setup refuses silent overwrite; use documented rotation/disable flows rather than editing security fields casually.
 
-Start the existing API with **both** `APP_CONFIG_JSON` and `LAITA_CANVAS_CONFIG_FILE` exported in its process environment. The optional file is revalidated on launch and Canvas-session access. Absent, unreadable, non-private, malformed or disabled configuration closes Canvas access while standalone remains usable. Do not place Canvas secrets in `APP_CONFIG_JSON`.
-
-The existing macOS LaunchAgent does not automatically inherit shell exports or configure Canvas. The Canvas instructions use the foreground API. Automated Canvas environment injection into that lifecycle is not included; do not assume shell exports configure a running service. Standalone credential access works with the existing lifecycle and its configured runtime.
+Start your foreground API with `APP_CONFIG_JSON` and `LAITA_CANVAS_CONFIG_FILE` exported. Shell exports do not automatically configure an already-running LaunchAgent. A missing/invalid/inaccessible protected file disables optional Canvas launch without disabling standalone Local Chat.
 
 ## 4. Install the course App with Paste XML
 
-Generate the configuration XML from the exact `access.publicOrigin` in your loaded application configuration:
+Generate XML from the configured LAITA public HTTPS origin:
 
-```bash
-# --silent keeps npm's banner out of the XML. This output contains no credentials.
-npm run --silent canvas:xml > /tmp/laita-course-app.xml
-```
+~~~bash
+npm run --silent canvas:xml -- --demo
+~~~
 
-Read the file locally and copy its XML. It includes the fixed `/api/v1/canvas/launch` URL, Canvas substitutions for API domain/course/user IDs, anonymous privacy, instructor/admin navigation visibility and a new-window target. Do not add names, email, roster or grade-service permissions.
+In your authorized Canvas course, select **Paste XML**, enter the generated App's consumer key and shared secret, paste the XML and add the App. Keep the recommended top-level/new-window target; do not disable framing/CSRF protections to make an embedded copy work. Launch as the configured Instructor, check the correct Teacher/course scope, and separately test an authorized Learner if available. Wrong role, origin/course/user, stale signature, replayed nonce and revoked local grant must fail closed.
 
-In **the one intended Canvas course**, open **Settings → Apps → View App Configurations → + App** (wording varies). Select **Paste XML**, enter a local display name such as LAITA, enter your consumer key and shared secret from the password manager, paste the generated XML and add the App. If installation is denied, stop and use standalone LAITA; there is no registration or security-policy bypass in this project.
-
-Reload the course navigation and launch LAITA as the configured Instructor in a **new top-level tab/window**. It should enter Teacher without another LAITA passphrase prompt. Verify the `Owner · Teacher · Canvas` label and try a non-sensitive synthetic question, then History. The application disallows framing; if Canvas tries an iframe, verify the App's new-window configuration. Do not weaken CSP or cookie protections to make embedding work.
-
-The verifier requires the exact HTTP Canvas Origin, signed `$Canvas.api.domain` host (including any configured port), signed numeric course/user substitutions, an Instructor role, OAuth consumer key/version/HMAC-SHA1 signature, timestamp within ±300 seconds, and a previously unused nonce. The signature URL is the configured canonical HTTPS launch URL, never an untrusted Host or forwarded URL. Query strings, duplicate form parameters, OAuth tokens and alternate signature methods are rejected. Only after these checks and atomic persistent nonce consumption does the API issue a Teacher cookie. Extra signed values cannot grant Admin or create users/memberships. Other public grounding sources remain the existing fixed public-source demonstrations, not Canvas course content or enrollments.
+No REST API token is needed merely to open the signed App. If installation is blocked by the school, stop; do not bypass Canvas administration policy.
 
 ## 5. Set up optional Canvas REST authoring
 
-Finish the signed launch setup first. From your own authorized Canvas environment, obtain a short-lived REST token for the **same Instructor identity** and the one configured course. Use a separate REST token alongside the LTI consumer key and shared secret. Grant the scopes needed for the authoring actions you use, where scoped tokens are supported.
+Only the appropriately signed Canvas **Teacher** can use these tools, and only with a separate time-limited Canvas REST token identifying the same Instructor in the same authorized course. The token needs the exact Canvas API rights for your enabled actions (course/teacher reads; Page/Assignment Group/Assignment/Module catalog reads; specific create/append/readback calls). Use a private, owner-only `0600` file outside Git, such as:
 
-For the Page flow the backend uses these Canvas REST operations. The Assignment, Module, [Canvas Chat](#canvas-chat-plugin) and [Teacher feedback](#canvas-teacher-feedback) sections list the operations for those tools.
+~~~json
+{
+  "origin": "https://canvas.example.test",
+  "courseId": "42001",
+  "teacherId": "73001",
+  "expiresAt": "2027-01-01T00:00:00.000Z",
+  "canvasToken": "<replace locally with your time-limited REST token>",
+  "assignments": { "editableIds": [] },
+  "modules": { "organizeSavedResources": true }
+}
+~~~
 
-| Method | Endpoint                                        | Use                                                                             |
-| ------ | ----------------------------------------------- | ------------------------------------------------------------------------------- |
-| GET    | `/api/v1/users/self`                            | Match the token holder to the signed Instructor's numeric ID                    |
-| GET    | `/api/v1/courses/:course_id`                    | Check the exact available course and the Instructor's active Teacher enrollment |
-| POST   | `/api/v1/courses/:course_id/pages`              | Create one unpublished Page after confirmation                                  |
-| GET    | `/api/v1/courses/:course_id/pages/page_id:<id>` | Verify the created Page by numeric ID                                           |
+This is an **example, not an executable configuration**. Use the exact signed course/origin/Teacher, a valid expiry and actual token in the protected file. The optional `assignments` entry no longer needs a fixed `groupId`; legacy fixed `groupId` remains accepted. `editableIds` restricts title edits on existing assignments. Enabling `"modules": { "organizeSavedResources": true }` **once** allows the Teacher to refresh and select newly saved Pages/Assignments/Modules without editing their IDs into JSON after every creation. Legacy static `moduleIds`, `pageIds` and `assignmentIds` are supported separately for operators who prefer pre-approved targets.
 
-Create a separate JSON file in the protected configuration directory from step 2. Use a private editor and the same OS account that runs LAITA. Set the file to mode `0600` and keep the directory at `0700`, outside Git and without symlinks. The JSON object requires these five string fields. The optional `assignments`, `modules`, `chat` and `feedback` settings are described below.
+Start the foreground API with the protected REST-file path:
 
-| Field         | Value                                                                                          |
-| ------------- | ---------------------------------------------------------------------------------------------- |
-| `origin`      | The same canonical HTTPS Canvas origin as `canvasOrigin` in your signed launch configuration   |
-| `courseId`    | The same Canvas course ID, 1–15 decimal digits with no leading zero                            |
-| `teacherId`   | The same Canvas user ID as `userId`, 1–15 decimal digits with no leading zero                  |
-| `expiresAt`   | The token's expiry in UTC ISO format with milliseconds, for example `YYYY-MM-DDTHH:mm:ss.sssZ` |
-| `canvasToken` | Your own Canvas REST bearer token, entered only in this protected local file                   |
-
-With the regular Canvas launch and application settings still exported, start the foreground API as in [Getting started](GETTING-STARTED.md):
-
-```bash
+~~~bash
 export LAITA_CANVAS_REST_FILE="$HOME/.local/share/laita/config/canvas-rest.json"
-npm start
-```
+APP_CONFIG_JSON="$(cat "$HOME/.local/share/laita/config/application.json")" npm start
+~~~
 
-Export the file path only. Avoid putting the token in environment variables, shell commands, exported logs, screenshots or browser storage. Removing the REST file stops authoring operations at the next check. Restart without the variable to remove the feature's API routes. To rotate the token, replace its protected file with a matching current expiry and obtain a fresh preview. The optional REST setup uses the current Public v4 operator profile.
+Preserve the already exported `LAITA_CANVAS_CONFIG_FILE` as applicable. Configuration changes invalidate active previews. The same permissions are rechecked before authoring and before returning results. Raw tokens must never enter code, screenshots, Github or a model prompt.
 
 ## 6. Preview and create a Page
 
-1. Open the signed Canvas Teacher launch. Expand **Create a Canvas Page** and enter a title and your edited Markdown. For a synthetic example, use the title “Compare two maps” and the body `## Studio exercise` followed by a blank line and `Explain **one** difference between two maps.`
-2. Choose **Preview Canvas Page**. Review the displayed Canvas origin, course, numeric Teacher ID, title and body. **Exact HTML sent to Canvas** shows the canonical content. Preview makes only identity and course reads. The current preview expires in five minutes. Editing the fields calls for a new preview.
-3. Choose **Create unpublished page** to send that content once. LAITA rechecks the current session, connection, token identity and course before dispatch. It requests Teacher editing and disables update notifications in the creation payload.
-4. A verified result means Canvas returned the created Page by ID with matching title, canonical body, unpublished state and Teacher editing. If the result is unverified, uncertain or interrupted, inspect your course's Pages in Canvas before taking another action. LAITA does not retry a write. A local backup or rollback cannot undo a Page already created in Canvas.
-
-The Page panel accepts a title up to 250 UTF-16 code units and Markdown up to 12,000 in the editor, subject to a 16,000 UTF-8 byte limit on canonical HTML. It supports headings, paragraphs, lists, emphasis and code. Links, images and raw HTML are rendered as text. Use non-sensitive, operator-authored content. The preview is kept in transient memory and does not create a History record. The only write in this panel is unpublished Page creation. Existing Page edits, assignments, modules, feedback, publishing and participant administration are outside this workflow.
+In a signed Canvas Teacher view, use the Canvas Page editor. A source-grounded Local AI suggestion may be generated, inspected and edited first; it is not itself a write. Select **Preview Canvas Page** and inspect the exact target and body. Only **Create unpublished page** dispatches a Canvas write. After authorizing the write, LAITA checks the returned resource. If the result is uncertain or unverified, inspect Canvas before attempting another operation. Publishing, if desired, happens afterwards in Canvas itself.
 
 ## 7. Create and rename Canvas assignments
 
-Assignment authoring uses the same signed Teacher and optional REST token. Add an `assignments` object to the protected REST JSON to enable it. Use the numeric ID of an existing assignment group in the configured course and the IDs of the assignments that this operator may rename. These are synthetic example values.
+Open **Canvas Assignments**, select **Create unpublished assignment** and click **Refresh Assignment Groups**. LAITA reads the complete bounded Group catalog from the authorized course. **The Teacher**, not the AI, chooses the destination Group. On incomplete/unavailable results, correct the issue and refresh; a stale Group selection is not allowed.
 
-```json
-{
-  "assignments": {
-    "groupId": "72",
-    "editableIds": ["81", "82"]
-  }
-}
-```
-
-Use 1–15 digit IDs with no leading zero. Keep `editableIds` at twelve unique IDs or fewer. An empty list enables creation only. A REST file containing the original five fields still enables Page creation. To disable only Assignment authoring, remove the `assignments` object. Changes to the REST file invalidate active previews.
-
-The same token needs access to the selected course and caller identity. For creation it needs permission to read the configured assignment group, create an unpublished assignment and read the result. Renaming also requires read and update access for the listed assignments. Where scoped tokens are supported, the additional Canvas operations are:
-
-| Method | Endpoint                                                            | Use                                                          |
-| ------ | ------------------------------------------------------------------- | ------------------------------------------------------------ |
-| GET    | `/api/v1/courses/:course_id/assignment_groups/:assignment_group_id` | Check the configured group                                   |
-| POST   | `/api/v1/courses/:course_id/assignments`                            | Create one unpublished assignment                            |
-| GET    | `/api/v1/courses/:course_id/assignments/:id`                        | Check an approved rename target or verify a saved assignment |
-| PUT    | `/api/v1/courses/:course_id/assignments/:id`                        | Save the reviewed title only                                 |
-
-1. In the signed Teacher view, open **Canvas Assignments**. Choose **Create unpublished assignment**, then enter a title, edited non-sensitive Markdown, nonnegative points and at least one of Text Entry, Website URL or File Upload. An optional due date and time is interpreted as UTC. The title and Markdown limits match the Page editor.
-2. Choose **Preview Canvas Assignment**. Check the course, Teacher ID, destination group and exact draft. For a rename, choose **Rename approved assignment** and select an approved ID. Preview shows the current title and publication state alongside the proposed title. An unchanged title offers no Save action.
-3. Choose **Create unpublished assignment** or **Save assignment title**. LAITA rechecks identity, scope and the previewed target before dispatch. The final payload asks Canvas to send no update notification. Assignment content and grading settings on existing assignments are outside the rename operation.
-4. A verified result comes from reading the saved assignment by ID. If the result is unverified, uncertain or interrupted, inspect Assignments in Canvas before another action. LAITA does not automatically retry writes. Local rollback cannot undo a write already accepted by Canvas.
-
-Preview reads the exact course and selected resource. It makes no external write. Pages, Assignments and Modules share one five-minute preview, so a newer preview invalidates the previous one. No preview creates a History record. Assignment publishing, deletion, verification and grading are outside these controls.
+Enter title, final edited content, nonnegative points, supported submission type(s), and optional UTC due date. The AI suggestion may edit body text but cannot choose the Group. **Preview Canvas Assignment** shows the chosen Group, bound course, exact content and Unpublished visibility. **Create unpublished assignment** writes once after renewed authority/scope checks and reads back the saved Group and resource. A configured `editableIds` list also enables a separate *title-only* edit of one approved existing Assignment. No grade, automatic publication, deletion or hidden student-visible effect is performed by a preview.
 
 ## 8. Create and organize unpublished Canvas modules
 
-Add a `modules` object to the same protected REST file. Use numeric IDs from the single configured course. This example uses synthetic IDs.
+The standard v0.3.0 flow uses three independent creates, then a separate resource-organizing action:
 
-```json
-{
-  "modules": {
-    "moduleIds": ["61"],
-    "pageIds": ["9002"],
-    "assignmentIds": ["81"]
-  }
-}
-```
+1. Create an **Unpublished Assignment** and an **Unpublished Page** with the Teacher's explicit previews/confirmations.
+2. Open **Canvas Modules**, enter a new Module title and explicitly preview/confirm **Create unpublished module**.
+3. Click **Refresh saved Canvas resources**. The current course's saved supported Pages, Assignments and Modules are read with bounded, complete pagination. Source Page/Assignment items may be Published or Unpublished; the **destination Module must be Unpublished**.
+4. Select the new Module and the saved Page/Assignment, optionally arrange 2–10 items in order, **Preview → Confirm**, then inspect the verified append/readback results. A single item can also be added explicitly.
+5. If the target, enrollment, catalog, version or permissions change, or a write/readback becomes uncertain, LAITA stops. **Inspect Canvas before retrying**; a lost response can mean the write succeeded.
 
-Each list allows up to twelve unique IDs of 1–15 digits with no leading zero. Empty lists enable module creation while leaving item links unavailable. A module ID returned by creation must be approved in `moduleIds` before you can add items through LAITA. After changing the file, reload the Teacher view to update the choices. Removing `modules` disables these controls. Other optional authoring settings can be used independently.
-
-Grant the same Teacher token access to read and manage modules in the selected course. For a scoped token, enable the additional operations you use. Canvas returns the linked items with the single-module read.
-
-| Method | Endpoint                                           | Use                                                    |
-| ------ | -------------------------------------------------- | ------------------------------------------------------ |
-| POST   | `/api/v1/courses/:course_id/modules`               | Create one empty unpublished module                    |
-| GET    | `/api/v1/courses/:course_id/modules/:id`           | Check an approved destination and verify the result   |
-| POST   | `/api/v1/courses/:course_id/modules/:id/items`     | Add one approved Page or Assignment                    |
-| GET    | `/api/v1/courses/:course_id/pages/page_id:<id>`    | Resolve an approved Page's current title and slug     |
-| GET    | `/api/v1/courses/:course_id/assignments/:id`        | Check an approved Assignment's identity and type      |
-
-1. Open **Canvas Modules** in the signed Teacher view. Enter a title such as “Map studio” to create a module, or choose one approved destination and one approved item to add.
-2. Choose **Preview Canvas Module change**. Check the course, Teacher, title or item, and destination. Preview only reads. Link previews require an unpublished module with fewer than 25 items and a complete inline item list. Existing duplicate links are rejected. Assignment links support regular Text Entry, Website URL and File Upload assignments. Quizzes, discussions and external tools are outside this flow.
-3. Choose **Create unpublished module** or **Add item to module** once. Each approval covers a single change. A module stays unpublished, and the link adds the existing resource at the end without changing its content or publication settings. LAITA rechecks current authority and the target before dispatch. The final check and write use separate Canvas requests, so concurrent changes in Canvas can still intervene.
-4. LAITA reads back the module or appended item. If the outcome is unverified, uncertain or interrupted, inspect Modules in Canvas before trying again. LAITA does not retry automatically. A local rollback cannot undo a write accepted by Canvas.
-
-Module publishing, reordering, deletion and other item types remain in Canvas. If you roll back to an earlier LAITA build without Modules, remove the `modules` object before starting that build so it can read the remaining REST settings. See the [Instructure Modules REST API](https://developerdocs.instructure.com/services/canvas/resources/modules).
+The dynamic mode requires just the **one-time** protected `organizeSavedResources` setting. It does **not** require copying the new Module ID, Page ID or Assignment ID into the JSON or restarting after each create. The older static allowlist mode is optional and behaves differently. LAITA does not publish Modules, add to already Published destinations, edit source resource bodies, delete content, reorder old items or perform all creates in a single opaque plan.
 
 ## Canvas Chat plugin
 
@@ -230,7 +145,7 @@ Preview, recheck, write and readback use separate Canvas requests. Canvas can ch
 
 The signed Teacher can optionally run [GitHub and MongoDB assignment verification](CANVAS-VERIFICATION.md) for an explicitly configured roster. Each row checks one current attempt. The Test Student-only Canvas Chat and feedback tools keep their own scope.
 
-## 8. Disable, remove, rotate or recover
+## 9. Disable, remove, rotate or recover
 
 To disable Canvas authoring, remove the REST file and revoke the token through your authorized Canvas setup. The steps below disable the signed launch itself.
 

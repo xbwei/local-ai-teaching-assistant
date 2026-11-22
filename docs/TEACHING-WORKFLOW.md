@@ -1,6 +1,6 @@
-# Standalone Teacher tools
+# Teacher tools and optional Canvas workflows
 
-Complete the [public setup](GETTING-STARTED.md), use an operator-owned Local model and sign in as Teacher using your Owner passphrase. Both tools use the standalone local Teacher session.
+Complete [Getting Started](GETTING-STARTED.md), configure a Local model, and sign in using the **separate Demo Teacher** passphrase for an actively granted course. Owner Admin and Demo Student use their own passphrases. Optional Canvas authoring uses a signed Instructor launch and a *separate REST token*.
 
 ## Local teaching drafts
 
@@ -12,15 +12,15 @@ Drafting returns editable text in the browser. It performs no external writes an
 
 ## Test Student History
 
-Enable the separate [History Chat plugin](HISTORY.md#teacher-history-plugin) for a sample of your own authored, non-sensitive practice questions. Use the ordinary Student role without the sample option for questions you want kept outside the sample.
+Use [course-scoped History Chat](HISTORY.md#teacher-history-plugin) for real non-sensitive questions asked by the authorized Demo Student in the currently selected course. A new installation legitimately starts at zero; no seeded fake questions are required.
 
-## Use edited Markdown in Canvas
+## Use editable Local suggestions in Canvas
 
-Copy reviewed, non-sensitive Markdown from the standalone draft. Open your separate signed Canvas Teacher session, enter a title and paste the Markdown. Review the exact destination and content before choosing **Create unpublished page**. The Canvas Page editor uses separate, optional REST setup. [Canvas Page walkthrough](CANVAS.md#6-preview-and-create-a-page)
+The Teacher may generate a grounded Page/Assignment suggestion in the appropriate signed Canvas Teacher flow; examine the source excerpt/path and edit the text before applying it. The model does not choose Canvas destinations or dispatch external writes. Continue through a **fresh Preview → Confirm → Readback**.
 
-For an assignment draft, use **Canvas Assignments** in the signed Canvas Teacher view. The operator can preview an unpublished assignment in the configured group or preview a title-only change to an approved assignment. [Canvas Assignment walkthrough](CANVAS.md#7-create-and-rename-canvas-assignments)
+For an Assignment, refresh the actual current-course Assignment Groups and choose one yourself. Create the Assignment and a Page **Unpublished**. Independently create a named **Unpublished Module**; refresh saved Pages/Assignments/Modules and select the just-created items in the desired order. With `"modules": { "organizeSavedResources": true }` configured **once** in the protected Canvas REST settings, **no manual copying of resource IDs into JSON is needed**. Module destination remains Unpublished; teachers can publish the results later directly in Canvas. [Exact workflow](CANVAS.md#8-create-and-organize-unpublished-canvas-modules).
 
-Use **Canvas Modules** to preview an empty unpublished module or add one approved Page or Assignment to an approved unpublished module. Confirm each change in its own preview and check the readback result. [Canvas Module walkthrough](CANVAS.md#8-create-and-organize-unpublished-canvas-modules)
+If an external write is uncertain, inspect the Canvas course before any retry.
 
 In the same signed Teacher view, open the optional **Canvas Chat plugin** and ask “How many submissions for Map studio?” or “What is the score for Map studio?” using the full title of one approved practice assignment. This answers from one Canvas Test Student sample. [Setup and scope](CANVAS.md#canvas-chat-plugin)
 
