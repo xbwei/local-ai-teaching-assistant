@@ -102,6 +102,21 @@ test("both explicit profiles select Argon High and have separate route identitie
       /UNSUPPORTED_REVIEW_PROFILE/,
     );
 });
+test("missing or malformed profile maps reject as invalid routes", () => {
+  for (const malformed of [
+    null,
+    {},
+    Object.create({ profiles: {} }),
+    { profiles: null },
+    { profiles: [] },
+    { profiles: "invalid" },
+  ]) {
+    assert.throws(
+      () => selectProfile(malformed, criticalProfile),
+      /INVALID_REVIEW_ROUTE/,
+    );
+  }
+});
 test("canonical discovery resolves symlinks and only the known shim; never executes shims", (t) => {
   const root = temporary(t);
   const binary = path.join(root, "native");

@@ -103,7 +103,16 @@ export function identity(config, artifacts, executableHash, version) {
   };
   return { ...record, routeSha256: sha256(JSON.stringify(record)) };
 }
-export function selectProfile({ profiles, ...shared }, profile) {
+export function selectProfile(config, profile) {
+  requireThat(
+    config && Object.hasOwn(config, "profiles"),
+    "INVALID_REVIEW_ROUTE",
+  );
+  const { profiles, ...shared } = config;
+  requireThat(
+    profiles && typeof profiles === "object" && !Array.isArray(profiles),
+    "INVALID_REVIEW_ROUTE",
+  );
   requireThat(
     typeof profile === "string" && Object.hasOwn(profiles, profile),
     "UNSUPPORTED_REVIEW_PROFILE",
