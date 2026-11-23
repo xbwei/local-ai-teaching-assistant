@@ -31,6 +31,20 @@ export function publicBoundaryViolations(file, bytes) {
   reviewedImages.add("docs/assets/demo/laita-demo.gif");
   // Owner-authorized sandbox derivative; provenance/privacy: docs/SCREENSHOTS.md.
   reviewedImages.add("docs/assets/demo/laita-v020-canvas.gif");
+  // v0.3.0 gallery locations. Each asset still requires manual provenance and privacy review.
+  for (const imagePath of [
+    "docs/assets/demo/v030-dev/01-Website-Roles.gif",
+    "docs/assets/demo/v030-dev/02-Student-in-Canvas.gif",
+    "docs/assets/demo/v030-dev/03-Teacher-Chat.gif",
+    "docs/assets/demo/v030-dev/04-Teacher-Generate-excerpt.gif",
+    "docs/assets/demo/v030-dev/05-Teacher-Verify.gif",
+    "docs/assets/demo/v030-dev/06-Mobile-PWA-excerpt.gif",
+    "docs/assets/screenshots/v030-dev/02h-Complete-course-answer.png",
+    "docs/assets/screenshots/v030-dev/04d-Generated-assignment-suggestion.png",
+    "docs/assets/screenshots/v030-dev/04k-Canvas-module-with-ordered-items.png",
+    "docs/assets/screenshots/v030-dev/05e-MongoDB-count-and-sampled-fields.png",
+  ])
+    reviewedImages.add(imagePath);
   // Same-origin raster renders of the repository wordmark for online installation.
   for (const size of [180, 192, 512])
     reviewedImages.add(`apps/web/public/assets/pwa/icon-${size}.png`);

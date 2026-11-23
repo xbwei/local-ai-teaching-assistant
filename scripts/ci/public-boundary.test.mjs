@@ -70,3 +70,47 @@ test("public gate rejects runtime/private paths and private identifiers while pe
     [],
   );
 });
+
+test("public gate permits the ten exact v0.3.0 gallery paths with synthetic bytes", () => {
+  for (const file of [
+    "docs/assets/demo/v030-dev/01-Website-Roles.gif",
+    "docs/assets/demo/v030-dev/02-Student-in-Canvas.gif",
+    "docs/assets/demo/v030-dev/03-Teacher-Chat.gif",
+    "docs/assets/demo/v030-dev/04-Teacher-Generate-excerpt.gif",
+    "docs/assets/demo/v030-dev/05-Teacher-Verify.gif",
+    "docs/assets/demo/v030-dev/06-Mobile-PWA-excerpt.gif",
+    "docs/assets/screenshots/v030-dev/02h-Complete-course-answer.png",
+    "docs/assets/screenshots/v030-dev/04d-Generated-assignment-suggestion.png",
+    "docs/assets/screenshots/v030-dev/04k-Canvas-module-with-ordered-items.png",
+    "docs/assets/screenshots/v030-dev/05e-MongoDB-count-and-sampled-fields.png",
+  ])
+    assert.deepEqual(
+      publicBoundaryViolations(file, Buffer.from([0, 1])),
+      [],
+      file,
+    );
+});
+
+test("public gate rejects adjacent and arbitrary media paths", () => {
+  for (const file of [
+    "docs/assets/demo/v030-dev/07-Unreviewed.gif",
+    "docs/assets/demo/v030-dev/01-Website-Roles.GIF",
+    "docs/assets/demo/v030-dev/02-Student-in-Canvas.png",
+    "docs/assets/screenshots/v030-dev/06-Unreviewed.png",
+    "docs/assets/screenshots/v030-dev/02h-Complete-course-answer-copy.png",
+    "docs/assets/screenshots/v030-other/02h-Complete-course-answer.png",
+    "assets/01-Website-Roles.gif",
+  ])
+    assert.deepEqual(
+      publicBoundaryViolations(file, Buffer.from([0, 1])),
+      ["unreviewed image location"],
+      file,
+    );
+  assert.deepEqual(
+    publicBoundaryViolations(
+      "docs/assets/demo/v030-dev/01-Website-Roles.mp4",
+      Buffer.from([0, 1]),
+    ),
+    ["runtime/secret/media artifact"],
+  );
+});
