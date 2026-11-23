@@ -4,13 +4,17 @@
 
 **Local-first AI for course-grounded questions and instructor-controlled teaching workflows.** LAITA is independent, self-managed faculty-led software—not an official JMU service.
 
-**Release status:** Public **v0.3.0 code candidate**, source commit `0a888602c9ea237ca0156948121fee07edaad479` (November 22, 2026). **No v0.3.0 release/tag is claimed.** The last issued release remains [v0.2.0](docs/RELEASE-NOTES-v0.2.0.md). [Candidate v0.3.0 notes](docs/RELEASE-NOTES-v0.3.0.md).
+[![DOI](https://zenodo.org/badge/1400722177.svg)](https://doi.org/10.5281/zenodo.24452009)
+
+**Latest release:** [LAITA v0.3.0](https://github.com/xbwei/local-ai-teaching-assistant/releases/tag/v0.3.0) (November 22, 2026). [Versioned source](https://github.com/xbwei/local-ai-teaching-assistant/tree/v0.3.0) · [Release notes](docs/RELEASE-NOTES-v0.3.0.md) · [v0.3.0 software DOI](https://doi.org/10.5281/zenodo.24452010).
+
+**Technical report:** [LAITA v0.3.0: Local AI Teaching Assistant — Illustrated Technical Report](https://doi.org/10.5281/zenodo.24454348) (Wei, 2026). This report has its **own DOI**, distinct from the archived v0.3.0 software DOI above.
 
 LAITA runs on a machine and local model **you** manage. Standalone use needs no Canvas, GitHub practice token, MongoDB account or OpenAI key. Optional integrations are enabled separately and must use only your own authorized, non-sensitive data. No central school servers or SSO are provided.
 
 ## Watch the workflows — recent development previews
 
-These Owner-supplied **development previews use sandbox/demo data**. They illustrate the teaching journeys behind the v0.3.0 candidate, **not pixel-identical captures or live acceptance of the current Public build**. Public permissions and some UI steps differ; the [six step-by-step Public workflows](docs/DEMO.md) describe the actual supported product.
+These Owner-supplied **development previews use sandbox/demo data**. They illustrate the teaching journeys behind the v0.3.0 release, **not pixel-identical captures or live acceptance of the current Public build**. Public permissions and some UI steps differ; the [six step-by-step Public workflows](docs/DEMO.md) describe the actual supported product.
 
 | **Teacher Generate** — AI-assisted content | **Student in Canvas** — ask and follow up | **Teacher Verify** — inspect practice work |
 | :---: | :---: | :---: |
@@ -28,7 +32,7 @@ These Owner-supplied **development previews use sandbox/demo data**. They illust
 | :---: | :---: | :---: |
 | [<img src="docs/assets/screenshots/v030-dev/04d-Generated-assignment-suggestion.png" width="285" alt="Synthetic DEV screenshot: editable AI-generated assignment draft" />](docs/assets/screenshots/v030-dev/04d-Generated-assignment-suggestion.png) | [<img src="docs/assets/screenshots/v030-dev/04k-Canvas-module-with-ordered-items.png" width="285" alt="Synthetic DEV screenshot: Canvas Module with saved Page and Assignment" />](docs/assets/screenshots/v030-dev/04k-Canvas-module-with-ordered-items.png) | [<img src="docs/assets/screenshots/v030-dev/05e-MongoDB-count-and-sampled-fields.png" width="285" alt="Synthetic DEV screenshot: bounded MongoDB verification observations" />](docs/assets/screenshots/v030-dev/05e-MongoDB-count-and-sampled-fields.png) |
 
-All animations are labeled *Development Preview*. The Generate and Mobile files above are **short excerpts** of the original Owner-supplied recordings; the originals remain unchanged. The final publication/privacy review and exact-Public-image parity decision are separate from the already merged code. [Media details and caveats](docs/SCREENSHOTS.md).
+All animations are labeled *Development Preview*. The Generate and Mobile files above are **short excerpts** of the original Owner-supplied recordings; the originals remain unchanged. The DEV captures were published with disclosed provenance and bounded visual inspection; full-frame privacy certification and exact-Public-image parity are not claimed. [Media details and caveats](docs/SCREENSHOTS.md).
 
 ## Start here
 
@@ -41,7 +45,7 @@ All animations are labeled *Development Preview*. The Generate and Mobile files 
 | Verify practice submissions with bounded read-only GitHub/MongoDB checks | [Assignment verification](docs/CANVAS-VERIFICATION.md) |
 | Reproduce the six teaching scenarios | [Workflow guide](docs/DEMO.md) |
 | Check setup errors or file a safe GitHub Issue | [Troubleshooting and support](docs/SUPPORT.md) |
-| Review the code candidate's tests and limitations | [Validation](docs/VALIDATION.md) |
+| Review the released version's tests and limitations | [Validation](docs/VALIDATION.md) |
 
 ## Public v0.3.0 capabilities
 
@@ -57,7 +61,7 @@ All animations are labeled *Development Preview*. The Generate and Mobile files 
 
 The reference setup is Apple Silicon macOS, Node 24/npm 11, Ollama, an operator-owned loopback HTTPS entry and locally stored SQLite. Course grounding uses explicitly supported public IA340/IA342 mappings, not arbitrary RAG, private course repos or institutional LMS data. Optional Canvas, Github/MongoDB and OpenAI connections need the appropriate rights and may be unavailable under your organization’s policies. Keep all Canvas secrets, student-related records and practice URIs out of public bug reports. Protect your own host and backup; retained text History has no automatic purge.
 
-This source candidate has not been accepted on physical devices or against arbitrary real Canvas, Atlas, GitHub or school installations. See [validation](docs/VALIDATION.md) and [security](SECURITY.md).
+This source release has not been accepted on physical devices or against arbitrary real Canvas, Atlas, GitHub or school installations. See [validation](docs/VALIDATION.md) and [security](SECURITY.md).
 
 ## Author and community
 

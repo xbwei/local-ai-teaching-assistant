@@ -1,8 +1,10 @@
-# LAITA v0.3.0 — candidate release notes
+# LAITA v0.3.0 — release notes
 
-**Not published.** This file describes the reviewed code candidate at main commit `0a888602c9ea237ca0156948121fee07edaad479` on November 22, 2026. Before a release, replace the candidate reference with the actual tag, resolved commit and publication date, after an Owner decision.
+**Published November 22, 2026.** [GitHub release v0.3.0](https://github.com/xbwei/local-ai-teaching-assistant/releases/tag/v0.3.0) resolves to source commit `ed4b9c221ea2ebcc01c8ce1db32a35a69ccfb4a8`. [Archived software DOI for v0.3.0](https://doi.org/10.5281/zenodo.24452010) · [Software version-series DOI](https://doi.org/10.5281/zenodo.24452009).
 
-## New in the source candidate
+**Companion technical report (separate DOI):** Wei, X. (2026). *LAITA v0.3.0: Local AI Teaching Assistant — Illustrated Technical Report* (Version 0.3.0). Zenodo. https://doi.org/10.5281/zenodo.24454348
+
+## New in v0.3.0
 
 - Separate local Admin/Owner and provisioned Demo Teacher/Student credentials; explicit supported-course grants, switching, account controls and scoped History. Not a self-service or institutional multi-user platform.
 - Bound signed Canvas Instructor **and Learner** LTI 1.1 launch for mapped practice roles; no REST rights arise from the launch itself.
@@ -13,7 +15,7 @@
 
 ## Upgrade and rollback
 
-Follow [Getting Started](GETTING-STARTED.md) for Node/npm/model/setup and [Canvas](CANVAS.md) for separate LTI/REST configuration. The candidate applies SQLite identity/course/account migrations **v6–v8** to a v0.2.0 **schema-v5** database. **Stop the service and take a version-matched full runtime backup** before upgrading. A rollback to v0.2.0 needs that **pre-upgrade v5 snapshot** and matching code/configuration; an older v0.2.0 binary cannot read the migrated v8 database. When returning to older Canvas code, restore its static `assignments.groupId` and `modules` configuration as applicable. See [deployment/recovery](DEPLOYMENT.md).
+Follow [Getting Started](GETTING-STARTED.md) for Node/npm/model/setup and [Canvas](CANVAS.md) for separate LTI/REST configuration. The released v0.3.0 version applies SQLite identity/course/account migrations **v6–v8** to a v0.2.0 **schema-v5** database. **Stop the service and take a version-matched full runtime backup** before upgrading. A rollback to v0.2.0 needs that **pre-upgrade v5 snapshot** and matching code/configuration; an older v0.2.0 binary cannot read the migrated v8 database. When returning to older Canvas code, restore its static `assignments.groupId` and `modules` configuration as applicable. See [deployment/recovery](DEPLOYMENT.md).
 
 ## Known limits and approved deferrals
 
@@ -28,4 +30,4 @@ The #114 implementation record reports **736 Node tests**, a clean isolated inst
 
 **NOT_RUN:** current Public live Canvas, real GitHub/MongoDB practice providers, physical iPhone/Android, native Safari/PWA, real model/voice quality and measured learning outcomes. DEV recordings apply to their recorded build, not this exact Public SHA. See [validation](VALIDATION.md) and [media](SCREENSHOTS.md).
 
-[README](../README.md) · [Six workflows](DEMO.md) · [Help and safe GitHub Issues](SUPPORT.md). Final release/tag/merge/deployment all require separate Owner decisions.
+[README](../README.md) · [Six workflows](DEMO.md) · [Help and safe GitHub Issues](SUPPORT.md). The v0.3.0 source release is published. Deployment, real-environment acceptance and future releases require separate Owner decisions.
