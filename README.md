@@ -8,6 +8,8 @@
 
 **Latest release:** [LAITA v0.3.0](https://github.com/xbwei/local-ai-teaching-assistant/releases/tag/v0.3.0) (November 22, 2026). [Versioned source](https://github.com/xbwei/local-ai-teaching-assistant/tree/v0.3.0) · [Release notes](docs/RELEASE-NOTES-v0.3.0.md) · [v0.3.0 software DOI](https://doi.org/10.5281/zenodo.24452010).
 
+**Technical report:** [LAITA v0.3.0: Local AI Teaching Assistant — Illustrated Technical Report](https://doi.org/10.5281/zenodo.24454348) (Wei, 2026). This report has its **own DOI**, distinct from the archived v0.3.0 software DOI above.
+
 LAITA runs on a machine and local model **you** manage. Standalone use needs no Canvas, GitHub practice token, MongoDB account or OpenAI key. Optional integrations are enabled separately and must use only your own authorized, non-sensitive data. No central school servers or SSO are provided.
 
 ## Watch the workflows — recent development previews

@@ -2,6 +2,8 @@
 
 **Published November 22, 2026.** [GitHub release v0.3.0](https://github.com/xbwei/local-ai-teaching-assistant/releases/tag/v0.3.0) resolves to source commit `ed4b9c221ea2ebcc01c8ce1db32a35a69ccfb4a8`. [Archived software DOI for v0.3.0](https://doi.org/10.5281/zenodo.24452010) · [Software version-series DOI](https://doi.org/10.5281/zenodo.24452009).
 
+**Companion technical report (separate DOI):** Wei, X. (2026). *LAITA v0.3.0: Local AI Teaching Assistant — Illustrated Technical Report* (Version 0.3.0). Zenodo. https://doi.org/10.5281/zenodo.24454348
+
 ## New in v0.3.0
 
 - Separate local Admin/Owner and provisioned Demo Teacher/Student credentials; explicit supported-course grants, switching, account controls and scoped History. Not a self-service or institutional multi-user platform.
