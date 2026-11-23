@@ -14,6 +14,8 @@ LAITA runs on a machine and local model **you** manage. Standalone use needs no 
 
 ## Watch the workflows — recent development previews
 
+**Full development walkthrough:** [Watch the complete LAITA v0.3.0 demo on YouTube](https://youtu.be/C6K6ukVqtu4) (unlisted). This Owner-supplied recording illustrates the synthetic DEV workflows; it is not a pixel-identical walkthrough or live-service acceptance test of the tagged Public release.
+
 These Owner-supplied **development previews use sandbox/demo data**. They illustrate the teaching journeys behind the v0.3.0 release, **not pixel-identical captures or live acceptance of the current Public build**. Public permissions and some UI steps differ; the [six step-by-step Public workflows](docs/DEMO.md) describe the actual supported product.
 
 | **Teacher Generate** — AI-assisted content | **Student in Canvas** — ask and follow up | **Teacher Verify** — inspect practice work |
