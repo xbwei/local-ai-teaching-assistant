@@ -17,6 +17,7 @@ Install the prerequisites first. These commands use only this repository and you
 ```bash
 git clone https://github.com/xbwei/local-ai-teaching-assistant.git
 cd local-ai-teaching-assistant
+git checkout v0.3.0
 npm ci --ignore-scripts
 npm run build
 ollama pull gemma4:12b-mlx
