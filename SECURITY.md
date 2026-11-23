@@ -1,6 +1,6 @@
 # Security policy
 
-LAITA Public remains a **single-operator, self-managed** application. Keep the reference HTTPS entry and API on loopback; a shared or remote entry requires an independently protected operator network boundary. The v0.3.0 code candidate has one Owner/Admin credential and **separate** local practice Teacher and Student passphrases, with server-enforced course memberships, role-scoped sessions and History. These are practice identities controlled by the operator, **not** independent enrolled students or real participant accounts. See [credentials and Canvas setup](docs/CANVAS.md).
+LAITA Public remains a **single-operator, self-managed** application. Keep the reference HTTPS entry and API on loopback; a shared or remote entry requires an independently protected operator network boundary. The v0.3.0 release has one Owner/Admin credential and **separate** local practice Teacher and Student passphrases, with server-enforced course memberships, role-scoped sessions and History. These are practice identities controlled by the operator, **not** independent enrolled students or real participant accounts. See [credentials and Canvas setup](docs/CANVAS.md).
 
 Use only non-sensitive operator-owned input. Do not send student records, grades, submissions, credentials, private institutional material or sensitive research data. Safety filters are bounded heuristics, not a certification.
 
