@@ -6,7 +6,7 @@ The existing SQLite store retains full text questions, successful transcripts, a
 
 New conversation clears active model context, not saved history. No automatic expiry/deletion schedule or encrypted-at-rest storage is implemented. Protect your account/disk and runtime directory. Preserve the store before diagnosing capture or migration failures; do not blindly delete/recreate it to hide a problem. Raw microphone/generated audio is temporary and is not archived in the store.
 
-This is one Owner's dashboard behind local role sign-in, not a multi-person service. Admin can inspect all retained records, including pre-v0.2 History. Teacher and Student see their respective role records. Regular Student excludes Test Student sample records. Canvas Teacher sees only its configured origin/course/identity context. Student cannot write Owner review annotations. Role/session references cannot transfer access. See [role setup and Canvas boundaries](CANVAS.md). Never expose the reference entry as a public student/admin system.
+LAITA is one Owner installation with separate Admin, Demo Teacher and Demo Student credentials, not a multi-user school platform. Admin retains the existing local Owner History scope, including older records; the practice accounts use scoped principal/course History. Canvas Teacher retains origin/course/identity restrictions. A role selector or session reference does not transfer access. Canvas Student View's Test Student is **not** the source of the local Demo Student History. See [roles and Canvas](CANVAS.md).
 
 ## Admin diagnostic lookup
 
@@ -18,15 +18,13 @@ MongoDB verifier outcomes have no support reference in this version. Diagnostic 
 
 ## Teacher History plugin
 
-With LAITA stopped, set `LAITA_HISTORY_SAMPLE_ID` in the API process environment to a stable operator-chosen label of 1–32 lowercase ASCII letters, digits or hyphens beginning with a letter or digit. Restart the API with the [public operator configuration](GETTING-STARTED.md). Leaving the variable unset or using an invalid label disables the plugin. It is a local scope label. Keep the same label for the same sample, and use a separate label to start a different sample. Changing or removing it does not delete retained records.
+Initialize separate practice Teacher/Student credentials using [Getting Started](GETTING-STARTED.md). The **Demo Student** signs in, selects a currently authorized course and asks non-sensitive questions. Real questions/answers are retained in local SQLite in that account/course context. An entirely new installation returns **0 / empty**; neither the tool nor the installer must fabricate records.
 
-1. Sign out, select **Student**, and check **Test Student sample (if configured)** before signing in. Confirm the role badge says **Test Student sample**. Create a few ordinary practice questions in Local Chat, such as “How can I compare two visual explanations?” Use only synthetic, non-sensitive text. This is a sample operated by the same Owner.
-2. Sign out and sign in locally as **Teacher**. Open **History Chat plugin** and choose **Ask History** with “How many questions in the last seven days?”, “How many questions this week?”, or “Summarize recent questions.” “What topics did the Test Student ask about?” is also supported.
-3. Check the result against the sample you created. Unsupported questions get scope guidance, and an empty window or unavailable Local model has an explicit message.
+Sign in as the authorized **Demo Teacher**, select the same course and choose the **History** tool in Teacher Chat. Ask how many questions were asked or request a bounded recent-question summary. Wrong course, missing grant, disabled account or revoked/expired session must fail closed. General Chat and optional Canvas Chat have separate paths.
 
-The plugin reads recorded question text from the configured local sample alone. It includes eligible typed questions and recognized transcripts already recorded there. The recent window is seven days. “This week” begins Monday at 00:00 UTC. Count reports up to 1,000 matching records and uses “at least” if that cap is exceeded. Count does not call a model. Summary considers up to 12 recent records and sends at most 2 KiB of eligible question text to the selected Local model. It omits answers, identifiers, logs, feedback, review notes, grades, usage records and Canvas data. It neither reads ordinary Student records nor combines different sample labels. A summary describes topics in this sample and may omit material. It cannot measure a course or class. Canvas-launched sessions cannot use this plugin.
+A legacy `LAITA_HISTORY_SAMPLE_ID` setting, if still configured, refers to an older standalone sample. It is not a Canvas Student View account and is not automatically migrated into a new Demo Student/course scope.
 
-The plugin accepts up to 1,024 UTF-8 bytes of generated text. It folds tabs and line breaks into spaces and checks the complete summary before displaying it. An ineligible or oversized result leaves Count available.
+**Deferred in v0.3.0:** a persistent, restart-surviving *support reference* for failed History Summary. Normal count/summary/error states remain. Existing Admin lookup for a genuinely retained turn is separate from this deferred failure-diagnostic feature.
 
 ## Dashboard example
 

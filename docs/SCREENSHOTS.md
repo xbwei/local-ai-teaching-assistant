@@ -38,3 +38,31 @@ These exact media derivatives have Owner authorization. That permission does not
 The [install guide](assets/screenshots/laita-phone-entry.png) and [phone composer](assets/screenshots/laita-phone-chat.png) show the built UI at 390 × 844 in Chromium. The local browser fixture uses synthetic responses and captures the app without browser chrome. The PNGs contain no participant records, credentials, or operator endpoints. Their metadata was stripped. Physical iPhone installation remains unverified.
 
 The 180, 192 and 512 pixel app icons in `apps/web/public/assets/pwa/` are raster renders of the repository's LAITA wordmark.
+
+## New v0.3.0 candidate presentation assets — DEV synthetic provenance
+
+The following media were taken **only from Owner-supplied DEV preview files in the shared LAITA Drive collection** and staged as separate publication assets. They visually communicate the intended workflows but **do not demonstrate exact Public v0.3.0 UI/version identity** or successful live Canvas integration. Every GIF visibly says **Development Preview** and **Sandbox demonstration · Demo data**. Some DEV controls (notably delegated Admin controls and published-item choices) exceed current Public scope; those images are captioned accordingly. Public acceptance must be measured against Public code/tests, not screenshots.
+
+| Repository media | Owner source | Processing | Intended reference |
+| --- | --- | --- | --- |
+| `assets/demo/v030-dev/01-Website-Roles.gif` | `01-Website-Roles.gif` | Unchanged GIF, 1,634,669 bytes | DEV role views; **Admin controls are not all Public features** |
+| `assets/demo/v030-dev/02-Student-in-Canvas.gif` | `02-Student-in-Canvas.gif` | Unchanged GIF, 2,157,047 bytes | Demo Student course-grounded Chat |
+| `assets/demo/v030-dev/03-Teacher-Chat.gif` | `03-Teacher-Chat.gif` | Unchanged GIF, 2,646,129 bytes | Teacher Canvas and History paths |
+| `assets/demo/v030-dev/04-Teacher-Generate-excerpt.gif` | `04-Teacher-Generate.gif` | **First 220 of 422 GIF frames**, unaltered frame data; 2,612,262 bytes | Editable content generation and Canvas creation excerpt |
+| `assets/demo/v030-dev/05-Teacher-Verify.gif` | `05-Teacher-Verify.gif` | Unchanged GIF, 2,393,950 bytes | Configured practice GitHub/MongoDB checks and separate feedback |
+| `assets/demo/v030-dev/06-Mobile-PWA-excerpt.gif` | `laita-pwa-demo-v5.gif` | **First 108 of 297 GIF frames**, unaltered frame data; 1,895,919 bytes | Early mobile/PWA interaction excerpt |
+
+The two shortened clips end at original complete GIF-frame boundaries; their global palettes and prior frames are retained, with no synthesized UI, audio or altered words. The larger complete source GIFs remain unchanged in Drive. The excerpts do not reproduce events after the cuts; see the accompanying still images and step-by-step Public workflow text.
+
+| Repository screenshot | Owner source | Presentation |
+| --- | --- | --- |
+| `assets/screenshots/v030-dev/02h-Complete-course-answer.png` | `02h-Complete-course-answer.png` | Unchanged, source-grounded Demo Student answer |
+| `assets/screenshots/v030-dev/04d-Generated-assignment-suggestion.png` | `04d-Generated-assignment-suggestion.png` | Unchanged, editable Local AI assignment suggestion |
+| `assets/screenshots/v030-dev/04k-Canvas-module-with-ordered-items.png` | `04k-Canvas-module-with-ordered-items.png` | Unchanged, resulting Canvas Module |
+| `assets/screenshots/v030-dev/05e-MongoDB-count-and-sampled-fields.png` | `05e-MongoDB-count-and-sampled-fields.png` | Unchanged, sampled read-only MongoDB observations |
+
+**Media handling and remaining review:** The four full GIFs and two excerpt sources were opened; 15 distributed frames from each complete GIF were reviewed as contact sheets and all four selected screenshots were inspected in full resolution. The files have no retained EXIF/comment/ICC/XMP description metadata visible to the decoder. The sampled material shows synthetic/demo identities and the already labeled preview; no obvious passwords or private student identities appeared in the inspected samples. **This is not a guarantee of full-frame privacy certification** and not exact-Public UI acceptance. Before promoting this Draft media PR into a release, complete the applicable final privacy/feature-parity review and secure the Owner's separate public-media approval.
+
+The repository intentionally disallows **unreviewed image paths** in `scripts/ci/check-public-boundary.mjs`. Adding these ten specific media paths requires a separately reviewed narrow allowlist change through the current security/review gate, **not disabling the check or admitting arbitrary new images**. Media assets remain Draft/unmerged while that gate is pending.
+
+Older v0.2.0/demo imagery stays under its original names and version labels for historical provenance; the README candidate now prioritizes the newer Owner-provided DEV previews with conspicuous provenance rather than using the older animation as its headline image.
