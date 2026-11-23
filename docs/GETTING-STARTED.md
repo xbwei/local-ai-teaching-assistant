@@ -1,6 +1,6 @@
 # Getting started — Local first
 
-This guide describes the Public v0.3.0 **code candidate**; a release tag still requires Owner approval. Run the commands from the checkout root. No private development checkout or OpenAI credential is required. [Product homepage](../README.md).
+This guide describes the published Public [v0.3.0 release](https://github.com/xbwei/local-ai-teaching-assistant/releases/tag/v0.3.0); check out its `v0.3.0` tag to reproduce the archived version. Run the commands from the checkout root. No private development checkout or OpenAI credential is required. [Product homepage](../README.md).
 
 ## Prerequisites
 
