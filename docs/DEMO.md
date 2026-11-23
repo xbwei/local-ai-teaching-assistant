@@ -2,6 +2,8 @@
 
 These are **Public v0.3.0 source-code workflows** for one self-managed operator, anchored to the [published v0.3.0 release](https://github.com/xbwei/local-ai-teaching-assistant/releases/tag/v0.3.0), commit `ed4b9c221ea2ebcc01c8ce1db32a35a69ccfb4a8`. They are not evidence of live Canvas or real student acceptance. Use only your own synthetic/non-sensitive sample data. See [installation](GETTING-STARTED.md), [Canvas setup](CANVAS.md) and [validation](VALIDATION.md).
 
+**Complete DEV walkthrough:** [Watch the full LAITA v0.3.0 demo on YouTube](https://youtu.be/C6K6ukVqtu4) (unlisted). This is additional synthetic development footage, not the exact Public release or a real institutional Canvas/student-data demonstration. Follow the steps below for the supported released behavior.
+
 The six Owner-provided **DEV** animated previews are embedded below with explicit sandbox provenance. They are *illustrations of the comparable user journeys*, not exact UI captures or live Canvas/device acceptance for this Public source commit. The Admin clip shows some DEV-only account capabilities; the Public version remains single-Owner and narrower. The Generate and Mobile clips are excerpts, not complete recordings. The older [v0.2.0 Canvas sandbox GIF](assets/demo/laita-v020-canvas.gif) is retained only as historical release media. [Source and media review notes](SCREENSHOTS.md).
 
 ## 1. Admin — identities and course grants
