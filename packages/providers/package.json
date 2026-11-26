@@ -45,6 +45,6 @@
     "@laita/contracts": "0.1.0",
     "@laita/runtime": "0.1.0",
     "mongodb": "7.9.0",
-    "openai": "7.57.0"
+    "openai": "7.62.0"
   }
 }
