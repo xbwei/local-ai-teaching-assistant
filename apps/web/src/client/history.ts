@@ -202,8 +202,14 @@ function historyLifecycle(
         const link = element("a");
         link.href = url;
         link.download = "laita-private-history.json";
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
+        link.hidden = true;
+        document.body.append(link);
+        try {
+          link.click();
+        } finally {
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 0);
+        }
         status.textContent = "Download requested. Keep the file private.";
       }, "History export is unavailable."),
   );
