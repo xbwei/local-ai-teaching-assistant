@@ -44,7 +44,9 @@ function fixture(t) {
     rmSync(root, { recursive: true, force: true });
   });
   return {
-    db,
+    get db() {
+      return db;
+    },
     store,
     restart() {
       db.close();
@@ -56,6 +58,246 @@ function fixture(t) {
     },
   };
 }
+
+test("bounded deletion rolls back all rows on failure and preserves separate evidence after restart", (t) => {
+  const f = fixture(t);
+  const scope = { role: "admin" };
+  const store = createHistoryRepository(f.db, scope);
+  const conversation = id();
+  const otherConversation = id();
+  const evidenceConversation = id();
+  const first = begin(store, conversation, "Synthetic first history record");
+  const second = begin(store, conversation, "Synthetic second history record");
+  const outside = begin(
+    store,
+    conversation,
+    "Synthetic outside selected dates",
+  );
+  const unrelated = begin(
+    store,
+    otherConversation,
+    "Synthetic other conversation",
+  );
+  const evidence = begin(
+    store,
+    evidenceConversation,
+    "Synthetic recovery evidence",
+  );
+  const date = "2026-04-02T00:00:00.000Z";
+  const range = { since: date, until: "2026-04-02T23:59:59.999Z" };
+  for (const turn of [first, second, outside, unrelated]) {
+    store.result(
+      turn,
+      "synthetic-interaction",
+      [answer("synthetic-leg")],
+      "SUCCESS",
+    );
+    store.event(turn, {
+      stage: "ANSWER",
+      outcome: "COMPLETED",
+      at: date,
+      origin: "SERVER",
+    });
+    const parent = turn === unrelated ? otherConversation : conversation;
+    store.feedback(parent, turn, {
+      leg: "synthetic-leg",
+      vote: "HELPFUL",
+      report: false,
+      reason: "Synthetic feedback",
+    });
+  }
+  store.outcome(evidence, "INTERRUPTED");
+  store.incomplete(evidence);
+  assert.throws(
+    () =>
+      store.previewDeletion(
+        { conversation: evidenceConversation },
+        () => false,
+      ),
+    { code: "PROTECTED_HISTORY" },
+  );
+
+  const setDate = f.db.prepare(
+    "UPDATE history_turns SET created = ? WHERE id = ?",
+  );
+  setDate.run(date, first);
+  setDate.run(range.until, second);
+  setDate.run("2026-04-03T00:00:00.000Z", outside);
+  setDate.run("2026-04-01T23:59:59.999Z", unrelated);
+  setDate.run("2026-04-03T00:00:00.001Z", evidence);
+  f.db.exec(`INSERT INTO provider_usage(
+      attempt_ref, admission_digest, record_digest, run_ref, interaction_ref, session_ref,
+      provider, model, course_ref, workflow, comparison, policy_version, configuration_version,
+      outcome, usage_basis, input_tokens, output_tokens, total_tokens,
+      day_key, week_key, created_at, updated_at)
+    VALUES ('synthetic-attempt', 'synthetic-admission', 'synthetic-record', 'synthetic-run',
+      'synthetic-interaction', 'synthetic-session', 'LOCAL', 'synthetic', 'synthetic-course',
+      'COURSE_QA', 0, 'synthetic-policy', 'synthetic-config', 'COMPLETED', 'PROVIDER_REPORTED',
+      2, 3, 5, '2026-04-02', '2026-W14', '${date}', '${date}');
+    INSERT INTO provider_usage_reconciliations VALUES
+      ('synthetic-attempt', 1, 'synthetic-old', 'synthetic-record', '${date}');`);
+  const retained = () => ({
+    ledger: f.db.prepare("SELECT * FROM provider_usage").all(),
+    reconciliation: f.db
+      .prepare("SELECT * FROM provider_usage_reconciliations")
+      .all(),
+    migrations: f.db
+      .prepare("SELECT * FROM schema_migrations ORDER BY version")
+      .all(),
+  });
+  const original = retained();
+  assert.equal(store.conversation(conversation).turns[0].usage.length, 1);
+  const archive = store.exportHistory(range);
+  assert.equal(archive.contractVersion, "history-export.v1");
+  assert.deepEqual(
+    archive.turns.map(({ id }) => id),
+    [first, second],
+  );
+  assert.equal(archive.turns[0].answers[0].text, "Complete synthetic answer");
+  assert.equal(archive.turns[0].events.length, 1);
+  assert.equal(archive.turns[0].feedback[0].reason, "Synthetic feedback");
+  assert.equal("usage" in archive.turns[0], false);
+  assert.deepEqual(store.exportHistory(range), archive);
+  const { digest, turns, conversations } = store.previewDeletion(
+    range,
+    () => false,
+  );
+  assert.deepEqual({ turns, conversations }, { turns: 2, conversations: 1 });
+  assert.throws(
+    () =>
+      store.deleteHistory(
+        range,
+        digest,
+        () => true,
+        () => true,
+      ),
+    { code: "ACTIVE_CONVERSATION" },
+  );
+  assert.throws(
+    () =>
+      store.deleteHistory(
+        range,
+        digest,
+        () => false,
+        () => false,
+      ),
+    { code: "STALE_PREVIEW" },
+  );
+  f.db
+    .prepare("UPDATE history_turns SET suspected = ? WHERE id = ?")
+    .run(1, second);
+  assert.throws(
+    () =>
+      store.deleteHistory(
+        range,
+        digest,
+        () => false,
+        () => true,
+      ),
+    { code: "PROTECTED_HISTORY" },
+  );
+  f.db
+    .prepare("UPDATE history_turns SET suspected = ? WHERE id = ?")
+    .run(0, second);
+  f.db
+    .exec(`CREATE TEMP TRIGGER synthetic_delete_failure BEFORE DELETE ON history_turns
+    WHEN OLD.id = '${second}' BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;`);
+  assert.throws(
+    () =>
+      store.deleteHistory(
+        range,
+        digest,
+        () => false,
+        () => true,
+      ),
+    /synthetic failure/,
+  );
+  assert.equal(f.db.isTransaction, false);
+  assert.deepEqual(store.exportHistory(range), archive);
+  assert.deepEqual(retained(), original);
+  assert.deepEqual(f.db.prepare("PRAGMA foreign_key_check").all(), []);
+
+  f.restart();
+  const restarted = createHistoryRepository(f.db, scope);
+  assert.deepEqual(restarted.exportHistory(range), archive);
+  assert.deepEqual(
+    restarted.deleteHistory(
+      range,
+      digest,
+      () => false,
+      () => true,
+    ),
+    { deletedTurns: 2 },
+  );
+  assert.deepEqual(
+    restarted.conversation(conversation).turns.map(({ id }) => id),
+    [outside],
+  );
+  const final = restarted.previewDeletion({ conversation }, () => false);
+  restarted.deleteHistory(
+    { conversation },
+    final.digest,
+    () => false,
+    () => true,
+  );
+  assert.equal(
+    f.db
+      .prepare("SELECT id FROM history_conversations WHERE id = ?")
+      .get(conversation),
+    undefined,
+  );
+  for (const table of ["history_answers", "history_events", "history_feedback"])
+    assert.deepEqual(
+      f.db
+        .prepare(`SELECT turn FROM ${table}`)
+        .all()
+        .map(({ turn }) => turn),
+      [unrelated],
+    );
+
+  const recovered = f.restart();
+  assert.deepEqual(
+    recovered.list({}).items.map(({ id }) => id),
+    [evidence, unrelated],
+  );
+  assert.equal(
+    recovered.conversation(otherConversation).turns[0].usage.length,
+    1,
+  );
+  assert.deepEqual(retained(), original);
+  assert.deepEqual(f.db.prepare("PRAGMA foreign_key_check").all(), []);
+});
+
+test("History lifecycle requires a scope and bounds selection and export size", (t) => {
+  const f = fixture(t);
+  const store = createHistoryRepository(f.db, { role: "admin" });
+  const conversation = id();
+  const selection = { conversation };
+  assert.throws(() => f.store.storage(), HistoryValidationError);
+  assert.throws(() => f.store.exportHistory(selection), HistoryValidationError);
+  assert.throws(
+    () => f.store.previewDeletion(selection, () => false),
+    HistoryValidationError,
+  );
+  const large = begin(store, conversation);
+  store.result(
+    large,
+    "synthetic-interaction",
+    [answer("synthetic-leg", "文".repeat(1024 * 1024))],
+    "SUCCESS",
+  );
+  assert.throws(() => store.exportHistory(selection), { code: "EXPORT_LIMIT" });
+  assert.equal(store.previewDeletion(selection, () => false).turns, 1);
+  for (let i = 0; i < 250; i++)
+    store.outcome(begin(store, conversation), "NO_ANSWER");
+  assert.throws(() => store.exportHistory(selection), {
+    code: "SELECTION_LIMIT",
+  });
+  assert.throws(() => store.previewDeletion(selection, () => false), {
+    code: "SELECTION_LIMIT",
+  });
+  assert.equal(store.storage().turns, 251);
+});
 
 test("named History sample requires matching current grants inside the SQLite read", (t) => {
   const { db } = fixture(t);

@@ -8,6 +8,18 @@ New conversation clears active model context, not saved history. No automatic ex
 
 LAITA is one Owner installation with separate Admin, Demo Teacher and Demo Student credentials, not a multi-user school platform. Admin retains the existing local Owner History scope, including older records; the practice accounts use scoped principal/course History. Canvas Teacher retains origin/course/identity restrictions. A role selector or session reference does not transfer access. Canvas Student View's Test Student is **not** the source of the local Demo Student History. See [roles and Canvas](CANVAS.md).
 
+## Manage local history
+
+Open **Manage local history** in the History results. **Check local storage** shows the current scope's conversation and turn counts and the byte size of retained question/transcript text, source data, answer/event documents, feedback reasons and review notes. The count covers turns with retained History. SQLite pages, free space, other scopes, accounting, backups and downloads are outside this estimate.
+
+1. Open a record and expand **Manage local history** to select its whole conversation. To select by date, use the controls on the results page and enter both UTC dates, up to 366 days. The dates include both calendar days and match each turn's creation time. Search filters and pagination do not affect this selection. Operations accept up to 250 turns at a time.
+2. **Download private JSON** saves the selected turns in insertion order, with text, answers, sources, diagnostics, feedback and review annotations. Exports are limited to 3 MiB of turn data and contain no separate provider usage or reconciliation records. Keep downloads in protected local storage. The app sends the export only to your signed-in browser over the same History connection.
+3. **Preview deletion** shows the number of affected conversations and turns. Verify the selection, then choose **Confirm deletion** or **Cancel deletion**. The preview expires after two minutes and belongs to the same signed-in session and browser tab. A change to the selected turns or access requires a fresh preview. If the result is uncertain, refresh History and verify it before retrying.
+
+Deletion removes the selected turns, their answers, traces and feedback, and any conversation left empty. Use **New conversation** in the associated chat before deleting an open conversation. Pending capture, incomplete recording, unresolved suspicion and Owner-confirmed issues block deletion of the selection to preserve active work and safety/recovery evidence. Use a narrower date selection where appropriate. Future Teacher History counts and summaries draw from the remaining Student records in their authorized context. Accounting, reconciliations, policy and migration history, operational logs and other conversations or out-of-range turns remain.
+
+SQLite may reuse freed pages without reducing the file size. A deletion from active History does not provide secure erasure or reach existing backups, downloaded exports or browser copies. A restored backup can bring deleted records back. Follow the existing protected backup and recovery procedure when an investigation or migration requires preserving data. [Backup and recovery](DEPLOYMENT.md#explicit-update-and-recovery)
+
 ## Admin diagnostic lookup
 
 Sign in as local **Admin** and open **History & Review**. Open a retained record, expand **Execution trace / identifiers**, and copy the complete value marked **Correlation**. If the record says **unobserved**, it has no reference to look up. Select **Back to results**, expand **Find a local diagnostic**, paste the reference and select **Look up reference**.

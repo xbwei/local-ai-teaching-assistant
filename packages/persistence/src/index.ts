@@ -90,6 +90,7 @@ export type {
 export { createProviderUsageRepository } from "./provider-usage.ts";
 
 export {
+  HistoryLifecycleError,
   HistoryValidationError,
   type DemoHistoryGrant,
   type HistoryRepository,

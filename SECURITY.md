@@ -8,6 +8,8 @@ OpenAI is optional and explicit. On the macOS reference deployment, keys stay in
 
 Text, transcripts, answers, provenance, feedback and diagnostic state persist locally with no automatic expiry. Raw audio is temporary. New conversation resets context but does not delete history. Use disk/account protection; built-in encryption at rest is not provided. Local Admin and practice passphrases are stored only as separate salted scrypt verifiers in the existing SQLite, with no built-in usable default password.
 
+The protected History UI supports scoped storage estimates, private local JSON downloads and explicit deletion of eligible selected records. Exports may contain private text and diagnostics. Deletion can leave reusable SQLite pages, and existing backups and downloads retain their copies. [Manage local history](docs/HISTORY.md#manage-local-history)
+
 Report vulnerabilities privately using GitHub's private vulnerability reporting when available on this repository. If unavailable, contact the maintainer using the contact route on the [public faculty profile](https://www.jmu.edu/cise/people/faculty/wei-xuebin.shtml), first sending only a high-level description and asking for a secure reporting channel. Do not post exploit secrets or private data in public Issues. No response-time guarantee is made.
 
 See [validation and limitations](docs/VALIDATION.md) for the exact Public source/release validation scope. The public repository has CodeQL default setup, hosted secret scanning and push protection enabled. These checks are not a security certification or deployment acceptance. No paid security service is required.

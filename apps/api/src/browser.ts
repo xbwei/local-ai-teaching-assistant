@@ -64,6 +64,7 @@ export function createOwnerTransport(
           : session.context;
       return {
         owner: `${session.binding}:${owner}`,
+        binding: session.binding,
         historyScope: {
           role: session.role,
           ...(context !== undefined ? { context } : {}),
@@ -71,6 +72,9 @@ export function createOwnerTransport(
         },
         ...(session.demo ? { course: session.demo.course } : {}),
       };
+    },
+    isCurrent(req: Request, binding: string) {
+      return !closed && sessions?.isCurrent(req, binding) === true;
     },
     close() {
       closed = true;

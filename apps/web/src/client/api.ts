@@ -119,6 +119,7 @@ function readCanvasTarget(value: unknown): CanvasPagePreview["target"] {
 
 export class ClientError extends Error {
   history?: import("@laita/contracts/browser").HistoryRef;
+  historyLifecycleCode?: string;
   status: number;
   constructor(status = 0) {
     super("Request unavailable");
@@ -169,6 +170,10 @@ export class InputApi {
     if (!response.ok) {
       await response.body?.cancel();
       const error = new ClientError(response.status);
+      if (path.startsWith("/api/v1/history/lifecycle/")) {
+        const code = response.headers.get("x-history-lifecycle");
+        if (code) error.historyLifecycleCode = code;
+      }
       const conversation = response.headers.get("x-history-conversation"),
         turn = response.headers.get("x-history-turn");
       if (isInputRef(conversation) && isInputRef(turn))
@@ -743,7 +748,13 @@ export class InputApi {
     throw new ClientError();
   }
   async historyRequest<T>(
-    action: "query" | "conversation" | "feedback" | "review" | "diagnostic",
+    action:
+      | "query"
+      | "conversation"
+      | "feedback"
+      | "review"
+      | "diagnostic"
+      | `lifecycle/${"storage" | "export" | "preview" | "resolve"}`,
     value: unknown,
   ): Promise<T> {
     return (await this.request(

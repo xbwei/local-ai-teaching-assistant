@@ -7,8 +7,12 @@ import {
   type HistoryTurn,
   type HistoryFeedback,
   type HistoryRef,
+  type HistoryDeletionPreview,
+  type HistoryExport,
+  type HistorySelection,
+  type HistoryStorage,
 } from "@laita/contracts/browser";
-import type { InputApi } from "./api.ts";
+import { ClientError, type InputApi } from "./api.ts";
 const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text = "") => {
   const e = document.createElement(tag);
   e.textContent = text;
@@ -90,8 +94,193 @@ export function feedbackControls(
   box.append(details, status);
   return box;
 }
+
+function historyLifecycle(
+  api: InputApi,
+  conversation: string | null,
+  onDeleted: (turns: number) => void,
+) {
+  const box = element("details");
+  const status = element("p");
+  status.setAttribute("role", "status");
+  const confirmation = element("div");
+  confirmation.hidden = true;
+  const counts = element("p");
+  let preview: HistoryDeletionPreview | undefined;
+  let pending = false;
+  const date = (text: string) => {
+    const label = element("label", text + " ");
+    const input = element("input");
+    input.type = "date";
+    label.append(input);
+    return { label, input };
+  };
+  const start = date("Start date (UTC)");
+  const end = date("End date (UTC)");
+  const selection = (): HistorySelection | undefined => {
+    if (conversation !== null) return { conversation };
+    const since = `${start.input.value}T00:00:00.000Z`;
+    const until = `${end.input.value}T23:59:59.999Z`;
+    const span = Date.parse(until) - Date.parse(since);
+    if (
+      !/^\d{4}-\d\d-\d\dT/u.test(since) ||
+      !/^\d{4}-\d\d-\d\dT/u.test(until) ||
+      !Number.isFinite(span) ||
+      span < 0 ||
+      span >= 366 * 86400000
+    ) {
+      status.textContent = "Enter both dates in order, up to 366 days.";
+      return;
+    }
+    return { since, until };
+  };
+  const messages = {
+    SELECTION_UNAVAILABLE:
+      "No retained records are available for this selection.",
+    SELECTION_LIMIT: "Select a shorter date range with at most 250 records.",
+    EXPORT_LIMIT: "This export is too large. Select a shorter date range.",
+    ACTIVE_CONVERSATION:
+      "This selection includes an open conversation or a turn still being recorded. Use New conversation in the corresponding chat first.",
+    PROTECTED_HISTORY:
+      "This selection includes protected safety or recovery records. Choose a date range without those records.",
+    STALE_PREVIEW:
+      "The deletion preview is no longer valid. Preview the selection again.",
+  };
+  const sync = () => {
+    confirmation.hidden = !preview;
+    start.input.disabled = end.input.disabled = pending || !!preview;
+    inspect.disabled =
+      download.disabled =
+      previewButton.disabled =
+        pending || !!preview;
+    cancel.disabled = confirm.disabled = pending;
+  };
+  const run = async (work: () => Promise<void>, failure: string) => {
+    if (pending) return;
+    pending = true;
+    sync();
+    status.textContent = "";
+    try {
+      await work();
+    } catch (error) {
+      const code =
+        error instanceof ClientError ? error.historyLifecycleCode : undefined;
+      status.textContent =
+        code && Object.hasOwn(messages, code)
+          ? messages[code as keyof typeof messages]
+          : failure;
+    } finally {
+      pending = false;
+      sync();
+    }
+  };
+  const inspect = button(
+    "Check local storage",
+    () =>
+      void run(async () => {
+        const usage = await api.historyRequest<HistoryStorage>(
+          "lifecycle/storage",
+          {},
+        );
+        status.textContent = `${usage.conversations.toLocaleString()} conversations · ${usage.turns.toLocaleString()} records · ${usage.payloadBytes.toLocaleString()} bytes of retained content in this History scope.`;
+      }, "Local storage usage is unavailable."),
+  );
+  const download = button(
+    "Download private JSON",
+    () =>
+      void run(async () => {
+        const selected = selection();
+        if (!selected) return;
+        const data = await api.historyRequest<HistoryExport>(
+          "lifecycle/export",
+          selected,
+        );
+        if (!box.isConnected) return;
+        const url = URL.createObjectURL(
+          new Blob([JSON.stringify(data)], { type: "application/json" }),
+        );
+        const link = element("a");
+        link.href = url;
+        link.download = "laita-private-history.json";
+        link.hidden = true;
+        document.body.append(link);
+        try {
+          link.click();
+        } finally {
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 0);
+        }
+        status.textContent = "Download requested. Keep the file private.";
+      }, "History export is unavailable."),
+  );
+  const previewButton = button(
+    "Preview deletion",
+    () =>
+      void run(async () => {
+        const selected = selection();
+        if (!selected) return;
+        preview = await api.historyRequest<HistoryDeletionPreview>(
+          "lifecycle/preview",
+          selected,
+        );
+        counts.textContent = `Delete ${preview.turns} record${preview.turns === 1 ? "" : "s"} from ${preview.conversations} conversation${preview.conversations === 1 ? "" : "s"}? This cannot be undone in History.`;
+      }, "Deletion preview is unavailable.").then(() => {
+        if (preview && box.isConnected) cancel.focus();
+      }),
+  );
+  const resolve = (approved: boolean) =>
+    void run(
+      async () => {
+        if (!preview) return;
+        const { token } = preview;
+        preview = undefined;
+        const result = await api.historyRequest<
+          { deletedTurns: number } | { cancelled: true }
+        >("lifecycle/resolve", { token, confirm: approved });
+        if (!box.isConnected) return;
+        if ("deletedTurns" in result) onDeleted(result.deletedTurns);
+        else status.textContent = "Deletion cancelled.";
+      },
+      approved
+        ? "Deletion result unavailable. Refresh History to verify the result before previewing again."
+        : "Cancellation could not be verified. No deletion was requested.",
+    );
+  const cancel = button("Cancel deletion", () => resolve(false));
+  const confirm = button("Confirm deletion", () => resolve(true));
+  confirmation.append(counts, cancel, confirm);
+  box.append(element("summary", "Manage local history"));
+  if (conversation === null)
+    box.append(
+      element(
+        "p",
+        "Storage measures retained content in your current History scope.",
+      ),
+      inspect,
+      element(
+        "p",
+        "Select an inclusive UTC date range. Search filters do not apply.",
+      ),
+      start.label,
+      end.label,
+    );
+  else
+    box.append(element("p", "These actions select the entire conversation."));
+  box.append(
+    element(
+      "p",
+      "Exports may contain private text and diagnostics. Deletion also removes the selected records’ answers, feedback and traces. Existing backups and downloads retain their copies.",
+    ),
+    download,
+    previewButton,
+    confirmation,
+    status,
+  );
+  return box;
+}
+
 export function mountHistory(api: InputApi, root: HTMLElement) {
   let revision = 0;
+  let notice = "";
   const navigate = (params: URLSearchParams) => {
     window.history.pushState(
       null,
@@ -134,7 +323,19 @@ export function mountHistory(api: InputApi, root: HTMLElement) {
     status.className = "history-status";
     status.setAttribute("role", "status");
     root.replaceChildren(header);
+    if (notice) {
+      const result = element("p", notice);
+      result.setAttribute("role", "status");
+      root.append(result);
+      notice = "";
+    }
     const conversation = params.get("conversation");
+    const manage = () =>
+      historyLifecycle(api, conversation, (turns) => {
+        notice = `Deleted ${turns} History record${turns === 1 ? "" : "s"}.`;
+        resultsParams.delete("before");
+        navigate(resultsParams);
+      });
     if (conversation === null && document.body.dataset.ownerRole === "admin") {
       const diagnostic = element("details");
       const form = element("form");
@@ -209,6 +410,7 @@ export function mountHistory(api: InputApi, root: HTMLElement) {
         status.textContent = page.turns.length
           ? "Complete retained text. Missing stages remain unobserved; browser playback reports do not prove audible speech."
           : "No retained turns at this location.";
+        root.append(manage());
         if (after) {
           const first = new URLSearchParams(params);
           first.delete("after");
@@ -394,6 +596,7 @@ export function mountHistory(api: InputApi, root: HTMLElement) {
       try {
         const result = await api.historyRequest<HistoryPage>("query", filter);
         if (rev !== revision) return;
+        root.insertBefore(manage(), list);
         for (const row of result.items) {
           const detail = new URLSearchParams(resultsParams);
           detail.set("conversation", row.conversation);

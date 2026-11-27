@@ -178,3 +178,23 @@ export interface ConversationPage {
   turns: HistoryTurn[];
   next: number | null;
 }
+
+export type HistorySelection =
+  { conversation: string } | { since: string; until: string };
+
+export interface HistoryStorage {
+  conversations: number;
+  turns: number;
+  payloadBytes: number;
+}
+
+export interface HistoryDeletionPreview {
+  token: string;
+  conversations: number;
+  turns: number;
+}
+
+export interface HistoryExport {
+  contractVersion: "history-export.v1";
+  turns: Omit<HistoryTurn, "usage">[];
+}

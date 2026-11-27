@@ -616,7 +616,8 @@ export function installInputRoutes(
         ) ||
         typeof v.text !== "string" ||
         Buffer.byteLength(v.text) > 8192 ||
-        !["TYPED", "TRANSCRIPT"].includes(v.source)
+        !["TYPED", "TRANSCRIPT"].includes(v.source) ||
+        !s.valid
       )
         throw new Error();
       const transcript =
@@ -1043,6 +1044,7 @@ export function installInputRoutes(
     }
   });
   return {
+    isConversationActive: (conversation: string) => sessions.has(conversation),
     close() {
       for (const id of sessions.keys()) reset(id);
       ports.speech.close();
