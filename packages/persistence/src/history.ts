@@ -1,4 +1,5 @@
-import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+import { createHash } from "node:crypto";
+import type { DatabaseSync, SQLInputValue, SQLOutputValue } from "node:sqlite";
 import { historyOutcomes, historyStages } from "@laita/contracts";
 import type {
   HistoryAnswer,
@@ -11,10 +12,27 @@ import type {
   HistorySource,
   HistoryTurn,
   ConversationPage,
+  HistoryExport,
+  HistorySelection,
+  HistoryStorage,
 } from "@laita/contracts";
 import { createOwnerAuthRepository } from "./owner-auth.ts";
 
 export class HistoryValidationError extends Error {}
+
+export class HistoryLifecycleError extends Error {
+  constructor(
+    readonly code:
+      | "SELECTION_UNAVAILABLE"
+      | "SELECTION_LIMIT"
+      | "EXPORT_LIMIT"
+      | "ACTIVE_CONVERSATION"
+      | "PROTECTED_HISTORY"
+      | "STALE_PREVIEW",
+  ) {
+    super(code);
+  }
+}
 
 export interface HistoryScope {
   role: "admin" | "teacher" | "student";
@@ -66,18 +84,25 @@ export function createHistoryRepository(
         : [],
     };
   }
+  const visibility =
+    "c.principal = ?" +
+    (scope?.role === "admin" ? "" : " AND c.role = ?") +
+    (scope?.context === undefined ? "" : " AND c.scope = ?");
+  const visibilityArgs = scope
+    ? [
+        scope.principal ?? "",
+        ...(scope.role === "admin" ? [] : [scope.role]),
+        ...(scope.context === undefined ? [] : [scope.context]),
+      ]
+    : [];
   const allowed = (conversation: string) => {
-    if (!scope) return;
-    const row = db
-      .prepare(
-        "SELECT role, scope, principal FROM history_conversations WHERE id = ?",
-      )
-      .get(conversation);
     if (
-      !row ||
-      row.principal !== (scope.principal ?? "") ||
-      (scope.role !== "admin" && row.role !== scope.role) ||
-      (scope.context !== undefined && row.scope !== scope.context)
+      scope &&
+      !db
+        .prepare(
+          `SELECT 1 FROM history_conversations c WHERE c.id = ? AND ${visibility}`,
+        )
+        .get(conversation, ...visibilityArgs)
     )
       throw new HistoryValidationError("History target unavailable");
   };
@@ -133,7 +158,199 @@ export function createHistoryRepository(
     STAGE_FAILURE:
       "EXISTS (SELECT 1 FROM history_events e WHERE e.turn = t.id AND json_extract(e.document, '$.stage') != 'TTS' AND json_extract(e.document, '$.outcome') IN ('FAILED','TIMEOUT','CLEANUP_FAILED','REQUEST_FAILED','INVALID_RESULT','REJECTED_TEXT_WITHHELD','INVALID_AUDIO','MISSING','AMBIGUOUS','CONFLICTING','STALE','UNAVAILABLE','BUSY','JOB_LIMIT','PLAY_FAILED','PLAY_BLOCKED'))",
   } as const;
+  function readTurn(r: Record<string, SQLOutputValue>, includeUsage: boolean) {
+    const usage =
+      includeUsage && r.interaction
+        ? db
+            .prepare(
+              "SELECT attempt_ref AS attempt, run_ref AS run, provider, model, outcome, usage_basis AS basis, input_tokens AS inputTokens, output_tokens AS outputTokens, estimated_cost_nano_usd AS estimatedCostNanoUsd, latency_ms AS latencyMs FROM provider_usage WHERE interaction_ref = ? ORDER BY created_at LIMIT 4",
+            )
+            .all(r.interaction)
+        : [];
+    const answers = db
+      .prepare(
+        "SELECT document FROM history_answers WHERE turn = ? ORDER BY rowid",
+      )
+      .all(r.id!)
+      .map((a) => JSON.parse(String(a.document)) as HistoryAnswer);
+    const events = db
+      .prepare(
+        "SELECT document FROM history_events WHERE turn = ? ORDER BY ordinal",
+      )
+      .all(r.id!)
+      .map((e) => JSON.parse(String(e.document)) as HistoryEvent);
+    const feedback = db
+      .prepare(
+        "SELECT leg, vote, report, reason, updated FROM history_feedback WHERE turn = ? ORDER BY leg",
+      )
+      .all(r.id!)
+      .map((f) => ({
+        ...f,
+        report: f.report === 1,
+      })) as unknown as HistoryFeedback[];
+    return {
+      id: String(r.id),
+      ordinal: Number(r.ordinal),
+      conversation: String(r.conversation),
+      created: String(r.created),
+      inputType: r.input_type,
+      text: r.text,
+      outcome: r.outcome,
+      recording: r.recording,
+      correlation: r.correlation,
+      interaction: r.interaction,
+      course: r.course,
+      lab: r.lab,
+      sources: JSON.parse(String(r.sources)),
+      answers,
+      events,
+      feedback,
+      usage,
+      review: r.review,
+      note: String(r.note),
+      suspected: r.suspected === 1,
+      suspicionReason: String(r.suspicion_reason),
+      suspicionSource: r.suspicion_source,
+    } as HistoryTurn;
+  }
+  function snapshot<T>(mode: "read" | "write", work: () => T): T {
+    db.exec(mode === "write" ? "BEGIN IMMEDIATE" : "BEGIN");
+    try {
+      const result = work();
+      db.exec("COMMIT");
+      return result;
+    } finally {
+      if (db.isTransaction) db.exec("ROLLBACK");
+    }
+  }
+  function scoped() {
+    if (!scope) throw new HistoryValidationError("History scope unavailable");
+  }
+  function selectedTurns(selection: HistorySelection) {
+    scoped();
+    const byConversation = "conversation" in selection;
+    const rows = db
+      .prepare(
+        `SELECT t.id, t.ordinal, t.conversation,
+                t.outcome IN ('PENDING', 'TRANSCRIBED') AS pending,
+                (t.recording = 'INCOMPLETE' OR t.suspected = 1 OR
+                 t.review = 'CONFIRMED_ISSUE') AS protected
+         FROM history_turns t JOIN history_conversations c ON c.id = t.conversation
+         WHERE ${visibility} AND ${byConversation ? "c.id = ?" : "t.created BETWEEN ? AND ?"}
+         ORDER BY t.ordinal LIMIT 251`,
+      )
+      .all(
+        ...visibilityArgs,
+        ...(byConversation
+          ? [selection.conversation]
+          : [selection.since, selection.until]),
+      );
+    if (!rows.length) throw new HistoryLifecycleError("SELECTION_UNAVAILABLE");
+    if (rows.length > 250) throw new HistoryLifecycleError("SELECTION_LIMIT");
+    return rows;
+  }
+  function deletion(
+    selection: HistorySelection,
+    isActive: (conversation: string) => boolean,
+  ) {
+    const rows = selectedTurns(selection);
+    const conversations = new Set(rows.map((row) => String(row.conversation)));
+    if (
+      rows.some((row) => row.pending === 1) ||
+      [...conversations].some(isActive)
+    )
+      throw new HistoryLifecycleError("ACTIVE_CONVERSATION");
+    if (rows.some((row) => row.protected === 1))
+      throw new HistoryLifecycleError("PROTECTED_HISTORY");
+    const digest = createHash("sha256")
+      .update(JSON.stringify(rows))
+      .digest("hex");
+    return { rows, conversations, digest };
+  }
   const repo = {
+    storage(): HistoryStorage {
+      scoped();
+      const row = db
+        .prepare(
+          `SELECT count(DISTINCT c.id) AS conversations, count(*) AS turns,
+             coalesce(sum(
+               coalesce(length(CAST(t.text AS BLOB)), 0) +
+               length(CAST(t.sources AS BLOB)) + length(CAST(t.note AS BLOB)) +
+               length(CAST(t.suspicion_reason AS BLOB)) +
+               (SELECT coalesce(sum(length(CAST(a.document AS BLOB))), 0)
+                FROM history_answers a WHERE a.turn = t.id) +
+               (SELECT coalesce(sum(length(CAST(e.document AS BLOB))), 0)
+                FROM history_events e WHERE e.turn = t.id) +
+               (SELECT coalesce(sum(length(CAST(f.reason AS BLOB))), 0)
+                FROM history_feedback f WHERE f.turn = t.id)
+             ), 0) AS payloadBytes
+           FROM history_turns t JOIN history_conversations c ON c.id = t.conversation
+           WHERE ${visibility}`,
+        )
+        .get(...visibilityArgs)!;
+      return {
+        conversations: Number(row.conversations),
+        turns: Number(row.turns),
+        payloadBytes: Number(row.payloadBytes),
+      };
+    },
+    exportHistory(selection: HistorySelection): HistoryExport {
+      return snapshot("read", () => {
+        const rows = selectedTurns(selection);
+        const read = db.prepare(
+          "SELECT * FROM history_turns WHERE ordinal = ?",
+        );
+        let bytes = 0;
+        const turns = rows.map((row) => {
+          const { usage: _usage, ...turn } = readTurn(
+            read.get(row.ordinal!)!,
+            false,
+          );
+          bytes += Buffer.byteLength(JSON.stringify(turn));
+          if (bytes > 3 * 1024 * 1024)
+            throw new HistoryLifecycleError("EXPORT_LIMIT");
+          return turn;
+        });
+        return { contractVersion: "history-export.v1", turns };
+      });
+    },
+    previewDeletion(
+      selection: HistorySelection,
+      isActive: (conversation: string) => boolean,
+    ) {
+      const { rows, conversations, digest } = deletion(selection, isActive);
+      return { turns: rows.length, conversations: conversations.size, digest };
+    },
+    deleteHistory(
+      selection: HistorySelection,
+      expectedDigest: string,
+      isActive: (conversation: string) => boolean,
+      isCurrent: () => boolean,
+    ) {
+      return snapshot("write", () => {
+        if (!isCurrent()) throw new HistoryLifecycleError("STALE_PREVIEW");
+        const { rows, conversations, digest } = deletion(selection, isActive);
+        if (digest !== expectedDigest)
+          throw new HistoryLifecycleError("STALE_PREVIEW");
+        const remove = [
+          db.prepare("DELETE FROM history_feedback WHERE turn = ?"),
+          db.prepare("DELETE FROM history_events WHERE turn = ?"),
+          db.prepare("DELETE FROM history_answers WHERE turn = ?"),
+        ];
+        const removeTurn = db.prepare("DELETE FROM history_turns WHERE id = ?");
+        for (const { id } of rows) {
+          for (const statement of remove) statement.run(id!);
+          if (removeTurn.run(id!).changes !== 1)
+            throw new Error("History unavailable");
+        }
+        const removeEmpty = db.prepare(
+          `DELETE FROM history_conversations WHERE id = ?
+           AND NOT EXISTS (SELECT 1 FROM history_turns WHERE conversation = ?)`,
+        );
+        for (const id of conversations) removeEmpty.run(id, id);
+        return { deletedTurns: rows.length };
+      });
+    },
     recover() {
       // A process interruption is not evidence of provider failure or audible output.
       db.prepare(
@@ -436,12 +653,8 @@ export function createHistoryRepository(
       };
       if (scope) {
         add(
-          "EXISTS (SELECT 1 FROM history_conversations c WHERE c.id = t.conversation AND c.principal = ?" +
-            (scope.role === "admin" ? "" : " AND c.role = ?") +
-            (scope.context === undefined ? ")" : " AND c.scope = ?)"),
-          scope.principal ?? "",
-          ...(scope.role === "admin" ? [] : [scope.role]),
-          ...(scope.context === undefined ? [] : [scope.context]),
+          `EXISTS (SELECT 1 FROM history_conversations c WHERE c.id = t.conversation AND ${visibility})`,
+          ...visibilityArgs,
         );
       }
       if (filter.search)
@@ -530,60 +743,7 @@ export function createHistoryRepository(
         .all(id, after);
       const more = rows.length > 5;
       rows.splice(5);
-      const turns = rows.map((r) => {
-        const usage = r.interaction
-          ? db
-              .prepare(
-                "SELECT attempt_ref AS attempt, run_ref AS run, provider, model, outcome, usage_basis AS basis, input_tokens AS inputTokens, output_tokens AS outputTokens, estimated_cost_nano_usd AS estimatedCostNanoUsd, latency_ms AS latencyMs FROM provider_usage WHERE interaction_ref = ? ORDER BY created_at LIMIT 4",
-              )
-              .all(r.interaction)
-          : [];
-        const answers = db
-          .prepare(
-            "SELECT document FROM history_answers WHERE turn = ? ORDER BY rowid",
-          )
-          .all(r.id!)
-          .map((a) => JSON.parse(String(a.document)) as HistoryAnswer);
-        const events = db
-          .prepare(
-            "SELECT document FROM history_events WHERE turn = ? ORDER BY ordinal",
-          )
-          .all(r.id!)
-          .map((e) => JSON.parse(String(e.document)) as HistoryEvent);
-        const feedback = db
-          .prepare(
-            "SELECT leg, vote, report, reason, updated FROM history_feedback WHERE turn = ?",
-          )
-          .all(r.id!)
-          .map((f) => ({
-            ...f,
-            report: f.report === 1,
-          })) as unknown as HistoryFeedback[];
-        return {
-          id: String(r.id),
-          ordinal: Number(r.ordinal),
-          conversation: String(r.conversation),
-          created: String(r.created),
-          inputType: r.input_type,
-          text: r.text,
-          outcome: r.outcome,
-          recording: r.recording,
-          correlation: r.correlation,
-          interaction: r.interaction,
-          course: r.course,
-          lab: r.lab,
-          sources: JSON.parse(String(r.sources)),
-          answers,
-          events,
-          feedback,
-          usage,
-          review: r.review,
-          note: String(r.note),
-          suspected: r.suspected === 1,
-          suspicionReason: String(r.suspicion_reason),
-          suspicionSource: r.suspicion_source,
-        } as HistoryTurn;
-      });
+      const turns = rows.map((row) => readTurn(row, true));
       return { turns, next: more ? turns.at(-1)!.ordinal : null };
     },
   };

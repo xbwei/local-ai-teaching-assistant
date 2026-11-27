@@ -244,6 +244,7 @@ export function createApp(options: AppOptions = {}) {
         ownerSessions,
       )
     : undefined;
+  let isConversationActive = (_conversation: string) => false;
   if (options.history && browser) {
     app.use("/api/v1/history", (_req, res, next) => {
       const context = contexts.get(res)!;
@@ -256,6 +257,8 @@ export function createApp(options: AppOptions = {}) {
       options.history,
       browser.authenticate,
       options.historyForScope,
+      browser.isCurrent,
+      (conversation) => isConversationActive(conversation),
     );
   }
   if (options.input) {
@@ -278,6 +281,7 @@ export function createApp(options: AppOptions = {}) {
           ? browser.authenticate(request, response)
           : (response.sendStatus(403), false),
     );
+    isConversationActive = input.isConversationActive;
     app.locals.closeInput = () => {
       browser?.close();
       ownerSessions?.close();

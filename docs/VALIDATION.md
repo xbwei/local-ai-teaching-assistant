@@ -72,3 +72,14 @@ Synthetic API tests check 30 configured students for GitHub and 30 for MongoDB. 
 ## Admin diagnostics
 
 Synthetic API tests check successful Admin lookup, rejection for other roles, including signed Canvas Teacher, invalid references and the metadata-only response. SQLite tests cover the recent ordinal window, ambiguous and invalid retained records, stage limits and read-only operation. Chromium exercises opening a retained record, copying its correlation reference, displaying bounded stage metadata and handling a missing match. Teacher and Student History omit the lookup control.
+
+## History lifecycle query measurements
+
+The #123 Cloud comparison used Node 24.16.0 and fresh file-backed synthetic SQLite databases with 10,000 and 100,000 turns, 20 turns per conversation, two equally sized course scopes, approximately 800 bytes of question text, 1 KiB of answer text and one event per turn. A 20-record page was requested as a Demo Student scoped to one course. Each query had five warm-ups and 30 measurements. The rare substring appeared in answer text every 997th turn. Times are p95 in milliseconds.
+
+| Synthetic turns | Newest page before → after | Next page before → after | Rare substring before → after | Missing substring before → after | Scoped storage estimate |
+| --------------: | -------------------------: | -----------------------: | ----------------------------: | -------------------------------: | ----------------------: |
+|          10,000 |                0.98 → 0.77 |              0.72 → 0.67 |                 43.77 → 43.01 |                    41.07 → 41.05 |                   13.26 |
+|         100,000 |                0.90 → 0.80 |              0.99 → 1.05 |               205.40 → 212.99 |                  451.07 → 433.40 |                  159.15 |
+
+Paging stayed near 1 ms. Substring search cost grew with archive size, especially for misses. The comparisons show similar timings before and after, and search at 10,000 turns stayed below 50 ms in this fixture. This change retains the current search and indexes. Storage estimation is an on-demand scan. These warm synthetic results are specific to this Cloud environment.

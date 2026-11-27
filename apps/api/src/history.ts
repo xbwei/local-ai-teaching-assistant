@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 import express, { type Express, type Request, type Response } from "express";
 import {
+  HistoryLifecycleError,
   HistoryValidationError,
   type HistoryRepository,
+  type HistoryScope,
 } from "@laita/persistence";
 import {
   correlationIdPattern,
@@ -14,6 +16,8 @@ import {
   type HistoryFilter,
   type HistorySnapshot,
   type HistorySource,
+  type HistorySelection,
+  type HistoryDeletionPreview,
 } from "@laita/contracts";
 import { classifyInput } from "@laita/safety";
 
@@ -142,25 +146,57 @@ const boundedText = (v: unknown, max = 2000) =>
 const integer = (v: unknown) =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 const correlationReference = new RegExp(correlationIdPattern, "u");
+const canonicalInstant = (v: unknown): v is string =>
+  typeof v === "string" &&
+  /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(v) &&
+  Number.isFinite(Date.parse(v)) &&
+  new Date(v).toISOString() === v;
+
+function historySelection(v: Record<string, unknown>): HistorySelection {
+  const size = Object.keys(v).length;
+  if (size === 1 && isInputRef(v.conversation))
+    return { conversation: v.conversation };
+  if (
+    size === 2 &&
+    canonicalInstant(v.since) &&
+    canonicalInstant(v.until) &&
+    v.since <= v.until &&
+    Date.parse(v.until) - Date.parse(v.since) < 366 * 86400000
+  )
+    return { since: v.since, until: v.until };
+  throw new HistoryValidationError();
+}
+
 export function installHistoryRoutes(
   app: Express,
   store: HistoryRepository,
   authenticate: (
     req: Request,
     res: Response,
-  ) => false | { historyScope?: import("@laita/persistence").HistoryScope },
-  historyForScope?: (
-    scope: import("@laita/persistence").HistoryScope,
-  ) => HistoryRepository,
+  ) => false | { owner: string; binding: string; historyScope?: HistoryScope },
+  historyForScope: ((scope: HistoryScope) => HistoryRepository) | undefined,
+  isCurrent: (req: Request, binding: string) => boolean,
+  isConversationActive: (conversation: string) => boolean,
 ) {
   const repositories = new WeakMap<Request, HistoryRepository>();
   const students = new WeakSet<Request>();
   const admins = new WeakSet<Request>();
+  const actors = new WeakMap<Request, { owner: string; binding: string }>();
+  const previews = new Map<
+    string,
+    {
+      token: string;
+      selection: HistorySelection;
+      digest: string;
+      expires: number;
+    }
+  >();
   app.use("/api/v1/history", (req, res, next) => {
     const identity = authenticate(req, res);
     if (!identity) return;
     if (identity.historyScope?.role === "student") students.add(req);
     if (identity.historyScope?.role === "admin") admins.add(req);
+    if (identity.historyScope) actors.set(req, identity);
     const scoped = identity.historyScope
       ? historyForScope?.(identity.historyScope)
       : store;
@@ -183,7 +219,11 @@ export function installHistoryRoutes(
   });
   const route = (
     path: string,
-    work: (body: Record<string, unknown>, store: HistoryRepository) => unknown,
+    work: (
+      body: Record<string, unknown>,
+      store: HistoryRepository,
+      req: Request,
+    ) => unknown,
   ) =>
     app.post(`/api/v1/history/${path}`, (req, res) => {
       // Authorize the matched operation, including Express route aliases.
@@ -199,8 +239,13 @@ export function installHistoryRoutes(
         return;
       }
       try {
-        res.json(work(req.body, repositories.get(req)!));
+        res.json(work(req.body, repositories.get(req)!, req));
       } catch (error) {
+        if (error instanceof HistoryLifecycleError) {
+          res.setHeader("X-History-Lifecycle", error.code);
+          res.status(409).json({ code: error.code });
+          return;
+        }
         if (error instanceof HistoryValidationError) {
           res.status(400).json({ code: "INVALID_REQUEST" });
           return;
@@ -214,6 +259,64 @@ export function installHistoryRoutes(
     if (Object.keys(v).some((k) => !keys.includes(k)))
       throw new HistoryValidationError();
   };
+  const lifecycle = (
+    action: string,
+    work: (
+      value: Record<string, unknown>,
+      store: HistoryRepository,
+      owner: string,
+      checkCurrent: () => boolean,
+    ) => unknown,
+  ) =>
+    route(`lifecycle/${action}`, (value, store, req) => {
+      // The JSON parser yields. Revalidate authorization before using the scope.
+      const actor = actors.get(req);
+      if (!actor || !isCurrent(req, actor.binding))
+        throw new HistoryLifecycleError("STALE_PREVIEW");
+      return work(value, store, actor.owner, () =>
+        isCurrent(req, actor.binding),
+      );
+    });
+  lifecycle("storage", (value, store) => {
+    exact(value, []);
+    return store.storage();
+  });
+  lifecycle("export", (value, store) =>
+    store.exportHistory(historySelection(value)),
+  );
+  lifecycle("preview", (value, store, owner): HistoryDeletionPreview => {
+    const selection = historySelection(value);
+    const now = performance.now();
+    for (const [key, preview] of previews)
+      if (preview.expires <= now) previews.delete(key);
+    previews.delete(owner);
+    if (previews.size >= 256) throw new Error("History preview unavailable");
+    const { digest, ...counts } = store.previewDeletion(
+      selection,
+      isConversationActive,
+    );
+    const token = randomBytes(32).toString("hex");
+    previews.set(owner, { token, selection, digest, expires: now + 120_000 });
+    return { token, ...counts };
+  });
+  lifecycle("resolve", (value, store, owner, checkCurrent) => {
+    exact(value, ["token", "confirm"]);
+    if (!isInputRef(value.token) || typeof value.confirm !== "boolean")
+      throw new HistoryValidationError();
+    const preview = previews.get(owner);
+    if (!preview || preview.token !== value.token)
+      throw new HistoryLifecycleError("STALE_PREVIEW");
+    previews.delete(owner);
+    if (preview.expires <= performance.now())
+      throw new HistoryLifecycleError("STALE_PREVIEW");
+    if (!value.confirm) return { cancelled: true };
+    return store.deleteHistory(
+      preview.selection,
+      preview.digest,
+      isConversationActive,
+      checkCurrent,
+    );
+  });
   route("diagnostic", (v, store) => {
     exact(v, ["reference"]);
     if (
@@ -275,13 +378,7 @@ export function installHistoryRoutes(
       if (v[key] !== undefined && !values.includes(v[key] as string))
         throw new HistoryValidationError();
     for (const key of ["since", "until"])
-      if (
-        v[key] !== undefined &&
-        (typeof v[key] !== "string" ||
-          !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(v[key] as string) ||
-          !Number.isFinite(Date.parse(v[key] as string)) ||
-          new Date(v[key] as string).toISOString() !== v[key])
-      )
+      if (v[key] !== undefined && !canonicalInstant(v[key]))
         throw new HistoryValidationError();
     if (v.suspected !== undefined && typeof v.suspected !== "boolean")
       throw new HistoryValidationError();

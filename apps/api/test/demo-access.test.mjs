@@ -68,6 +68,200 @@ async function saveQuestion(f, cookie, text) {
   return { sessionRef, diagnosticRef: turn.headers.get("x-correlation-id") };
 }
 
+test("History lifecycle uses the current role, course, Canvas context and confirming browser session", async (t) => {
+  const f = await fixture({
+    autoLogin: false,
+    history: true,
+    canvas: () => paired,
+    authNow: () => canvasNow,
+  });
+  t.after(() => f.close());
+  f.authStore.configureDemo("IA340", ...(await credentials));
+  f.authStore.grantDemoMembership("demo-student", "IA342");
+  const admin = sessionCookie(await login(f, "admin", testPassphrase));
+  const teacher = sessionCookie(
+    await login(f, "demo-teacher", teacherPassphrase),
+  );
+  const student = sessionCookie(
+    await login(f, "demo-student", studentPassphrase),
+  );
+  const secondStudent = sessionCookie(
+    await login(f, "demo-student", studentPassphrase),
+  );
+  const otherCourse = sessionCookie(
+    await post(f, "/api/v1/auth/course", { course: "IA342" }, secondStudent),
+  );
+  const launch = "/api/v1/canvas/launch";
+  const launchLearner = async () => {
+    const response = await f.request(launch, {
+      method: "POST",
+      headers: {
+        origin: canvas.canvasOrigin,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: signed(f.config.publicOrigin + launch, {
+        roles: "Learner",
+        custom_canvas_user_id: "73002",
+        oauth_nonce: randomUUID(),
+      }),
+    });
+    assert.equal(response.status, 303);
+    return sessionCookie(response);
+  };
+  const canvasStudent = await launchLearner();
+  assert.ok(otherCourse && canvasStudent);
+  const call = (action, body, cookie, headers) =>
+    post(f, `/api/v1/history/lifecycle/${action}`, body, cookie, headers);
+  const result = async (action, body, cookie, expected, headers) => {
+    const response = await call(action, body, cookie, headers);
+    assert.equal(response.status, expected);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    return response.json();
+  };
+  const active = await saveQuestion(
+    f,
+    student,
+    "Synthetic selected student question",
+  );
+  const other = await saveQuestion(
+    f,
+    otherCourse,
+    "Synthetic other course question",
+  );
+  const canvasTurn = await saveQuestion(
+    f,
+    canvasStudent,
+    "Synthetic Canvas-only question",
+  );
+  await saveQuestion(f, teacher, "Synthetic teacher question");
+  await saveQuestion(f, admin, "Synthetic admin question");
+  const selection = { conversation: active.sessionRef };
+  const scopedStudent = f.persistence.history({
+    role: "student",
+    principal: "demo-student",
+    context: "IA340",
+  });
+  const [record] = await query(f, student);
+  const range = {
+    since: record.created,
+    until: new Date(Date.parse(record.created) + 86400000).toISOString(),
+  };
+  scopedStudent.outcome(record.id, "SUCCESS");
+  const usage = await result("storage", {}, student, 200);
+  assert.equal(usage.conversations, 1);
+  assert.equal(usage.turns, 1);
+  assert.ok(usage.payloadBytes > Buffer.byteLength(record.text));
+  for (const action of ["storage", "export", "preview", "resolve"])
+    await result(action, {}, "", 401);
+  await result("storage", {}, student, 403, {
+    origin: "https://other.example.test",
+  });
+  await result("storage", { scope: "IA342" }, student, 400);
+  for (const actor of [teacher, admin, otherCourse, canvasStudent]) {
+    const unavailable = { code: "SELECTION_UNAVAILABLE" };
+    assert.deepEqual(
+      await result("export", selection, actor, 409),
+      unavailable,
+    );
+    assert.deepEqual(
+      await result("preview", selection, actor, 409),
+      unavailable,
+    );
+    assert.deepEqual(
+      await result("export", { conversation: "f".repeat(64) }, actor, 409),
+      unavailable,
+    );
+  }
+  for (const denied of [other, canvasTurn])
+    await result("export", { conversation: denied.sessionRef }, student, 409);
+  const exported = await result("export", range, student, 200);
+  assert.deepEqual(
+    exported.turns.map(({ text }) => text),
+    [record.text],
+  );
+  assert.deepEqual(await result("export", selection, student, 200), exported);
+  for (const invalid of [
+    {},
+    { ...selection, ...range },
+    { since: range.since },
+    { since: "2026-02-30T00:00:00.000Z", until: range.until },
+    { since: range.until, until: range.since },
+    { since: "2024-01-01T00:00:00.000Z", until: "2026-01-01T00:00:00.000Z" },
+  ])
+    await result("preview", invalid, student, 400);
+  assert.deepEqual(await result("preview", selection, student, 409), {
+    code: "ACTIVE_CONVERSATION",
+  });
+  assert.equal(
+    (
+      await f.request("/api/v1/input/session", {
+        method: "DELETE",
+        headers: {
+          cookie: student,
+          "x-owner-client": client,
+          "x-input-session": active.sessionRef,
+        },
+      })
+    ).status,
+    200,
+  );
+
+  const cancelled = await result("preview", selection, student, 200);
+  const resolve = (token, confirm, cookie = student, status = 200, headers) =>
+    result("resolve", { token, confirm }, cookie, status, headers);
+  await resolve(cancelled.token, "true", student, 400);
+  await resolve(cancelled.token, true, student, 409, {
+    "x-owner-client": "b".repeat(64),
+  });
+  await resolve(cancelled.token, true, teacher, 409);
+  const anotherLogin = sessionCookie(
+    await login(f, "demo-student", studentPassphrase),
+  );
+  await resolve(cancelled.token, true, anotherLogin, 409);
+  assert.deepEqual(await resolve(cancelled.token, false), { cancelled: true });
+  await resolve(cancelled.token, true, student, 409);
+  assert.equal((await query(f, student)).length, 1);
+
+  const stale = await result("preview", range, student, 200);
+  const newRecord = "e".repeat(64);
+  scopedStudent.begin({
+    id: newRecord,
+    conversation: active.sessionRef,
+    inputType: "TYPED",
+    text: "Synthetic additional record after preview",
+    correlation: null,
+  });
+  scopedStudent.outcome(newRecord, "SUCCESS");
+  assert.deepEqual(await resolve(stale.token, true, student, 409), {
+    code: "STALE_PREVIEW",
+  });
+  assert.equal((await query(f, student)).length, 2);
+  const revoked = await result("preview", range, student, 200);
+  f.authStore.setDemoMembershipActive("demo-student", "IA340", false);
+  await resolve(revoked.token, true, student, 401);
+  f.authStore.setDemoMembershipActive("demo-student", "IA340", true);
+  const renewed = sessionCookie(
+    await login(f, "demo-student", studentPassphrase),
+  );
+  await resolve(revoked.token, true, renewed, 409);
+  assert.equal((await query(f, renewed)).length, 2);
+  const confirmed = await result("preview", range, renewed, 200);
+  assert.equal(confirmed.turns, 2);
+  assert.deepEqual(await resolve(confirmed.token, true, renewed), {
+    deletedTurns: 2,
+  });
+  await resolve(confirmed.token, true, renewed, 409);
+  assert.deepEqual(await result("storage", {}, renewed, 200), {
+    conversations: 0,
+    turns: 0,
+    payloadBytes: 0,
+  });
+  await result("storage", {}, canvasStudent, 401);
+  for (const actor of [teacher, admin, otherCourse, await launchLearner()])
+    assert.equal((await query(f, actor)).length, 1);
+  assert.equal(f.calls(), 0);
+});
+
 test("separate local credentials, roles, course scope, private History, and bounded Admin membership controls", async (t) => {
   let draftCalls = 0;
   const f = await fixture({

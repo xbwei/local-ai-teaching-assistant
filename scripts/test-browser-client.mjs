@@ -6,7 +6,7 @@ import { initializePersistence } from "@laita/persistence";
  * microphone hardware or system TTS. Speech/audio are synthetic fixtures.
  */
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   cpSync,
   mkdtempSync,
@@ -2160,6 +2160,68 @@ try {
     await diagnosticInput.fill(randomUUID());
     await diagnosticInput.press("Enter");
     await localDiagnostic.getByText("No matching diagnostic in the recent History window.", { exact: true }).waitFor();
+    if (name === "desktop") {
+      const lifecycleRef = randomBytes(32).toString("hex");
+      seededHistory.begin({
+        id: lifecycleRef,
+        conversation: lifecycleRef,
+        inputType: "TYPED",
+        text: "Synthetic lifecycle download fixture",
+        correlation: null,
+      });
+      seededHistory.outcome(lifecycleRef, "NO_ANSWER");
+      const manage = historyDialog
+        .locator("details")
+        .filter({ hasText: "Manage local history" });
+      await manage.locator("summary").click();
+      await manage.getByRole("button", { name: "Check local storage" }).click();
+      await manage
+        .getByText(/bytes of retained content in this History scope/)
+        .waitFor();
+      await manage.getByRole("button", { name: "Preview deletion" }).click();
+      await manage
+        .getByText("Enter both dates in order, up to 366 days.")
+        .waitFor();
+      const day = seededHistory
+        .conversation(lifecycleRef)
+        .turns[0].created.slice(0, 10);
+      await manage.getByLabel("Start date (UTC)").fill(day);
+      await manage.getByLabel("End date (UTC)").fill(day);
+      const rangePromise = historyPage.waitForEvent("download");
+      await manage.getByRole("button", { name: "Download private JSON" }).click();
+      const range = await rangePromise;
+      const rangeArchive = JSON.parse(readFileSync(await range.path(), "utf8"));
+      assert.ok(rangeArchive.turns.some(({ id }) => id === lifecycleRef));
+      await historyDialog
+        .getByLabel("Search history")
+        .fill("Synthetic lifecycle download fixture");
+      await historyDialog
+        .getByRole("button", { name: "Search / refresh" })
+        .click();
+      await historyDialog
+        .locator(".history-row")
+        .getByText("Synthetic lifecycle download fixture")
+        .click();
+      await manage.locator("summary").click();
+      const downloadPromise = historyPage.waitForEvent("download");
+      await manage.getByRole("button", { name: "Download private JSON" }).click();
+      const downloaded = await downloadPromise;
+      assert.equal(downloaded.suggestedFilename(), "laita-private-history.json");
+      const archive = JSON.parse(readFileSync(await downloaded.path(), "utf8"));
+      assert.deepEqual(archive.turns.map(({ id }) => id), [lifecycleRef]);
+      assert.equal(archive.turns[0].text, "Synthetic lifecycle download fixture");
+      await manage.getByRole("button", { name: "Preview deletion" }).click();
+      await manage.getByText(/Delete 1 record from 1 conversation/).waitFor();
+      await manage.getByRole("button", { name: "Cancel deletion" }).click();
+      await manage.getByText("Deletion cancelled.", { exact: true }).waitFor();
+      assert.equal(seededHistory.conversation(lifecycleRef).turns.length, 1);
+      await manage.getByRole("button", { name: "Preview deletion" }).click();
+      await manage.getByRole("button", { name: "Confirm deletion" }).click();
+      await historyDialog
+        .getByText("Deleted 1 History record.", { exact: true })
+        .waitFor();
+      await historyDialog.getByText(/0 records on this page/).waitFor();
+    }
     assert.equal(f.calls(), beforeHistory);
     assert.ok(
       historyRequests.every((url) => !url.includes("/api/v1/input/")),
